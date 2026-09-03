@@ -1,0 +1,10 @@
+{
+  "foxstweaks.research.autosolve.description": "Auto-Solve",
+  "foxstweaks.research.autosolve.draw": "Draws the remaining %s connection(s) for you.",
+  "foxstweaks.research.autosolve.clear": "Clears %s wrong connection(s) first.",
+  "foxstweaks.research.autosolve.free": "Costs no experience.",
+  "foxstweaks.research.autosolve.locked": "This constellation is already complete.",
+
+  "key.categories.foxstweaks": "Fox's Tweaks",
+  "key.foxstweaks.show_affix_info": "Show Affixes & Gem Sockets"
+}
