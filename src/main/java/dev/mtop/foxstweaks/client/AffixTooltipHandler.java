@@ -1,8 +1,11 @@
 package dev.mtop.foxstweaks.client;
 
+import dev.mtop.foxstweaks.Config;
 import dev.mtop.foxstweaks.FoxsTweaks;
 import dev.mtop.foxstweaks.client.compat.ApothicTooltip;
+import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.Font;
+import net.minecraft.client.gui.screens.inventory.AbstractContainerScreen;
 import net.minecraft.client.gui.screens.inventory.tooltip.ClientTooltipComponent;
 import net.minecraft.world.item.ItemStack;
 import net.neoforged.api.distmarker.Dist;
@@ -34,8 +37,14 @@ public class AffixTooltipHandler {
     private static final int POSITIONER_X_OFFSET = 12;
     private static final int POSITIONER_Y_OFFSET = 12;
 
-    /** Roughly the border and padding vanilla draws around tooltip content. */
-    private static final int FRAME = 8;
+    /**
+     * Roughly the border and padding vanilla draws around tooltip content, plus slack for the
+     * decorative rarity-tier border Apotheosis draws outside that content box (the ornate corners
+     * on a mythic/ancient item's tooltip). {@code mainWidth}/{@code mainHeight} below only measure
+     * the plain content box, so without this slack a rarity border can still visually touch the
+     * panel even though the boxes themselves do not overlap.
+     */
+    private static final int FRAME = 14;
 
     /**
      * Drawing a tooltip fires this same event again, so without this the first hover would recurse
@@ -51,6 +60,9 @@ public class AffixTooltipHandler {
             return;
 
         ItemStack stack = event.getItemStack();
+
+        if ((stack == null || stack.isEmpty()) && Config.CURIOS_TOOLTIP_WORKAROUND.get())
+            stack = recoverHoveredStack();
 
         if (stack == null || stack.isEmpty() || !ApothicTooltip.hasInfo(stack))
             return;
@@ -106,5 +118,25 @@ public class AffixTooltipHandler {
             apotheosisLoaded = ModList.get().isLoaded(FoxsTweaks.APOTHEOSIS);
 
         return apotheosisLoaded;
+    }
+
+    /**
+     * Some screens forget to pass the hovered {@link ItemStack} into their {@code GuiGraphics}
+     * tooltip call, which leaves {@link RenderTooltipEvent.Pre#getItemStack()} empty even though a
+     * real item is being hovered. Curios' own inventory screen does this for every populated curio
+     * slot - {@code CuriosScreen#renderTooltip} calls the {@code GuiGraphics#renderTooltip} overload
+     * that takes no stack, instead of the one vanilla's own {@link AbstractContainerScreen} uses
+     * (TheIllusiveC4/Curios#536) - so this panel would otherwise never appear there.
+     *
+     * <p>Reads the generic {@link AbstractContainerScreen#hoveredSlot} field (widened by the access
+     * transformer) rather than anything Curios-specific, so it fixes any screen with the same bug,
+     * not just Curios', and needs no reference to a Curios type. It cannot recover Apotheosis' own
+     * tooltip content, which reads the same broken event from Apotheosis' own code.
+     */
+    private static ItemStack recoverHoveredStack() {
+        if (Minecraft.getInstance().screen instanceof AbstractContainerScreen<?> screen && screen.hoveredSlot != null)
+            return screen.hoveredSlot.getItem();
+
+        return ItemStack.EMPTY;
     }
 }

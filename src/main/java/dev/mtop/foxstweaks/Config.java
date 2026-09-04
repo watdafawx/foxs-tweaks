@@ -18,6 +18,17 @@ public final class Config {
                     "Turn this off to solve constellations manually with the auto-solve button instead.")
             .define("autoSolveOnPickup", true);
 
+    public static final ModConfigSpec.BooleanValue CURIOS_TOOLTIP_WORKAROUND = BUILDER
+            .comment(
+                    "Recover the hovered item ourselves when a screen's own tooltip rendering forgets to",
+                    "attach it. Curios' inventory screen does this for every populated curio slot",
+                    "(TheIllusiveC4/Curios#536), which otherwise blanks out the affix panel there.",
+                    "",
+                    "Only restores our own panel - Apotheosis' own tooltip content is Apotheosis' code",
+                    "reading the same broken event, and this can't reach it. Turn off once Curios ships",
+                    "its own fix (TheIllusiveC4/Curios#625).")
+            .define("curiosTooltipWorkaround", true);
+
     public static final ModConfigSpec SPEC = BUILDER.build();
 
     private Config() {

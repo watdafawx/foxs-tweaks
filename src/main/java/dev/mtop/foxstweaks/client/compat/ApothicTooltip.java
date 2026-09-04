@@ -47,8 +47,12 @@ public final class ApothicTooltip {
         var ctx = AdventureModuleClient.tooltipCtx();
         List<Either<FormattedText, TooltipComponent>> elements = new ArrayList<>();
 
-        // The panel is detached from the item, so it needs to say what it is describing.
+        // The panel is detached from the item, so it needs to say what it is describing. The caption
+        // beneath the name also identifies the panel itself - it can end up right beside or touching
+        // the main tooltip, which uses the same dark styling, and would otherwise be indistinguishable.
         elements.add(Either.left(stack.getHoverName()));
+        elements.add(Either.left(Component.translatable("foxstweaks.affix_panel.caption")
+                .withStyle(ChatFormatting.GRAY, ChatFormatting.ITALIC)));
 
         AffixHelper.streamAffixes(stack)
                 .sorted(Comparator.comparingInt(affix -> affix.getAffix().definition().type().ordinal()))

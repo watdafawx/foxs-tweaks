@@ -24,10 +24,6 @@ neoForge {
     runs {
         client {
             client()
-
-            // Relics and its dependency chain are dropped into run/mods as normal mod jars
-            // rather than put on the classpath, so the dev client loads them the same way a
-            // real install would (mixins, access transformers and all).
             gameDirectory = file('run')
         }
     }
@@ -41,13 +37,45 @@ neoForge {
 
 repositories {
     mavenCentral()
+
+    // Shadows-of-Fire's own maven - Apotheosis, Placebo, ApothicAttributes.
+    maven { url "https://maven.shadowsoffire.dev/releases" }
+
+    // TheIllusiveC4's own maven - Curios.
+    maven { url "https://maven.theillusivec4.top/" }
+
+    // Architectury's own maven, scoped so it isn't asked to resolve anything else.
+    maven {
+        url "https://maven.architectury.dev"
+        content { includeGroup "dev.architectury" }
+    }
+
+    // Modrinth mirrors every mod hosted there as a Maven repo (group "maven.modrinth", artifact is
+    // the slug, version is the Modrinth *version id*, not the version number). Relics and OctoLib
+    // have no maven of their own, so this is the only way to resolve them without a manual jar.
+    // Scoped for the same reason as Architectury's.
+    maven {
+        url "https://api.modrinth.com/maven"
+        content { includeGroup "maven.modrinth" }
+    }
 }
 
 dependencies {
-    // Relics is not published to a public Maven repository, so its jar (and the
-    // two mods it needs for its own class hierarchy to resolve) are consumed as
-    // local files. compileOnly: at runtime the real mods are already loaded.
-    compileOnly fileTree(dir: 'libs', include: ['*.jar'])
+    // All optional parent-mod integrations. compileOnly: none of these may leak into the shipped
+    // jar's dependency requirements (see neoforge.mods.toml, which lists relics/apotheosis as
+    // "optional" by hand) - at runtime the real mods, if installed, are what's actually loaded.
+    //
+    // This only covers compiling. FML's mod discovery (mixins, mods.toml, the lot) scans run/mods -
+    // not the general runtime classpath - so ModDevGradle's additionalRuntimeClasspath does not make
+    // these load as mods in the dev client (it is meant for plain non-mod libraries); a real test run
+    // still needs the matching jars dropped into run/mods by hand. See Local setup in AGENTS.md.
+    compileOnly "dev.shadowsoffire:Apotheosis:${minecraft_version}-${apotheosis_version}"
+    compileOnly "dev.shadowsoffire:Placebo:${minecraft_version}-${placebo_version}"
+    compileOnly "dev.shadowsoffire:ApothicAttributes:${minecraft_version}-${apothic_attributes_version}"
+    compileOnly "top.theillusivec4.curios:curios-neoforge:${curios_version}"
+    compileOnly "dev.architectury:architectury-neoforge:${architectury_version}"
+    compileOnly "maven.modrinth:relics-mod:${relics_version}"
+    compileOnly "maven.modrinth:shatterbyte-lib:${octolib_version}" // OctoLib; "shatterbyte-lib" is its Modrinth slug.
 }
 
 tasks.withType(JavaCompile).configureEach {

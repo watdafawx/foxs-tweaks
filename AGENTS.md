@@ -38,18 +38,41 @@ Two environment facts that will otherwise waste your time:
 
 ## Local setup
 
-`libs/` holds the jars compiled against. They are **third-party mods and are deliberately not
-committed** (Relics is licensed All Rights Reserved). Populate it by copying from a modpack
-instance that has them:
+**Compiling needs nothing manual.** Every `compileOnly` dependency in `build.gradle` (Relics, Curios,
+OctoLib, Apotheosis, Placebo, ApothicAttributes, Architectury) resolves from a real Maven repository:
+Shadows-of-Fire's own maven for the Apotheosis family, TheIllusiveC4's own maven for Curios,
+Architectury's own maven, and Modrinth's Maven mirror (`https://api.modrinth.com/maven`, group
+`maven.modrinth`, artifact = Modrinth slug, version = the Modrinth *version id*, not the version
+number) for Relics and OctoLib, which have no maven of their own. `build.bat build` downloads all of
+it on first run, same as any other Gradle dependency. NeoForge mod jars for 1.21.1 ship in Mojang
+mappings, which is why a production jar works as a compile dependency with no remapping.
+
+There used to be a `libs/` folder of manually-downloaded jars for this. It is gone: everything it
+held is now a normal Gradle dependency. Do not reintroduce it without a good reason - the whole point
+was to stop hand-managing these.
+
+**The dev client run still needs manual jars, and there is no way around that.** FML's mod discovery
+(mixins, `neoforge.mods.toml`, all of it) only scans `run/mods/` and jar-in-jar - never the general
+runtime classpath. ModDevGradle's `additionalRuntimeClasspath` was tried here for exactly this
+purpose and does not work: it puts a jar's classes on the classpath (useful for a plain non-mod
+library) but FML's `ModDiscoverer` still never sees it, so the "mod" never appears in the mod list,
+and anything that depends on it (Relics needs Curios; `apothic_compats` needs Apotheosis and Placebo)
+fails to load with "Missing or unsupported mandatory dependencies". Drop the real jars into
+`run/mods/` by hand before running `build.bat runClient`:
 
 - `relics-*.jar`, `curios-*.jar`, `OctoLib-*.jar` — for the Relics half
 - `Apotheosis-*.jar`, `Placebo-*.jar`, `ApothicAttributes-*.jar` — for the Apotheosis half
+- `architectury-*.jar` — OctoLib's own dependency
 
-All are `compileOnly`. NeoForge mod jars for 1.21.1 ship in Mojang mappings, which is why a
-production jar works as a compile dependency with no remapping.
+The versions in `gradle.properties` (`relics_version`, `curios_version`, etc.) tell you exactly what
+to fetch - the same builds Gradle resolves for compiling.
 
-To run a dev client, drop those same jars (plus `architectury-*.jar`, which OctoLib requires) into
-`run/mods/` and run `build.bat runClient`.
+`apothic_compats` is not required to compile or run this mod, but drop it into `run/mods/` too before
+testing Relics affixes specifically: without it, Relics' items resolve to no `LootCategory` at all
+and Apotheosis refuses to affix or socket any of them (see the testhotbar diagnostic below and the
+[known bug](#known-upstream-bugs-not-ours--do-not-fix-them-here) about its load order). It has no
+Modrinth/CurseForge listing - build it from [ianm1647/apothic-compats](https://github.com/ianm1647/apothic-compats)
+(branch `1.21.1`), or pull the `Package` artifact off its latest successful GitHub Actions run.
 
 ## Architecture
 
@@ -106,6 +129,28 @@ Two traps:
 
 The panel deliberately mirrors Apotheosis' own ordering (name → affixes → durability → attributes →
 sockets) and is built with Apotheosis' own helpers, so it stays in step if their formatting changes.
+It also carries its own caption line (`foxstweaks.affix_panel.caption`) right under the name, because
+the panel uses the same dark tooltip styling as the main tooltip and can end up beside or touching it
+— without a caption there is nothing to tell them apart. `FRAME` in `AffixTooltipHandler` carries
+extra slack beyond vanilla's own padding for the same reason: `mainWidth`/`mainHeight` only measure
+the plain content box, and a rarity-tier item's decorative Apotheosis border is drawn outside it, so
+the plain-box geometry alone can still let that border visually touch the panel.
+
+### Recovering the hovered item on a broken screen
+
+`AffixTooltipHandler#recoverHoveredStack` falls back to the generic `AbstractContainerScreen`
+`hoveredSlot` field (widened by the access transformer) when `RenderTooltipEvent.Pre#getItemStack()`
+comes back empty. This works around Curios' `CuriosScreen#renderTooltip`, which calls the
+`GuiGraphics#renderTooltip` overload that takes no `ItemStack` instead of the one vanilla's own
+`AbstractContainerScreen` uses — see [TheIllusiveC4/Curios#536](https://github.com/TheIllusiveC4/Curios/issues/536)
+under [Known upstream bugs](#known-upstream-bugs-not-ours--do-not-fix-them-here) below.
+
+It reads a vanilla field rather than a Curios type, so it fixes any screen with the same bug and adds
+no reference to Curios at all — no optional-dependency concerns here, unlike the Relics integration.
+It is gated behind `Config.CURIOS_TOOLTIP_WORKAROUND` (`curiosTooltipWorkaround`, default on) so it
+can be turned off once Curios ships [#625](https://github.com/TheIllusiveC4/Curios/pull/625) rather
+than the two fixes interacting. It also only ever restores **our own** panel — Apotheosis' own
+tooltip content reads the same broken event from Apotheosis' own code, which this cannot reach.
 
 ### Where the puzzle answer comes from
 
@@ -133,12 +178,17 @@ Because it goes through the interface, relics added by *other* addons work with 
 
 ## Testing
 
-`/foxstweaks testhotbar [sockets]` (op, `0–16`, default 4) fills the hotbar with relics rolled at the
-highest loot rarity and filled with random `PERFECT`-purity gems.
+`/foxstweaks testhotbar [sockets]` (op, `0–16`, default 4) fills hotbar slots 1–8 with relics rolled
+at the highest loot rarity and filled with random `PERFECT`-purity gems. It also decorates a full
+vanilla diamond kit (sword + full armor) the same way and equips it, in slot 0 and the armor slots -
+a control group that is guaranteed a `LootCategory`, so it keeps getting affixes even on a Relics
+install that doesn't (see below).
 
-It doubles as a diagnostic: each line reports the `LootCategory` the relic resolved to. Apotheosis
+It doubles as a diagnostic: each line reports the `LootCategory` the item resolved to. Apotheosis
 refuses to affix or socket anything mapping to no category, so `no loot category` lines explain
-relics not receiving affixes.
+relics not receiving affixes - if the vanilla gear affixes fine alongside them, Apotheosis itself is
+working and the gap is specific to Relics' items (see `apothic_compats` in
+[Local setup](#local-setup)).
 
 ## Known upstream bugs (not ours — do not "fix" them here)
 
@@ -151,6 +201,14 @@ relics not receiving affixes.
   with *"Items without a valid loot category are not permitted"*. Its curio `LootCategory`
   predicates are tag-based, and Apotheosis parses reloadable registries before item tags are bound.
   This is parse-time only; runtime affixing is unaffected.
+- **Curios, screen tooltips.** While the Curios inventory screen (`CuriosScreen`) is open, hovering a
+  slot shows neither our affix panel nor any of Apotheosis' own tooltip additions. `CuriosScreen`'s
+  override of `renderTooltip` calls the `GuiGraphics#renderTooltip` overload that takes no
+  `ItemStack`, so the hovered stack never reaches `RenderTooltipEvent.Pre#getItemStack()` - exactly
+  the check `AffixTooltipHandler` bails out on. Tracked upstream as
+  [TheIllusiveC4/Curios#536](https://github.com/TheIllusiveC4/Curios/issues/536), with a fix pending
+  in [#625](https://github.com/TheIllusiveC4/Curios/pull/625). We work around the half of this we can
+  reach - see [Recovering the hovered item on a broken screen](#recovering-the-hovered-item-on-a-broken-screen).
 
 ## Conventions
 

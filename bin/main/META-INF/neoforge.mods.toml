@@ -1,0 +1,49 @@
+modLoader = "javafml"
+loaderVersion = "[4,)"
+license = "${mod_license}"
+
+[[mods]]
+modId = "${mod_id}"
+version = "${mod_version}"
+displayName = "${mod_name}"
+authors = "${mod_authors}"
+description = '''
+A set of quality-of-life tweaks for gear mods. Every feature is an optional integration - install
+whichever parent mods you use and the rest stays dormant.
+
+Relics: constellation research is completed automatically as you pick relics up, and an auto-solve
+button sits next to the hint button on the research screen for when that is switched off. The
+correct pattern is read from the relic's own ability template, so relics added by other addons work
+with no extra data.
+
+Apotheosis: hold a key over any item to show a second tooltip listing its affixes and gem sockets,
+leaving the main tooltip untouched.
+'''
+
+[[dependencies.${mod_id}]]
+modId = "neoforge"
+type = "required"
+versionRange = "[21.1.0,)"
+ordering = "NONE"
+side = "BOTH"
+
+[[dependencies.${mod_id}]]
+modId = "minecraft"
+type = "required"
+versionRange = "[1.21.1,1.22)"
+ordering = "NONE"
+side = "BOTH"
+
+[[dependencies.${mod_id}]]
+modId = "relics"
+type = "optional"
+versionRange = "[0.12.8,)"
+ordering = "AFTER"
+side = "BOTH"
+
+[[dependencies.${mod_id}]]
+modId = "apotheosis"
+type = "optional"
+versionRange = "[8.0.1,)"
+ordering = "AFTER"
+side = "CLIENT"
