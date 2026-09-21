@@ -4,7 +4,7 @@ Guidance for AI agents working in this repository.
 
 ## What this is
 
-A NeoForge **1.21.1** mod (`foxstweaks`, "Fox's Tweaks") that is really three unrelated
+A NeoForge **1.21.1** mod (`foxstweaks`, "Fox's Tweaks") that is really four unrelated
 quality-of-life features sharing a jar:
 
 1. **Relics integration** — auto-completes the constellation "star puzzle" research, both on pickup
@@ -13,6 +13,7 @@ quality-of-life features sharing a jar:
    affixes, attributes and gem sockets without touching the main tooltip.
 3. **Apotheosis rarity compat** — server-side data patches that make third-party affix packs work
    with Apothic Ascension's rarities, and Ragnarok's gun affixes work with Ancient Reforging.
+4. **EZActions icon picker cache** — client-side mixin that makes its icon picker open fast.
 
 **Every parent mod is optional.** The mod must load and behave correctly with either, both, or
 neither installed. This is the single most important invariant in the codebase — see
@@ -195,7 +196,7 @@ to every affix pack written before them. `RarityPatcher` fixes the JSON in memor
 It runs from `mixin/DynamicRegistryMixin`, a `HEAD` injection on Placebo's
 `DynamicRegistry#apply(Map, ResourceManager, ProfilerFiller)`: that is the one point where a
 registry's JSON is fully merged (every mod's and datapack's files) but not yet decoded, and Placebo
-offers no event there. This is the mod's only mixin; the config is `required: false` and the target
+offers no event there. The config is `required: false` and the target
 only exists with Placebo, so a pack without it is unaffected.
 
 Both patches are on by default (`ascensionCompat`, `ragnarokAncientReforging`). They change server
@@ -205,6 +206,22 @@ Not handled, deliberately: `rarity_override` files for third-party categories (A
 rarity rules apply there instead of the pack's own per-tier counts), boss stats (Ascension has its own
 fallback), and `sort_index` collisions - Ascension `legendary`, Ancient Reforging `ancient` and
 Ragnarok `ancient` all sit at 800.
+
+### EZActions icon picker (`mixin/IconPickerScreenMixin`, `client/compat/IconNameCache`)
+
+EZActions' `IconPickerScreen` already caches its item index in statics for the session, but builds it
+at 320 items/tick and names at 64/tick (60k items on a 1000-mod pack = 10s + 30s+), rebuilt every
+launch. The mixin lifts those budgets (`@ModifyVariable` on `pumpVanillaBuild` /
+`processHydrationBudget`), short-circuits `nextBackgroundHydrationEntry` (it rescans the full list
+twice a frame once everything is hydrated), and wraps `safeName(Item)` with `IconNameCache`, a disk
+cache. Each name is trusted only while its item's namespace (mod id) is at the version it was saved
+under. Language and resource packs are deliberately ignored (a language switch needs the file deleted).
+
+It targets the class **by string** (`@Mixin(targets=...)`) and every injection names a private member
+without a descriptor, so EZActions is not a compile dependency and an EZActions update that renames
+things fails soft (the picker just goes back to being slow) — the mixin config is `required: false`.
+It sits in the `client` section. Against EZActions 2.0.3.5; re-check the member names on update.
+Toggle: `iconPickerCache`.
 
 ### Client vs server
 

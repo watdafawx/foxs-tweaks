@@ -86,6 +86,14 @@ it loads (nothing is shipped or overwritten; configurable in `foxstweaks-common.
   own `ancient` rarity, so a gun reforged at the Ancient Reforging table got no affixes. They now
   accept `ancientreforging:ancient` with Ragnarok's Ancient values.
 
+## EZActions — instant icon picker
+
+EZActions' icon picker indexes every item and resolves every name slowly in the background after each
+launch — on a big pack, tens of seconds of "Indexing icons" / "Preparing names", none of it kept across
+restarts. With `iconPickerCache` the item list is built at once and names are remembered in
+`cache/foxstweaks_icon_names.json` (per mod: only items from mods you updated, added or removed are
+re-resolved; language and resource packs are ignored, so delete the file after switching language). It also stops the picker rescanning its whole list every frame once names are done.
+
 ## Which side needs what
 
 | Feature | Needs | Side |
@@ -94,6 +102,7 @@ it loads (nothing is shipped or overwritten; configurable in `foxstweaks-common.
 | Auto-solve button | Relics | Client |
 | Affix/socket tooltip | Apotheosis | Client |
 | Ascension / Ragnarok rarity patches | Apothic Ascension and/or Ragnarok + Ancient Reforging | Server |
+| Icon picker cache | EZActions | Client |
 
 Research is kept in a server-authoritative data attachment keyed by `<item id>#<ability id>`, and
 `ResearchData` refuses to write unless handed a `ServerPlayer` — so solving on pickup needs this

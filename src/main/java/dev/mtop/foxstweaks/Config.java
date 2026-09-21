@@ -18,6 +18,25 @@ public final class Config {
                     "Turn this off to solve constellations manually with the auto-solve button instead.")
             .define("autoSolveOnPickup", true);
 
+    public static final ModConfigSpec.BooleanValue AUTO_SOLVE_BUTTON = BUILDER
+            .comment(
+                    "Show the auto-solve button next to the hint button on Relics' research screen. Clicking",
+                    "it draws the correct constellation for you, exactly as if you had dragged the stars",
+                    "yourself (no experience cost).",
+                    "",
+                    "Client-side only. Independent of autoSolveOnPickup - turn that off and leave this on to",
+                    "solve on demand, or turn this off to hide the button entirely.")
+            .define("autoSolveButton", true);
+
+    public static final ModConfigSpec.BooleanValue AFFIX_TOOLTIP_PANEL = BUILDER
+            .comment(
+                    "Show the second tooltip panel listing an item's Apotheosis affixes, attributes and gem",
+                    "sockets while the 'show affix info' key is held (Left Ctrl by default, rebindable under",
+                    "Controls). The item's normal tooltip is left untouched.",
+                    "",
+                    "Client-side only.")
+            .define("affixTooltipPanel", true);
+
     public static final ModConfigSpec.BooleanValue CURIOS_TOOLTIP_WORKAROUND = BUILDER
             .comment(
                     "Recover the hovered item ourselves when a screen's own tooltip rendering forgets to",
@@ -46,6 +65,18 @@ public final class Config {
                     "Reforging table would otherwise come out with no affixes at all. The values are",
                     "Ragnarok's own Ancient values, copied across. Server-side, like ascensionCompat.")
             .define("ragnarokAncientReforging", true);
+
+    public static final ModConfigSpec.BooleanValue ICON_PICKER_CACHE = BUILDER
+            .comment(
+                    "Make EZActions' icon picker open fast. EZActions rebuilds its item list and every item",
+                    "name slowly in the background after each launch; on a big pack that is tens of seconds",
+                    "of 'Indexing icons' / 'Preparing names'. This builds the list at once and remembers the",
+                    "names on disk (cache/foxstweaks_icon_names.json, re-resolved per mod when that mod",
+                    "changes version; language and resource packs are ignored, so delete the file after",
+                    "switching language).",
+                    "",
+                    "Client-side only. Does nothing without EZActions.")
+            .define("iconPickerCache", true);
 
     public static final ModConfigSpec SPEC = BUILDER.build();
 

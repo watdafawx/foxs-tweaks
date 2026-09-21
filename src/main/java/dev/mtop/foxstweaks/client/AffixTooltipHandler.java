@@ -56,7 +56,7 @@ public class AffixTooltipHandler {
 
     @SubscribeEvent
     public static void onRenderTooltipPre(RenderTooltipEvent.Pre event) {
-        if (rendering || !isApotheosisLoaded() || !FoxsTweaksKeys.isShowAffixInfoHeld())
+        if (rendering || !Config.AFFIX_TOOLTIP_PANEL.get() || !isApotheosisLoaded() || !FoxsTweaksKeys.isShowAffixInfoHeld())
             return;
 
         ItemStack stack = event.getItemStack();

@@ -1,5 +1,6 @@
 package dev.mtop.foxstweaks.relics.client;
 
+import dev.mtop.foxstweaks.Config;
 import dev.mtop.foxstweaks.FoxsTweaks;
 import it.hurts.sskirillss.relics.api.relics.IRelicItem;
 import it.hurts.sskirillss.relics.client.screen.description.research.AbilityResearchScreen;
@@ -24,7 +25,7 @@ public class ResearchScreenHandler {
 
     @SubscribeEvent
     public static void onScreenInit(ScreenEvent.Init.Post event) {
-        if (!(event.getScreen() instanceof AbilityResearchScreen screen))
+        if (!Config.AUTO_SOLVE_BUTTON.get() || !(event.getScreen() instanceof AbilityResearchScreen screen))
             return;
 
         // Relics itself returns early from init() in these cases, so there is no hint button to sit

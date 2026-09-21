@@ -6,6 +6,9 @@
   "mixins": [
     "DynamicRegistryMixin"
   ],
+  "client": [
+    "IconPickerScreenMixin"
+  ],
   "injectors": {
     "defaultRequire": 1
   }
