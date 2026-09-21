@@ -29,6 +29,24 @@ public final class Config {
                     "its own fix (TheIllusiveC4/Curios#625).")
             .define("curiosTooltipWorkaround", true);
 
+    public static final ModConfigSpec.BooleanValue ASCENSION_COMPAT = BUILDER
+            .comment(
+                    "Make third-party Apotheosis affixes (Apothic Compats, Iron's Apothic, Fallen Gems,",
+                    "Ragnarok, ...) available at Apothic Ascension's rarities. Apothic Ascension only ships",
+                    "values for Apotheosis' own affixes, so every other affix silently vanishes above Mythic.",
+                    "",
+                    "Values for the new rarities are extrapolated from each affix's own top tier on the same",
+                    "curve Ascension uses. Server-side: the server needs this mod, clients do not.")
+            .define("ascensionCompat", true);
+
+    public static final ModConfigSpec.BooleanValue RAGNAROK_ANCIENT_REFORGING = BUILDER
+            .comment(
+                    "Let Apotheosis Modern Ragnarok's gun affixes roll at Ancient Reforging's Ancient rarity.",
+                    "Ragnarok's affixes only know its own Ancient rarity, so a gun reforged at the Ancient",
+                    "Reforging table would otherwise come out with no affixes at all. The values are",
+                    "Ragnarok's own Ancient values, copied across. Server-side, like ascensionCompat.")
+            .define("ragnarokAncientReforging", true);
+
     public static final ModConfigSpec SPEC = BUILDER.build();
 
     private Config() {

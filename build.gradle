@@ -26,6 +26,13 @@ neoForge {
             client()
             gameDirectory = file('run')
         }
+
+        // Headless: enough to load datapacks and read the log, e.g. to check what the affix patcher did.
+        // Needs the same hand-placed jars as the client, in run-server/mods.
+        server {
+            server()
+            gameDirectory = file('run-server')
+        }
     }
 
     mods {

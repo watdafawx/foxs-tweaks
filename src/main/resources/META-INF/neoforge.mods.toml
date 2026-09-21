@@ -18,7 +18,13 @@ with no extra data.
 
 Apotheosis: hold a key over any item to show a second tooltip listing its affixes and gem sockets,
 leaving the main tooltip untouched.
+
+Apotheosis add-ons (server-side): third-party affixes are extended to Apothic Ascension's rarities,
+and Apotheosis Modern Ragnarok's gun affixes are made available at Ancient Reforging's Ancient rarity.
 '''
+
+[[mixins]]
+config = "foxstweaks.mixins.json"
 
 [[dependencies.${mod_id}]]
 modId = "neoforge"

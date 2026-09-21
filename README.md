@@ -72,6 +72,20 @@ Jellyfish Necklace - no loot category - cannot be affixed or socketed
 Apotheosis refuses to affix or socket anything mapping to no category, so the second form is the
 direct explanation for relics not getting affixes.
 
+## Apotheosis add-ons — extra rarities for third-party affixes
+
+An Apotheosis affix only exists at rarities it lists a value for, so mods that add rarities are
+invisible to affix packs written before them. Two server-side patches, applied to the affix JSON as
+it loads (nothing is shipped or overwritten; configurable in `foxstweaks-common.toml`):
+
+- **Apothic Ascension** (`ascensionCompat`): Ascension only hand-tunes Apotheosis' own affixes, so
+  Apothic Compats / Iron's Apothic / Fallen Gems / Ragnarok affixes vanish above Mythic. Each gets
+  values for Ascension's 13 rarities, extrapolated from its own top tier on Ascension's curve. The
+  numbers are heuristics, not Ascension's.
+- **Ragnarok x Ancient Reforging** (`ragnarokAncientReforging`): Ragnarok's gun affixes only know its
+  own `ancient` rarity, so a gun reforged at the Ancient Reforging table got no affixes. They now
+  accept `ancientreforging:ancient` with Ragnarok's Ancient values.
+
 ## Which side needs what
 
 | Feature | Needs | Side |
@@ -79,6 +93,7 @@ direct explanation for relics not getting affixes.
 | Solve on pickup | Relics | Server (integrated server counts) |
 | Auto-solve button | Relics | Client |
 | Affix/socket tooltip | Apotheosis | Client |
+| Ascension / Ragnarok rarity patches | Apothic Ascension and/or Ragnarok + Ancient Reforging | Server |
 
 Research is kept in a server-authoritative data attachment keyed by `<item id>#<ability id>`, and
 `ResearchData` refuses to write unless handed a `ServerPlayer` — so solving on pickup needs this

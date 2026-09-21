@@ -4,15 +4,17 @@ Guidance for AI agents working in this repository.
 
 ## What this is
 
-A NeoForge **1.21.1** mod (`foxstweaks`, "Fox's Tweaks") that is really two unrelated
+A NeoForge **1.21.1** mod (`foxstweaks`, "Fox's Tweaks") that is really three unrelated
 quality-of-life features sharing a jar:
 
 1. **Relics integration** — auto-completes the constellation "star puzzle" research, both on pickup
    and via a button on the research screen.
 2. **Apotheosis integration** — a second tooltip panel, shown while a key is held, listing an item's
    affixes, attributes and gem sockets without touching the main tooltip.
+3. **Apotheosis rarity compat** — server-side data patches that make third-party affix packs work
+   with Apothic Ascension's rarities, and Ragnarok's gun affixes work with Ancient Reforging.
 
-**Both parent mods are optional.** The mod must load and behave correctly with either, both, or
+**Every parent mod is optional.** The mod must load and behave correctly with either, both, or
 neither installed. This is the single most important invariant in the codebase — see
 [Optional dependencies](#optional-dependencies).
 
@@ -66,6 +68,11 @@ fails to load with "Missing or unsupported mandatory dependencies". Drop the rea
 
 The versions in `gradle.properties` (`relics_version`, `curios_version`, etc.) tell you exactly what
 to fetch - the same builds Gradle resolves for compiling.
+
+**Headless check of the data patches:** `build.bat runServer` (game dir `run-server/`, gitignored)
+loads datapacks without a window. Put the mods under test in `run-server/mods/` and read the log for
+`Apothic Ascension: extended N ...` / `Ragnarok x Ancient Reforging: ...` and for any affix that
+failed to parse. Placebo/Apotheosis log parse failures as `Failed to load ...` lines.
 
 `apothic_compats` is not required to compile or run this mod, but drop it into `run/mods/` too before
 testing Relics affixes specifically: without it, Relics' items resolve to no `LootCategory` at all
@@ -165,6 +172,40 @@ IRelicItem -> RelicData -> AbilitiesData -> AbilityData -> AbilityTemplate -> Re
 
 Because it goes through the interface, relics added by *other* addons work with no extra data.
 
+### Rarity compat patches (`apotheosis/RarityPatcher`)
+
+An Apotheosis affix exists only at rarities it lists a value for. Mods that add rarities (Apothic
+Ascension: 13 above Mythic; Ancient Reforging and Ragnarok: one `ancient` each) are therefore invisible
+to every affix pack written before them. `RarityPatcher` fixes the JSON in memory:
+
+- **Ragnarok -> Ancient Reforging.** Wherever `apotheosis_modern_ragnarok:ancient` appears as a rarity
+  (map key or list entry) in an affix, `ancientreforging:ancient` is added with a copy of the same
+  value. Without this, a gun reforged at the Ancient Reforging table matches no affix at all. Other
+  AR-companion packs (`apothic_compats`, `wolfsancientiron`) ship separate `.../ancient/` affix files
+  instead; copying in place was chosen here because it needs no extra files and cannot double weights.
+- **Any pack -> Apothic Ascension.** Ascension hand-tunes only the vanilla affixes and deliberately
+  does no "automatic foreign json mutation" (its own `apothic_ascension-compatibility.json`). For every
+  other rarity map keyed at `apotheosis:mythic` (or Ragnarok's `ancient`, if present) we extrapolate
+  13 new entries. `CURVE` is the fraction of the way from the top tier to Ascension's endpoint - it was
+  read back out of Ascension's own data and is identical across its affixes. The endpoint multipliers
+  are Ascension's *median* per attribute operation; they are heuristics, not Ascension's numbers, and
+  the per-key rules (cooldowns shrink, durations grow, amplifiers/levels add, proportions cap at 95%)
+  are ours. Unrecognised value shapes are copied unscaled, which still makes the affix available.
+
+It runs from `mixin/DynamicRegistryMixin`, a `HEAD` injection on Placebo's
+`DynamicRegistry#apply(Map, ResourceManager, ProfilerFiller)`: that is the one point where a
+registry's JSON is fully merged (every mod's and datapack's files) but not yet decoded, and Placebo
+offers no event there. This is the mod's only mixin; the config is `required: false` and the target
+only exists with Placebo, so a pack without it is unaffected.
+
+Both patches are on by default (`ascensionCompat`, `ragnarokAncientReforging`). They change server
+data only, which Placebo syncs to clients, so clients do not need this mod.
+
+Not handled, deliberately: `rarity_override` files for third-party categories (Ascension's default
+rarity rules apply there instead of the pack's own per-tier counts), boss stats (Ascension has its own
+fallback), and `sort_index` collisions - Ascension `legendary`, Ancient Reforging `ancient` and
+Ragnarok `ancient` all sit at 800.
+
 ### Client vs server
 
 - The **auto-solve button** is client-only. It invents no packet: it calls
@@ -174,7 +215,8 @@ Because it goes through the interface, relics added by *other* addons work with 
   server-authoritative data attachment and refuses anything that is not a `ServerPlayer`.
   Singleplayer runs an integrated server in-process, so a client-only install still works there.
 - The mod registers **no network payloads, registries or datapack content** — only a `COMMON` config.
-  Keep it that way: it is what lets a client-only install join a server without this mod.
+  Keep it that way: it is what lets a client-only install join a server without this mod. (The
+  rarity patches rewrite data as it loads; they add no content and need nothing on the client.)
 
 ## Testing
 

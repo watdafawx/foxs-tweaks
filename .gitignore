@@ -7,3 +7,4 @@ toolchain/
 build-log.txt
 *.log
 .vscode/
+run-server/
