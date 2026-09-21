@@ -4,7 +4,9 @@
   "package": "dev.mtop.foxstweaks.mixin",
   "compatibilityLevel": "JAVA_21",
   "mixins": [
-    "DynamicRegistryMixin"
+    "DynamicRegistryMixin",
+    "PointBlankInventoryUtilsMixin",
+    "PrinterBlockEntityMixin"
   ],
   "client": [
     "IconPickerScreenMixin"

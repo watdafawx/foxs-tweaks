@@ -86,6 +86,27 @@ it loads (nothing is shipped or overwritten; configurable in `foxstweaks-common.
   own `ancient` rarity, so a gun reforged at the Ancient Reforging table got no affixes. They now
   accept `ancientreforging:ancient` with Ragnarok's Ancient values.
 
+- **Gun damage scaling** (`gunDamageScaling`, `gunDamageMaxMultiplier`): a TACZ gun's damage is fixed by
+  its gun pack, so it falls behind Ascension's mobs, which are tuned for melee gear. Bullet hits from a
+  player holding a gun of an Ascension rarity are multiplied, from about 3x at Legendary up to
+  `gunDamageMaxMultiplier` (default 20) at Apotheotic, on the same curve as the affix extrapolation.
+  A starting point to tune, not a balanced number.
+
+## Vic's Point Blank — weapon printer pulls from nearby storage
+
+Point Blank's weapon printer only takes a recipe's ingredients from the player's pockets. With
+`printerNearbyStorage` it also draws from storage within `printerStorageRange` blocks of the printer
+(default 6), the way Ars Nouveau's scribe's table does. Chests, barrels and any block with an item
+inventory work. So does Applied Energistics 2: an ME Interface with nothing configured serves anything
+in its network, with no setup, and addons built on AE2's interfaces (ExtendedAE, Advanced AE, ...)
+behave the same. A configured interface offers only the items it is set to stock. The player's own
+items are used first.
+
+Point Blank enables the Craft button on the client from the player's own inventory, so the server also
+sends the client what is nearby while the printer is open (an optional network payload - a client
+without this mod can still join, it just keeps the stock behaviour). Both sides need this mod for the
+button to enable.
+
 ## EZActions — instant icon picker
 
 EZActions' icon picker indexes every item and resolves every name slowly in the background after each
@@ -102,6 +123,8 @@ re-resolved; language and resource packs are ignored, so delete the file after s
 | Auto-solve button | Relics | Client |
 | Affix/socket tooltip | Apotheosis | Client |
 | Ascension / Ragnarok rarity patches | Apothic Ascension and/or Ragnarok + Ancient Reforging | Server |
+| Gun damage scaling | Apotheosis + Apothic Ascension (+ TACZ) | Server |
+| Printer nearby storage | Vic's Point Blank | Both (server crafts, client enables the button) |
 | Icon picker cache | EZActions | Client |
 
 Research is kept in a server-authoritative data attachment keyed by `<item id>#<ability id>`, and

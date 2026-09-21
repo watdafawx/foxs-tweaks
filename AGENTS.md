@@ -4,7 +4,7 @@ Guidance for AI agents working in this repository.
 
 ## What this is
 
-A NeoForge **1.21.1** mod (`foxstweaks`, "Fox's Tweaks") that is really four unrelated
+A NeoForge **1.21.1** mod (`foxstweaks`, "Fox's Tweaks") that is really five unrelated
 quality-of-life features sharing a jar:
 
 1. **Relics integration** — auto-completes the constellation "star puzzle" research, both on pickup
@@ -13,7 +13,8 @@ quality-of-life features sharing a jar:
    affixes, attributes and gem sockets without touching the main tooltip.
 3. **Apotheosis rarity compat** — server-side data patches that make third-party affix packs work
    with Apothic Ascension's rarities, and Ragnarok's gun affixes work with Ancient Reforging.
-4. **EZActions icon picker cache** — client-side mixin that makes its icon picker open fast.
+4. **Gun damage scaling** — server-side; guns of Apothic Ascension rarities deal more damage.
+5. **EZActions icon picker cache** — client-side mixin that makes its icon picker open fast.
 
 **Every parent mod is optional.** The mod must load and behave correctly with either, both, or
 neither installed. This is the single most important invariant in the codebase — see
@@ -207,6 +208,75 @@ rarity rules apply there instead of the pack's own per-tier counts), boss stats 
 fallback), and `sort_index` collisions - Ascension `legendary`, Ancient Reforging `ancient` and
 Ragnarok `ancient` all sit at 800.
 
+### Gun damage scaling (`apotheosis/GunDamageHandler`)
+
+A TACZ gun's damage is fixed by its gun pack and never grows with rarity; Ascension's mobs are tuned
+for melee gear. `GunDamageHandler` multiplies `LivingIncomingDamageEvent` amounts when the source is a
+player and the damage type is in `tacz:bullets` (TACZ's bullets plus Ragnarok's fire/ice) or Ragnarok's
+`bugfix/armor_piercing_parts` (TACZ splits one hit into normal + armor-ignoring events; miss the second
+and half the hit is unscaled - the tag also holds a mob type, hence the player check). The multiplier
+uses the *held* stack's Ascension rarity and `RarityPatcher.CURVE`, so 1x below Legendary and
+`gunDamageMaxMultiplier` at Apotheotic. The Apotheosis type is confined to `compat/ApothicRarityLookup`.
+The default max (20x) is a guess, not measured against Ascension's mobs.
+
+### Point Blank printer storage (`mixin/PointBlankInventoryUtilsMixin`, `mixin/PrinterBlockEntityMixin`, `pointblank/PrinterStorage`)
+
+Point Blank (closed source, All Rights Reserved) crafts server-side in `PrinterBlockEntity#createCraftingItem`
+when the print finishes: `PointBlankRecipe#canBeCrafted` -> `InventoryUtils#hasIngredient`, then
+`removeIngredients` -> `InventoryUtils#removeItem`. Both helpers take only a `Player` and read
+`getInventory().items`. `PrinterBlockEntityMixin` marks the span of `createCraftingItem` (giving
+`PrinterStorage` the printer's position); `PointBlankInventoryUtilsMixin` then tops up `hasIngredient`
+and drains the shortfall in `removeItem` from any `Capabilities.ItemHandler.BLOCK` within range (the
+same generic scan as Ars Nouveau's `ScribesTile#takeNearby`) - plus AE2, see below. Outside that span
+the client is a separate case, below. Both mixins target by string; the
+compile-only Point Blank dependency (`pointblank_version`, a Modrinth version id) is only for the
+`PointBlankIngredient` type. Written against Point Blank 2.2.0 - re-check the method names on update.
+
+**The Craft button is enabled client-side.** `CraftingScreen` sets `craftButton.active` from
+`CraftingContainerMenu#updateIngredientSlots`, which calls `hasIngredient` with the *client* player - so
+without more, the button stays disabled and a server-side pull is never reached. The client cannot see the
+storage, so `PrinterBlockEntityMixin` hooks `serverTick()V` and `PrinterNetwork#tick` sends a
+`NearbyItemsPayload` (item -> count, for every item any Point Blank recipe asks for) every 10 ticks to
+players within 8 blocks whose `containerMenu` is Point Blank's `CraftingContainerMenu`. `NearbyCounts`
+keeps it for 3 s, and the client branch of the `hasIngredient` mixin counts it. The payload is `optional()`
+and only registered when `pointblank` is loaded; `sendToPlayer` is skipped for a client without the channel.
+
+AE2 is read through `pointblank/compat/Ae2PrinterStorage` (loaded only when `ae2` is); `PrinterStorage`
+prefers ME storage over the item handler at the same block (no double count), and sums plain inventories
+but takes only the *best* ME source, so it can under-count split stock, never over-count. Why AE2 needs
+its own path, and how to reuse it for other patches: see the next section.
+
+Oddity found, not ours and not touched: `PointBlankRecipe#canBeCrafted` is `anyMatch(hasIngredient)`,
+which reads as "craftable if any one ingredient is present".
+
+### Reading AE2 storage from a patch (AE2 interface capability) - reusable
+
+Verified against AE2 19.2.17 by reading its jar (`appeng.init.InitCapabilityProviders`,
+`appeng.helpers.InterfaceLogic`). Reuse this for any patch that wants "items from the player's network".
+
+- **An ME Interface has two capability views, and they differ.**
+  - `Capabilities.ItemHandler.BLOCK` is only the interface's **9 stock slots** (AE2's
+    `registerGenericAdapters` wraps `AECapabilities.GENERIC_INTERNAL_INV` = `InterfaceLogic#getStorage`).
+    Empty on an unconfigured interface. A generic "scan for item handlers" loop - which is all Ars
+    Nouveau's scribe's table does; it has **no** AE2 code - therefore sees stock slots, never the network.
+  - `AECapabilities.ME_STORAGE` is `InterfaceLogic#getInventory`: the **whole network** when the interface
+    has no config set (`hasConfig` false), or its local stock when it has one. Read this one.
+- **Query it like any block capability:** `level.getCapability(AECapabilities.ME_STORAGE, pos, null)`; a part
+  on a cable bus only answers per side, so fall back to the six `Direction`s. It is marked proxyable.
+- **Counting/taking:** `MEStorage#getAvailableStacks()` (a `KeyCounter`; keys are `AEKey`, items are
+  `AEItemKey`, `toStack()` for matching), `MEStorage#extract(key, amount, Actionable.MODULATE,
+  IActionSource.empty())`. `Actionable.SIMULATE` for a dry run.
+- **Never sum ME sources.** Every unconfigured interface on one network shows the entire network, so adding
+  them counts it N times. Take the best one, or dedupe by grid.
+- **Never read a block as both** `ME_STORAGE` and `ItemHandler` - an interface's stock slots are part of its
+  ME view, so both would double count.
+- **Addons need nothing extra** if they build on AE2's `InterfaceLogic` (ExtendedAE, Advanced AE and the
+  like expose the same capability); not verified per addon.
+- **Optional dependency rules apply:** keep `appeng.*` imports in one class that is only reached behind
+  `ModList.get().isLoaded("ae2")` (`Ae2PrinterStorage` is the model), and expose it through an AE2-free
+  interface (`PrinterStorage.Source`). Compile-only via `ae2_version` (a Modrinth version id).
+- **Untested in-game as of writing.** The AE2 path was built from the jar, not observed working.
+
 ### EZActions icon picker (`mixin/IconPickerScreenMixin`, `client/compat/IconNameCache`)
 
 EZActions' `IconPickerScreen` already caches its item index in statics for the session, but builds it
@@ -231,8 +301,9 @@ Toggle: `iconPickerCache`.
 - **Solve-on-pickup requires the mod server-side.** `ResearchData.complete()` writes a
   server-authoritative data attachment and refuses anything that is not a `ServerPlayer`.
   Singleplayer runs an integrated server in-process, so a client-only install still works there.
-- The mod registers **no network payloads, registries or datapack content** — only a `COMMON` config.
-  Keep it that way: it is what lets a client-only install join a server without this mod. (The
+- The mod registers **no registries or datapack content** — only a `COMMON` config, and one **optional**
+  payload (`NearbyItemsPayload`, only when Point Blank is loaded). Keep it that way: optional payloads
+  are what let a client without this mod join, and a client-only install join a server without it. (The
   rarity patches rewrite data as it loads; they add no content and need nothing on the client.)
 
 ## Testing

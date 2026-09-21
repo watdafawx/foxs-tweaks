@@ -37,6 +37,48 @@ public final class Config {
                     "Client-side only.")
             .define("affixTooltipPanel", true);
 
+    public static final ModConfigSpec.BooleanValue GUN_DAMAGE_SCALING = BUILDER
+            .comment(
+                    "Scale gun damage up with the held gun's Apothic Ascension rarity. A TACZ gun's damage is",
+                    "fixed by its gun pack and only gains a few flat points from affixes, so it falls far",
+                    "behind Ascension's mobs, whose health and armor are tuned for melee gear. Guns of",
+                    "Ascension's rarities get a damage multiplier; every other rarity is untouched.",
+                    "",
+                    "Applies to bullet hits fired by players (including Ragnarok's fire/ice and armor-piercing",
+                    "parts). The multiplier climbs from Legendary to Apotheotic on the same curve the affix",
+                    "extrapolation uses, reaching gunDamageMaxMultiplier at Apotheotic.",
+                    "",
+                    "Server-side: the server needs this mod, clients do not.")
+            .define("gunDamageScaling", true);
+
+    public static final ModConfigSpec.DoubleValue GUN_DAMAGE_MAX_MULTIPLIER = BUILDER
+            .comment(
+                    "Damage multiplier a gun reaches at Apotheotic, Ascension's top rarity (see gunDamageScaling).",
+                    "Lower rarities get a share of it, e.g. Legendary is about 12% of the way from 1x to this.",
+                    "A heuristic starting point: tune it against the mobs you actually fight.")
+            .defineInRange("gunDamageMaxMultiplier", 20.0, 1.0, 1000.0);
+
+    public static final ModConfigSpec.BooleanValue PRINTER_NEARBY_STORAGE = BUILDER
+            .comment(
+                    "Let Vic's Point Blank's weapon printer take a recipe's ingredients from storage near the",
+                    "printer, not just from the crafting player's pockets - the way Ars Nouveau's scribe's",
+                    "table does. Chests, barrels and any block with an item inventory work, and so does Applied",
+                    "Energistics 2: an ME Interface with nothing configured serves anything in its network,",
+                    "with no setup (ExtendedAE and other addons' interfaces included). A configured interface",
+                    "offers only the items it is set to stock.",
+                    "",
+                    "The player's own inventory is always used first. Point Blank enables its Craft button on",
+                    "the client, from the player's own inventory, so the server also tells the client what is",
+                    "nearby while the printer is open. The server needs this mod for the craft to work; the",
+                    "client needs it too for the Craft button to enable (a client without it can still join).")
+            .define("printerNearbyStorage", true);
+
+    public static final ModConfigSpec.IntValue PRINTER_STORAGE_RANGE = BUILDER
+            .comment(
+                    "How far from the printer to look for storage, in blocks (see printerNearbyStorage).",
+                    "Vertically it looks at most 2 blocks up and down. Ars Nouveau uses 6.")
+            .defineInRange("printerStorageRange", 6, 1, 16);
+
     public static final ModConfigSpec.BooleanValue CURIOS_TOOLTIP_WORKAROUND = BUILDER
             .comment(
                     "Recover the hovered item ourselves when a screen's own tooltip rendering forgets to",

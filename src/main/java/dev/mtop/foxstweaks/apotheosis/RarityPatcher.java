@@ -44,7 +44,7 @@ public final class RarityPatcher {
     private static final String AR_ANCIENT = "ancientreforging:ancient";
 
     /** Ascension's rarities in ascending order, paired with how far each is along the curve to the last. */
-    private static final String[] ASCENSION = {
+    static final String[] ASCENSION = {
             "legendary", "ancient", "forgotten", "primal", "stellar", "divine", "esoteric",
             "cataclysmic", "abyssal", "empyrean", "paracausal", "transcendent", "apotheotic" };
 
@@ -52,7 +52,7 @@ public final class RarityPatcher {
      * Fraction of the way from a pack's top tier to its Ascension endpoint, read back out of
      * Ascension's own affix data (the same for every affix it ships, bar deliberate outliers).
      */
-    private static final double[] CURVE = {
+    static final double[] CURVE = {
             0.1237, 0.2409, 0.3514, 0.4549, 0.5512, 0.6399, 0.7208,
             0.7933, 0.857, 0.911, 0.9544, 0.9855, 1.0 };
 

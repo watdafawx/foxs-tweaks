@@ -1,6 +1,8 @@
 package dev.mtop.foxstweaks;
 
+import dev.mtop.foxstweaks.pointblank.PrinterNetwork;
 import dev.mtop.foxstweaks.relics.RelicsIntegration;
+import net.neoforged.bus.api.IEventBus;
 import net.neoforged.fml.ModContainer;
 import net.neoforged.fml.ModList;
 import net.neoforged.fml.common.Mod;
@@ -26,9 +28,13 @@ public class FoxsTweaks {
 
     public static final String RELICS = "relics";
     public static final String APOTHEOSIS = "apotheosis";
+    public static final String POINT_BLANK = "pointblank";
 
-    public FoxsTweaks(ModContainer container) {
+    public FoxsTweaks(IEventBus modBus, ModContainer container) {
         container.registerConfig(ModConfig.Type.COMMON, Config.SPEC);
+
+        if (ModList.get().isLoaded(POINT_BLANK))
+            modBus.addListener(PrinterNetwork::register);
 
         if (ModList.get().isLoaded(RELICS))
             RelicsIntegration.init();

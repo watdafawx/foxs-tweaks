@@ -83,6 +83,8 @@ dependencies {
     compileOnly "dev.architectury:architectury-neoforge:${architectury_version}"
     compileOnly "maven.modrinth:relics-mod:${relics_version}"
     compileOnly "maven.modrinth:shatterbyte-lib:${octolib_version}" // OctoLib; "shatterbyte-lib" is its Modrinth slug.
+    compileOnly "maven.modrinth:vics-point-blank:${pointblank_version}"
+    compileOnly "maven.modrinth:ae2:${ae2_version}"
 }
 
 tasks.withType(JavaCompile).configureEach {
