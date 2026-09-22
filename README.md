@@ -82,6 +82,10 @@ it loads (nothing is shipped or overwritten; configurable in `foxstweaks-common.
   Apothic Compats / Iron's Apothic / Fallen Gems / Ragnarok affixes vanish above Mythic. Each gets
   values for Ascension's 13 rarities, extrapolated from its own top tier on Ascension's curve. The
   numbers are heuristics, not Ascension's.
+- **Ancient Reforging, any pack** (`ancientReforgingCompat`): Ancient Reforging's Ancient rarity is level
+  with Ascension's Legendary, so third-party affixes (Apothic Point Blank, Apothic Compats, ...) get the
+  values extrapolated for Legendary. Without it, a gun reforged at the Ancient table has no affixes from
+  those packs ("no affixes available" in the server log). Works without Ascension.
 - **Ragnarok x Ancient Reforging** (`ragnarokAncientReforging`): Ragnarok's gun affixes only know its
   own `ancient` rarity, so a gun reforged at the Ancient Reforging table got no affixes. They now
   accept `ancientreforging:ancient` with Ragnarok's Ancient values.

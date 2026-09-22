@@ -208,6 +208,22 @@ rarity rules apply there instead of the pack's own per-tier counts), boss stats 
 fallback), and `sort_index` collisions - Ascension `legendary`, Ancient Reforging `ancient` and
 Ragnarok `ancient` all sit at 800.
 
+### Ancient Reforging tier for any affix pack (`ancientReforgingCompat`)
+
+`RarityPatcher#extend` adds two things from an affix's top tier: Ascension's 13 rarities and, separately,
+`ancientreforging:ancient`. The latter sits at sort index 800, level with Ascension `legendary`, so it gets
+`CURVE[0]`. It is skipped when the affix already lists it (Ragnarok's, via the alias). Found through a real
+failure: Apothic Point Blank affixes stop at `apotheosis:mythic`, and the server log showed
+`Failed to execute AffixLootRule (no affixes available) ...ancientreforging:ancient... apothic_pointblank:gun`.
+
+A range with `min == max` and no step (Apothic PB's `{min: 3, max: 3}`) is one level; scaling widens it, and
+`scaleRange` must then set the step to exactly the new width or Placebo rejects the affix (`Failed to
+interpolate step function bounds`). Scaled ranges are only safe if `(max-min)/step` is whole to ~1e-4.
+
+**Regression check** (no test framework here): run `RarityPatcher.alias` + `extend` over every
+`*/affixes/*.json` in every jar of a server's `mods/` and apply Placebo's rule to each range. On the TNP pack
+that was 1054 affixes, 447 patched, 0 invalid ranges. Worth redoing when the scaling code changes.
+
 ### Gun damage scaling (`apotheosis/GunDamageHandler`)
 
 A TACZ gun's damage is fixed by its gun pack and never grows with rarity; Ascension's mobs are tuned

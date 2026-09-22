@@ -100,6 +100,19 @@ public final class Config {
                     "curve Ascension uses. Server-side: the server needs this mod, clients do not.")
             .define("ascensionCompat", true);
 
+    public static final ModConfigSpec.BooleanValue ANCIENT_REFORGING_COMPAT = BUILDER
+            .comment(
+                    "Make third-party Apotheosis affixes (Apothic Point Blank, Apothic Compats, Iron's Apothic,",
+                    "...) available at Ancient Reforging's Ancient rarity. An affix only exists at rarities it",
+                    "lists a value for, so a weapon reforged at the Ancient Reforging table comes out with no",
+                    "affixes of these packs at all ('no affixes available' in the log).",
+                    "",
+                    "Ancient sits level with Apothic Ascension's Legendary, so it gets the values extrapolated",
+                    "for Legendary, from each affix's own top tier. Affixes that already list Ancient (or get",
+                    "it from ragnarokAncientReforging) are left alone. Works without Apothic Ascension.",
+                    "Server-side, like ascensionCompat.")
+            .define("ancientReforgingCompat", true);
+
     public static final ModConfigSpec.BooleanValue RAGNAROK_ANCIENT_REFORGING = BUILDER
             .comment(
                     "Let Apotheosis Modern Ragnarok's gun affixes roll at Ancient Reforging's Ancient rarity.",

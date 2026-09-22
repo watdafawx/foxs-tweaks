@@ -72,6 +72,7 @@ public final class RarityPatcher {
     private static final Set<String> PROPORTION_KEYS = Set.of("chance", "rate");
 
     private static Boolean ascensionLoaded;
+    private static Boolean ancientReforgingLoaded;
     private static Boolean ragnarokAncientLoaded;
 
     private RarityPatcher() {
@@ -84,12 +85,14 @@ public final class RarityPatcher {
         if (ascensionLoaded == null) {
             var mods = ModList.get();
             ascensionLoaded = mods.isLoaded("apothic_ascension");
-            ragnarokAncientLoaded = mods.isLoaded("apotheosis_modern_ragnarok") && mods.isLoaded("ancientreforging");
+            ancientReforgingLoaded = mods.isLoaded("ancientreforging");
+            ragnarokAncientLoaded = mods.isLoaded("apotheosis_modern_ragnarok") && ancientReforgingLoaded;
         }
 
         boolean ascension = ascensionLoaded && Config.ASCENSION_COMPAT.get();
         boolean ragnarok = ragnarokAncientLoaded && Config.RAGNAROK_ANCIENT_REFORGING.get();
-        if (!ascension && !ragnarok)
+        boolean ancient = ancientReforgingLoaded && Config.ANCIENT_REFORGING_COMPAT.get();
+        if (!ascension && !ragnarok && !ancient)
             return;
 
         int aliased = 0;
@@ -101,14 +104,14 @@ public final class RarityPatcher {
 
             if (ragnarok && alias(affix, RAGNAROK_ANCIENT, AR_ANCIENT))
                 aliased++;
-            if (ascension && extend(affix))
+            if ((ascension || ancient) && extend(affix, ascension, ancient))
                 extended++;
         }
 
         if (aliased > 0)
             LOGGER.info("Ragnarok x Ancient Reforging: {} affixes now accept {}", aliased, AR_ANCIENT);
         if (extended > 0)
-            LOGGER.info("Apothic Ascension: extended {} third-party affixes to Ascension's rarities", extended);
+            LOGGER.info("Rarity compat: extended {} third-party affixes (Apothic Ascension: {}, Ancient Reforging: {})", extended, ascension, ancient);
     }
 
     // --- Ragnarok -> Ancient Reforging ---------------------------------------------------------
@@ -144,7 +147,7 @@ public final class RarityPatcher {
     // --- Apothic Ascension ---------------------------------------------------------------------
 
     /** {@code operation} of the enclosing affix picks the endpoint multipliers; absent means add_value. */
-    static boolean extend(JsonObject affix) {
+    static boolean extend(JsonObject affix, boolean ascension, boolean ancient) {
         var op = affix.has("operation") && affix.get("operation").isJsonPrimitive() ? affix.get("operation").getAsString() : "";
         double[] factors = switch (op) {
             case "add_multiplied_base" -> ADD_BASE;
@@ -155,11 +158,15 @@ public final class RarityPatcher {
         // mana-cost cuts, ammo saved); scaling those past 100% is meaningless, so they get capped.
         var type = affix.has("type") ? affix.get("type").getAsString() : "";
         boolean fractions = !affix.has("operation") && !type.contains("attribute");
-        return extend(affix, new Scaling(factors, fractions));
+        return extend(affix, new Scaling(factors, fractions, ascension, ancient));
     }
 
-    /** {@code factors}: endpoint multipliers for {min, max}. {@code fractions}: cap sub-1 values at {@link #FRACTION_CAP}. */
-    private record Scaling(double[] factors, boolean fractions) {
+    /**
+     * {@code factors}: endpoint multipliers for {min, max}. {@code fractions}: cap sub-1 values at
+     * {@link #FRACTION_CAP}. {@code ascension} / {@code ancient}: which of Ascension's 13 rarities and
+     * Ancient Reforging's Ancient to add.
+     */
+    private record Scaling(double[] factors, boolean fractions, boolean ascension, boolean ancient) {
     }
 
     private static boolean extend(JsonElement node, Scaling scaling) {
@@ -168,16 +175,29 @@ public final class RarityPatcher {
         if (node instanceof JsonObject obj) {
             var top = obj.has(RAGNAROK_ANCIENT) ? RAGNAROK_ANCIENT : MYTHIC;
             if (obj.has(top) && !obj.has(ascension(0))) {
-                for (int i = 0; i < ASCENSION.length; i++)
-                    obj.add(ascension(i), scale(null, obj.get(top), CURVE[i], scaling));
-                return true;
+                boolean added = false;
+                if (scaling.ascension()) {
+                    for (int i = 0; i < ASCENSION.length; i++)
+                        obj.add(ascension(i), scale(null, obj.get(top), CURVE[i], scaling));
+                    added = true;
+                }
+                // Ancient Reforging's Ancient is level with Ascension's Legendary (both sort index 800).
+                if (scaling.ancient() && !obj.has(AR_ANCIENT)) {
+                    obj.add(AR_ANCIENT, scale(null, obj.get(top), CURVE[0], scaling));
+                    added = true;
+                }
+                return added;
             }
             for (var child : Set.copyOf(obj.keySet()))
                 changed |= extend(obj.get(child), scaling);
         }
-        else if (node instanceof JsonArray arr && isRarityList(arr)) {
-            for (int i = 0; i < ASCENSION.length; i++)
-                arr.add(new JsonPrimitive(ascension(i)));
+        else if (node instanceof JsonArray arr && isRarityList(arr, scaling)) {
+            if (scaling.ancient() && !arr.contains(new JsonPrimitive(AR_ANCIENT)))
+                arr.add(new JsonPrimitive(AR_ANCIENT));
+            if (scaling.ascension()) {
+                for (int i = 0; i < ASCENSION.length; i++)
+                    arr.add(new JsonPrimitive(ascension(i)));
+            }
             return true;
         }
         else if (node instanceof JsonArray arr) {
@@ -192,10 +212,14 @@ public final class RarityPatcher {
         return "apothic_ascension:" + ASCENSION[i];
     }
 
-    /** A list of rarity ids that reaches the top tier but stops short of Ascension's. */
-    private static boolean isRarityList(JsonArray arr) {
+    /** A list of rarity ids that reaches the top tier but stops short of the tiers being added. */
+    private static boolean isRarityList(JsonArray arr, Scaling scaling) {
         var ids = List.of(new JsonPrimitive(MYTHIC), new JsonPrimitive(RAGNAROK_ANCIENT));
-        return ids.stream().anyMatch(arr::contains) && !arr.contains(new JsonPrimitive(ascension(0)));
+        if (ids.stream().noneMatch(arr::contains))
+            return false;
+
+        return (scaling.ascension() && !arr.contains(new JsonPrimitive(ascension(0))))
+                || (scaling.ancient() && !arr.contains(new JsonPrimitive(AR_ANCIENT)));
     }
 
     /**
@@ -297,8 +321,9 @@ public final class RarityPatcher {
         // Placebo insists (max - min) is a whole number of steps, to within 1e-4, and defaults an absent
         // step to 0.01. So keep the pack's number of levels and let the step size follow the new range.
         double newStep = step;
-        if (!whole && explicitMax && max != min && newMax != newMin) {
-            double levels = Math.max(1, Math.rint((max - min) / (step != 0 ? step : 0.01)));
+        if (!whole && explicitMax && newMax != newMin) {
+            // A pack's {min: 3, max: 3} is one level; scaling widens it, and it must stay exactly one step wide.
+            double levels = max == min ? 1 : Math.max(1, Math.rint((max - min) / (step != 0 ? step : 0.01)));
             newStep = (newMax - newMin) / levels;
         }
         else if (!whole && !explicitMax && step != 0 && max != min) {
