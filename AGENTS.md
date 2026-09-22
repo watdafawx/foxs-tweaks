@@ -4,7 +4,7 @@ Guidance for AI agents working in this repository.
 
 ## What this is
 
-A NeoForge **1.21.1** mod (`foxstweaks`, "Fox's Tweaks") that is really five unrelated
+A NeoForge **1.21.1** mod (`foxstweaks`, "Fox's Tweaks") that is really seven unrelated
 quality-of-life features sharing a jar:
 
 1. **Relics integration** — auto-completes the constellation "star puzzle" research, both on pickup
@@ -14,7 +14,10 @@ quality-of-life features sharing a jar:
 3. **Apotheosis rarity compat** — server-side data patches that make third-party affix packs work
    with Apothic Ascension's rarities, and Ragnarok's gun affixes work with Ancient Reforging.
 4. **Gun damage scaling** — server-side; guns of Apothic Ascension rarities deal more damage.
-5. **EZActions icon picker cache** — client-side mixin that makes its icon picker open fast.
+5. **Point Blank printer storage** — server-side (+ client for the Craft button); the weapon printer
+   can pull ingredients from nearby chests and AE2.
+6. **TACZ gunsmith table storage** — server-side; every gun pack's own workbench can do the same.
+7. **EZActions icon picker cache** — client-side mixin that makes its icon picker open fast.
 
 **Every parent mod is optional.** The mod must load and behave correctly with either, both, or
 neither installed. This is the single most important invariant in the codebase — see
@@ -245,16 +248,34 @@ and `gunDamageMaxMultiplier` at Apotheotic. The Apotheosis type is confined to `
 The default max (20x) is a guess, not measured against Ascension's mobs. It never touches anything a
 tooltip reads - only the amount at the moment `LivingIncomingDamageEvent` fires.
 
-### Point Blank printer storage (`mixin/PointBlankInventoryUtilsMixin`, `mixin/PrinterBlockEntityMixin`, `pointblank/PrinterStorage`)
+### Nearby-storage crafting (`storage/NearbyStorage`, `storage/compat/Ae2NearbyStorage`)
+
+Shared by the Point Blank printer and TACZ's gunsmith table (below) - a scan-a-box-and-pull utility,
+the same idea as Ars Nouveau's scribe's table: chests, barrels, any block with an item inventory, plus
+AE2 through `Ae2NearbyStorage` (see the reusable AE2 section further down). It knows nothing about
+either gun mod; each feature's own mixins own that dependency and only ever touch `NearbyStorage`'s
+generic `Source`/`count`/`take`/`tally` API.
+
+A scan is centred on whatever `begin(level, pos, range)` was last called with; callers bracket the
+whole span of a craft with `begin`/`end`, `active()` tells other code a scan is in scope, and each
+feature gates calling `begin` behind its own config toggle (`NearbyStorage` has no toggle of its own).
+`count`/`take` read that bracketed state; `tally(level, pos, range, wanted)` takes its own explicit
+`level`/`pos`/`range` instead, since it is also called with no bracket in scope (from
+`PrinterNetwork#tick`, and from `NearbyBackedItemHandler#wrap` below).
+
+Prefers ME storage over the item handler at the same block (no double count), and sums plain
+inventories but takes only the *best* ME source, so it can under-count split stock across two
+configured interfaces, never over-count.
+
+### Point Blank printer storage (`mixin/PointBlankInventoryUtilsMixin`, `mixin/PrinterBlockEntityMixin`)
 
 Point Blank (closed source, All Rights Reserved) crafts server-side in `PrinterBlockEntity#createCraftingItem`
 when the print finishes: `PointBlankRecipe#canBeCrafted` -> `InventoryUtils#hasIngredient`, then
 `removeIngredients` -> `InventoryUtils#removeItem`. Both helpers take only a `Player` and read
-`getInventory().items`. `PrinterBlockEntityMixin` marks the span of `createCraftingItem` (giving
-`PrinterStorage` the printer's position); `PointBlankInventoryUtilsMixin` then tops up `hasIngredient`
-and drains the shortfall in `removeItem` from any `Capabilities.ItemHandler.BLOCK` within range (the
-same generic scan as Ars Nouveau's `ScribesTile#takeNearby`) - plus AE2, see below. Outside that span
-the client is a separate case, below. Both mixins target by string; the
+`getInventory().items`. `PrinterBlockEntityMixin` marks the span of `createCraftingItem`
+(`NearbyStorage.begin` with the printer's position); `PointBlankInventoryUtilsMixin` then tops up
+`hasIngredient` and drains the shortfall in `removeItem` from whatever `NearbyStorage` finds within
+range. Outside that span the client is a separate case, below. Both mixins target by string; the
 compile-only Point Blank dependency (`pointblank_version`, a Modrinth version id) is only for the
 `PointBlankIngredient` type. Written against Point Blank 2.2.0 - re-check the method names on update.
 
@@ -267,18 +288,76 @@ players within 8 blocks whose `containerMenu` is Point Blank's `CraftingContaine
 keeps it for 3 s, and the client branch of the `hasIngredient` mixin counts it. The payload is `optional()`
 and only registered when `pointblank` is loaded; `sendToPlayer` is skipped for a client without the channel.
 
-AE2 is read through `pointblank/compat/Ae2PrinterStorage` (loaded only when `ae2` is); `PrinterStorage`
-prefers ME storage over the item handler at the same block (no double count), and sums plain inventories
-but takes only the *best* ME source, so it can under-count split stock, never over-count. Why AE2 needs
-its own path, and how to reuse it for other patches: see the next section.
-
 Oddity found, not ours and not touched: `PointBlankRecipe#canBeCrafted` is `anyMatch(hasIngredient)`,
 which reads as "craftable if any one ingredient is present".
+
+### TACZ gunsmith table storage (`mixin/GunSmithTable{BlockEntity,Menu,Screen}Mixin`, `tacz/*`)
+
+Every gun pack's own workbench (Applied Armorer, Ars Armorer, ...) is the *same* TACZ block entity
+(`GunSmithTableBlockEntity`, type `tacz:workbench_a/b/c`), told apart only by a data-driven `BlockId`
+recipe filter - so one patch on TACZ's own classes covers every pack's workbench, with no per-pack code.
+
+TACZ's crafting is architecturally different from Point Blank's, and both differences shaped the
+approach:
+
+- **No block position reaches the craft.** `GunSmithTableMenu#doCraft(ResourceLocation, Player)` gets
+  only the player - unlike Point Blank's printer, which is itself a block entity. So
+  `GunSmithTableBlockEntityMixin` records which table each player last opened
+  (`GunSmithTableBlockEntity#createMenu`, the only place `this.getBlockPos()` and the opening `Player`
+  are both in scope) in `tacz/WorkbenchOpenTracker`, a plain per-player `BlockPos` map with no explicit
+  cleanup (chisel: a stale entry can only be read via a craft packet with no menu open, which TACZ's own
+  container-id check already rejects). `GunSmithTableMenuMixin#doCraft`'s `@Inject(HEAD)` reads it back
+  to call `NearbyStorage.begin`.
+- **One capability call, not two split helpers.** `doCraft` fetches
+  `player.getCapability(Capabilities.ItemHandler.ENTITY, null)` *once*, then hands that single
+  `IItemHandler` into a lambda (`lambda$doCraft$3`) that does all of TACZ's own ingredient matching and
+  extraction by walking its slots directly by index (into an `Int2IntArrayMap`, first read-only to
+  check sufficiency, then a real `extractItem` pass) - no `hasIngredient`/`removeItem`-style pair to
+  hook individually, the way Point Blank's `InventoryUtils` has. So instead of hooking consumption,
+  `GunSmithTableMenuMixin` `@Redirect`s that one `getCapability` call to return
+  `tacz/NearbyBackedItemHandler#wrap` - the real handler plus one extra read-only virtual slot per
+  distinct item type nearby (`NearbyStorage#tally`). TACZ's own logic then walks those slots completely
+  unmodified: real slots first, then the extras. This is why nothing in `NearbyBackedItemHandler` or
+  `WorkbenchOpenTracker` imports a TACZ type at all - the mixins are the only place doing so, and only
+  by string target, so a pack without TACZ never applies them.
+
+`begin`/`end` still bracket the *whole* `doCraft` call (not just the redirect), because extraction
+happens later, inside the lambda captured from whichever handler the redirect returned.
+
+**No Craft-button payload needed, unlike Point Blank** - `GunSmithTableScreen#addCraftButton` never
+disables the button on ingredient sufficiency; clicking it always sends the packet and the server alone
+decides pass/fail. But `getPlayerIngredientCount` (client-side) drives the ingredient-count *text*
+rendered in the UI, reading only the local player's own `Inventory#items`. Left alone, that text would
+say "not enough" for something the craft above would actually accept - easy to miss, since a player has
+no reason to click Craft on something the game is telling them they can't afford.
+
+Fixed the same way as the server side: `GunSmithTableScreenMixin` (client) `@Redirect`s the single
+`Inventory.items` field read inside `getPlayerIngredientCount` to a list with nearby stock appended
+(`NearbyCounts#asStacks`, one `ItemStack` per item type) - so TACZ's own unmodified
+`Ingredient#test`/`ItemStack#getCount` counting logic adds nearby storage in as if it were more
+inventory. Zero TACZ types touched here either, same reasoning as the server-side redirect.
+`updateIngredientCount()` only ever calls `getPlayerIngredientCount` internally, so this is the one
+place that needs it.
+
+`NearbyCounts`/`NearbyItemsPayload` are the same classes the printer already used for its Craft-button
+problem, moved out of `pointblank/` into `storage/` since they were never Point-Blank-specific; the
+network channel id changed from `printer_nearby_items` to the now-accurate `nearby_items`.
+`tacz/WorkbenchNetwork` sends the report - TACZ's table has no block-entity tick to piggyback on the
+way the printer did, so this rides a `PlayerTickEvent.Post` listener instead (`@EventBusSubscriber`,
+safe unconditionally since it touches no TACZ type either), filtered to players looking at a
+`GunSmithTableMenu`.
+
+Toggle: `taczWorkbenchNearbyStorage` / `taczWorkbenchStorageRange`. Written against TACZ
+1.1.8-hotfix-r6 (jar read directly, no compile dependency needed - no TACZ Java type is ever referenced
+outside the three mixins' target strings) - re-check the method names and the redirected call/field
+descriptors on update. **Untested in-game as of writing** - built from the jar via `javap`, not observed
+working.
 
 ### Reading AE2 storage from a patch (AE2 interface capability) - reusable
 
 Verified against AE2 19.2.17 by reading its jar (`appeng.init.InitCapabilityProviders`,
-`appeng.helpers.InterfaceLogic`). Reuse this for any patch that wants "items from the player's network".
+`appeng.helpers.InterfaceLogic`). Reused by both the Point Blank and TACZ storage patches above; reuse
+it again for any future patch that wants "items from the player's network".
 
 - **An ME Interface has two capability views, and they differ.**
   - `Capabilities.ItemHandler.BLOCK` is only the interface's **9 stock slots** (AE2's
@@ -299,9 +378,11 @@ Verified against AE2 19.2.17 by reading its jar (`appeng.init.InitCapabilityProv
 - **Addons need nothing extra** if they build on AE2's `InterfaceLogic` (ExtendedAE, Advanced AE and the
   like expose the same capability); not verified per addon.
 - **Optional dependency rules apply:** keep `appeng.*` imports in one class that is only reached behind
-  `ModList.get().isLoaded("ae2")` (`Ae2PrinterStorage` is the model), and expose it through an AE2-free
-  interface (`PrinterStorage.Source`). Compile-only via `ae2_version` (a Modrinth version id).
-- **Untested in-game as of writing.** The AE2 path was built from the jar, not observed working.
+  `ModList.get().isLoaded("ae2")` (`Ae2NearbyStorage` is the model), and expose it through an AE2-free
+  interface (`NearbyStorage.Source`). Compile-only via `ae2_version` (a Modrinth version id).
+- **Verified in-game** for the Point Blank printer, against an ExtendedAE ME Extended Interface with
+  nothing configured. The TACZ gunsmith table path reuses the same `NearbyStorage`/`Ae2NearbyStorage`
+  code and is expected to behave the same, but has not itself been separately observed working.
 
 ### EZActions icon picker (`mixin/IconPickerScreenMixin`, `client/compat/IconNameCache`)
 

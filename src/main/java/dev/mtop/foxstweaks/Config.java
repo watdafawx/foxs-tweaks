@@ -81,6 +81,26 @@ public final class Config {
                     "Vertically it looks at most 2 blocks up and down. Ars Nouveau uses 6.")
             .defineInRange("printerStorageRange", 6, 1, 16);
 
+    public static final ModConfigSpec.BooleanValue TACZ_WORKBENCH_NEARBY_STORAGE = BUILDER
+            .comment(
+                    "Let TACZ's gunsmith table take a recipe's ingredients from storage near the table, not",
+                    "just from the crafting player's pockets - the same idea as printerNearbyStorage, for",
+                    "every gun pack's own workbench (they all share TACZ's own table block). Chests, barrels",
+                    "and any block with an item inventory work, and so does Applied Energistics 2 (see",
+                    "printerNearbyStorage's comment for how ME Interfaces behave).",
+                    "",
+                    "The player's own inventory is always used first. The table's own per-ingredient count",
+                    "display is also topped up with nearby stock, so it stops showing 'not enough' for",
+                    "something the craft would actually accept. The server needs this mod for the craft to",
+                    "work; the client needs it too for that display to be accurate (a client without it can",
+                    "still join - the display just goes back to pockets-only).")
+            .define("taczWorkbenchNearbyStorage", true);
+
+    public static final ModConfigSpec.IntValue TACZ_WORKBENCH_STORAGE_RANGE = BUILDER
+            .comment("How far from the table to look for storage, in blocks (see taczWorkbenchNearbyStorage).",
+                    "Vertically it looks at most 2 blocks up and down.")
+            .defineInRange("taczWorkbenchStorageRange", 6, 1, 16);
+
     public static final ModConfigSpec.BooleanValue CURIOS_TOOLTIP_WORKAROUND = BUILDER
             .comment(
                     "Recover the hovered item ourselves when a screen's own tooltip rendering forgets to",

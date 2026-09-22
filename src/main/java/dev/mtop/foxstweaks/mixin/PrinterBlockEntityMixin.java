@@ -5,9 +5,10 @@ import org.spongepowered.asm.mixin.injection.At;
 import org.spongepowered.asm.mixin.injection.Inject;
 import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
 
+import dev.mtop.foxstweaks.Config;
 import dev.mtop.foxstweaks.pointblank.PointBlankRecipes;
 import dev.mtop.foxstweaks.pointblank.PrinterNetwork;
-import dev.mtop.foxstweaks.pointblank.PrinterStorage;
+import dev.mtop.foxstweaks.storage.NearbyStorage;
 import net.minecraft.world.level.block.entity.BlockEntity;
 
 /**
@@ -31,13 +32,16 @@ public abstract class PrinterBlockEntityMixin {
 
     @Inject(method = "createCraftingItem", at = @At("HEAD"))
     private void foxstweaks$beginCraft(CallbackInfo ci) {
+        if (!Config.PRINTER_NEARBY_STORAGE.get())
+            return;
+
         var printer = (BlockEntity) (Object) this;
-        PrinterStorage.begin(printer.getLevel(), printer.getBlockPos());
+        NearbyStorage.begin(printer.getLevel(), printer.getBlockPos(), Config.PRINTER_STORAGE_RANGE.get());
     }
 
     /** The method swallows its own exceptions, so this always runs. */
     @Inject(method = "createCraftingItem", at = @At("RETURN"))
     private void foxstweaks$endCraft(CallbackInfo ci) {
-        PrinterStorage.end();
+        NearbyStorage.end();
     }
 }

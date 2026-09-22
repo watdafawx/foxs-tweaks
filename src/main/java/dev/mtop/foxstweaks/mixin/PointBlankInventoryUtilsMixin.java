@@ -10,14 +10,14 @@ import org.spongepowered.asm.mixin.injection.callback.CallbackInfoReturnable;
 
 import com.vicmatskiv.pointblank.crafting.PointBlankIngredient;
 
-import dev.mtop.foxstweaks.pointblank.NearbyCounts;
-import dev.mtop.foxstweaks.pointblank.PrinterStorage;
+import dev.mtop.foxstweaks.storage.NearbyCounts;
+import dev.mtop.foxstweaks.storage.NearbyStorage;
 import net.minecraft.world.entity.player.Player;
 import net.minecraft.world.item.ItemStack;
 
 /**
  * The two places Point Blank decides whether a recipe can be paid for and then pays for it - both
- * look only at the player's main inventory. Outside a printer craft ({@link PrinterStorage#active})
+ * look only at the player's main inventory. Outside a printer craft ({@link NearbyStorage#active})
  * only the client's availability check is touched, and only while the server is reporting.
  */
 @Mixin(targets = "com.vicmatskiv.pointblank.util.InventoryUtils", remap = false)
@@ -39,7 +39,7 @@ public abstract class PointBlankInventoryUtilsMixin {
             return;
 
         int missing = ingredient.getCount() - carried(player, ingredient::matches);
-        if (PrinterStorage.active() ? PrinterStorage.count(ingredient::matches, missing) >= missing
+        if (NearbyStorage.active() ? NearbyStorage.count(ingredient::matches, missing) >= missing
                 : player.level().isClientSide && NearbyCounts.fresh() && NearbyCounts.count(ingredient::matches) >= missing)
             cir.setReturnValue(true);
     }
@@ -52,25 +52,25 @@ public abstract class PointBlankInventoryUtilsMixin {
      */
     @Inject(method = "removeItem", at = @At("HEAD"), cancellable = true)
     private static void foxstweaks$takeNearby(Player player, Predicate<ItemStack> match, int count, CallbackInfoReturnable<Boolean> cir) {
-        if (!PrinterStorage.active())
+        if (!NearbyStorage.active())
             return;
 
         int missing = count - carried(player, match);
         if (missing <= 0)
             return;
 
-        int rest = count - PrinterStorage.take(match, missing);
+        int rest = count - NearbyStorage.take(match, missing);
         if (rest <= 0) {
             cir.setReturnValue(true);
             return;
         }
 
-        PrinterStorage.enter();
+        NearbyStorage.enter();
         try {
             cir.setReturnValue(removeItem(player, match, rest));
         }
         finally {
-            PrinterStorage.exit();
+            NearbyStorage.exit();
         }
     }
 

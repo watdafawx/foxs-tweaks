@@ -113,6 +113,19 @@ sends the client what is nearby while the printer is open (an optional network p
 without this mod can still join, it just keeps the stock behaviour). Both sides need this mod for the
 button to enable.
 
+## TACZ — gunsmith tables pull from nearby storage too
+
+The same idea for TACZ's own gunsmith table, `taczWorkbenchNearbyStorage` / `taczWorkbenchStorageRange`
+(same defaults and same storage rules as the printer, chests through AE2 alike). This covers every gun
+pack's own workbench - Applied Armorer, Ars Armorer, and any other pack's table - since they all share
+TACZ's own table block under the hood; there's nothing to install or configure per pack.
+
+TACZ's table doesn't disable its Craft button on ingredient shortage the way Point Blank's printer does
+- clicking it always asks the server, which alone decides. Its own per-ingredient count display would
+otherwise still say "not enough" for something nearby storage covers, so that's topped up too, the same
+way the printer's Craft button is. Both sides need this mod for the display to be accurate; without it
+on the client, the display just goes back to counting pockets only, same as vanilla TACZ.
+
 ## EZActions — instant icon picker
 
 EZActions' icon picker indexes every item and resolves every name slowly in the background after each
@@ -131,6 +144,7 @@ re-resolved; language and resource packs are ignored, so delete the file after s
 | Ascension / Ragnarok rarity patches | Apothic Ascension and/or Ragnarok + Ancient Reforging | Server |
 | Gun damage scaling | Apotheosis + Apothic Ascension (+ TACZ) | Server |
 | Printer nearby storage | Vic's Point Blank | Both (server crafts, client enables the button) |
+| Gunsmith table nearby storage | TACZ | Both (server crafts, client shows accurate counts) |
 | Icon picker cache | EZActions | Client |
 
 Research is kept in a server-authoritative data attachment keyed by `<item id>#<ability id>`, and

@@ -1,7 +1,7 @@
 package dev.mtop.foxstweaks;
 
-import dev.mtop.foxstweaks.pointblank.PrinterNetwork;
 import dev.mtop.foxstweaks.relics.RelicsIntegration;
+import dev.mtop.foxstweaks.storage.NearbyItemsNetwork;
 import net.neoforged.bus.api.IEventBus;
 import net.neoforged.fml.ModContainer;
 import net.neoforged.fml.ModList;
@@ -33,8 +33,9 @@ public class FoxsTweaks {
     public FoxsTweaks(IEventBus modBus, ModContainer container) {
         container.registerConfig(ModConfig.Type.COMMON, Config.SPEC);
 
-        if (ModList.get().isLoaded(POINT_BLANK))
-            modBus.addListener(PrinterNetwork::register);
+        // Registered unconditionally - an unused optional channel costs nothing, and both the
+        // Point Blank printer and TACZ's gunsmith table may want to send on it.
+        modBus.addListener(NearbyItemsNetwork::register);
 
         if (ModList.get().isLoaded(RELICS))
             RelicsIntegration.init();

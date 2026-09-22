@@ -1,4 +1,4 @@
-package dev.mtop.foxstweaks.pointblank.compat;
+package dev.mtop.foxstweaks.storage.compat;
 
 import java.util.Map;
 import java.util.function.Predicate;
@@ -8,7 +8,7 @@ import appeng.api.config.Actionable;
 import appeng.api.networking.security.IActionSource;
 import appeng.api.stacks.AEItemKey;
 import appeng.api.storage.MEStorage;
-import dev.mtop.foxstweaks.pointblank.PrinterStorage;
+import dev.mtop.foxstweaks.storage.NearbyStorage;
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.Direction;
 import net.minecraft.world.item.Item;
@@ -16,7 +16,8 @@ import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.level.Level;
 
 /**
- * Reads Applied Energistics 2 storage for the printer. Only loaded once AE2 is known to be present.
+ * Reads Applied Energistics 2 storage for {@link NearbyStorage}. Only loaded once AE2 is known to be
+ * present.
  *
  * <p>An ME Interface has two views: its item handler shows only its stocked slots, but its
  * {@code ME_STORAGE} capability is the whole network when the interface has no config set (AE2's
@@ -24,12 +25,12 @@ import net.minecraft.world.level.Level;
  * lets an unconfigured interface serve anything the network holds. Addons that build on AE2's
  * interface logic (ExtendedAE, Advanced AE, ...) expose the same capability, so they need nothing extra.
  */
-public final class Ae2PrinterStorage {
-    private Ae2PrinterStorage() {
+public final class Ae2NearbyStorage {
+    private Ae2NearbyStorage() {
     }
 
     /** The ME storage at {@code pos}, or {@code null} if it has none. Cable parts answer per side. */
-    public static PrinterStorage.Source at(Level level, BlockPos pos) {
+    public static NearbyStorage.Source at(Level level, BlockPos pos) {
         var storage = level.getCapability(AECapabilities.ME_STORAGE, pos, null);
         if (storage == null) {
             for (var side : Direction.values()) {
@@ -42,7 +43,7 @@ public final class Ae2PrinterStorage {
         return storage == null ? null : new MeSource(storage);
     }
 
-    private record MeSource(MEStorage storage) implements PrinterStorage.Source {
+    private record MeSource(MEStorage storage) implements NearbyStorage.Source {
         @Override
         public int available(Predicate<ItemStack> match, int limit) {
             long found = 0;
@@ -71,7 +72,7 @@ public final class Ae2PrinterStorage {
         public void tally(Predicate<Item> wanted, Map<Item, Integer> out) {
             for (var entry : storage.getAvailableStacks()) {
                 if (entry.getKey() instanceof AEItemKey item && wanted.test(item.getItem()))
-                    out.merge(item.getItem(), (int) Math.min(entry.getLongValue(), Integer.MAX_VALUE), PrinterStorage::add);
+                    out.merge(item.getItem(), (int) Math.min(entry.getLongValue(), Integer.MAX_VALUE), NearbyStorage::add);
             }
         }
     }

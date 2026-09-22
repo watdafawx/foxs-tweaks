@@ -5,27 +5,24 @@ import java.util.function.Supplier;
 import java.util.function.Predicate;
 
 import dev.mtop.foxstweaks.Config;
+import dev.mtop.foxstweaks.storage.NearbyItemsPayload;
+import dev.mtop.foxstweaks.storage.NearbyStorage;
 import net.minecraft.core.registries.BuiltInRegistries;
 import net.minecraft.server.level.ServerPlayer;
 import net.minecraft.world.item.Item;
 import net.minecraft.world.level.block.entity.BlockEntity;
 import net.neoforged.neoforge.network.PacketDistributor;
-import net.neoforged.neoforge.network.event.RegisterPayloadHandlersEvent;
 
-/** Keeps a player who has a printer open told what the storage around it holds. */
+/**
+ * Keeps a player who has a printer open told what the storage around it holds. Registration of the
+ * payload itself is shared - see {@code storage.NearbyItemsNetwork}.
+ */
 public final class PrinterNetwork {
     private static final String MENU = "com.vicmatskiv.pointblank.inventory.CraftingContainerMenu";
     private static final int PERIOD_TICKS = 10;
     private static final double RANGE_SQR = 8 * 8;
 
     private PrinterNetwork() {
-    }
-
-    public static void register(RegisterPayloadHandlersEvent event) {
-        event.registrar("1")
-                .optional()
-                .playToClient(NearbyItemsPayload.TYPE, NearbyItemsPayload.CODEC,
-                        (payload, context) -> context.enqueueWork(() -> NearbyCounts.set(payload.counts())));
     }
 
     /**
@@ -50,7 +47,7 @@ public final class PrinterNetwork {
 
             if (report == null) {
                 report = new HashMap<>();
-                for (var entry : PrinterStorage.tally(level, pos, wanted.get()).entrySet())
+                for (var entry : NearbyStorage.tally(level, pos, Config.PRINTER_STORAGE_RANGE.get(), wanted.get()).entrySet())
                     report.put(BuiltInRegistries.ITEM.getKey(entry.getKey()), entry.getValue());
             }
 

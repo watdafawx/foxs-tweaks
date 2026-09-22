@@ -1,6 +1,8 @@
-package dev.mtop.foxstweaks.pointblank;
+package dev.mtop.foxstweaks.storage;
 
+import java.util.ArrayList;
 import java.util.HashMap;
+import java.util.List;
 import java.util.Map;
 import java.util.function.Predicate;
 
@@ -10,9 +12,10 @@ import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.level.ItemLike;
 
 /**
- * The client's copy of {@link NearbyItemsPayload}. The server resends every half second while the
- * printer is open, so anything older than {@link #MAX_AGE_MS} means the screen is closed (or the
- * server does not have this mod) and the local player's inventory alone should decide again.
+ * The client's copy of {@link NearbyItemsPayload}, shared by every screen that reports nearby storage
+ * (the Point Blank printer, TACZ's gunsmith table). The server resends every half second while such a
+ * screen is open, so anything older than {@link #MAX_AGE_MS} means the screen is closed (or the server
+ * does not have the relevant gun mod) and the local player's inventory alone should decide again.
  *
  * <p>Plain data: nothing client-only, so it is safe to load on a dedicated server.
  */
@@ -45,5 +48,17 @@ public final class NearbyCounts {
         }
 
         return (int) Math.min(total, Integer.MAX_VALUE);
+    }
+
+    /**
+     * One {@link ItemStack} per reported item type, count included. For splicing into a vanilla list
+     * a target mod already iterates with its own {@code Ingredient.test}/{@code getCount} logic (see
+     * {@code mixin.GunSmithTableScreenMixin}) instead of re-testing ingredients ourselves.
+     */
+    public static List<ItemStack> asStacks() {
+        var out = new ArrayList<ItemStack>(counts.size());
+        counts.forEach((item, count) -> out.add(new ItemStack((ItemLike) item, count)));
+
+        return out;
     }
 }

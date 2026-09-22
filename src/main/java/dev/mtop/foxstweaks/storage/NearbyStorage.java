@@ -1,4 +1,4 @@
-package dev.mtop.foxstweaks.pointblank;
+package dev.mtop.foxstweaks.storage;
 
 import java.util.ArrayList;
 import java.util.HashMap;
@@ -6,8 +6,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.function.Predicate;
 
-import dev.mtop.foxstweaks.Config;
-import dev.mtop.foxstweaks.pointblank.compat.Ae2PrinterStorage;
+import dev.mtop.foxstweaks.storage.compat.Ae2NearbyStorage;
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.Direction;
 import net.minecraft.world.item.Item;
@@ -18,18 +17,22 @@ import net.neoforged.neoforge.capabilities.Capabilities;
 import net.neoforged.neoforge.items.IItemHandler;
 
 /**
- * Finds and drains the inventories around a Point Blank weapon printer while it is finishing a craft.
+ * Finds and drains the inventories around a crafting station while it works, so a recipe can be paid
+ * for out of nearby storage and not just the player's own pockets. Used by both the Point Blank
+ * weapon printer ({@code pointblank/mixin/*}) and TACZ's gunsmith table
+ * ({@code tacz/mixin/*} - shared by every gun pack's workbench, since they are all the same TACZ
+ * block entity with a different {@code BlockId}).
  *
- * <p>Same idea as Ars Nouveau's scribe's table: scan a box around the block and pull from whatever
+ * <p>Same idea as Ars Nouveau's scribe's table: scan a box around a point and pull from whatever
  * holds items. Anything exposing an item handler counts (chests, barrels, machines). Applied
  * Energistics 2 needs its own path, because an ME Interface's item handler is only its stocked slots
- * while the network hangs off a separate capability - see {@link Ae2PrinterStorage}.
+ * while the network hangs off a separate capability - see {@link Ae2NearbyStorage}.
  *
- * <p>The scan is centred on the printer, so the mixins mark when a craft is running ({@link #begin}
- * / {@link #end}); everything else Point Blank does with these helpers (the GUI, on the client) is
- * left as it was. Never touches Point Blank: the mixins own that dependency.
+ * <p>A scan is centred on whatever {@link #begin} was last called with, so callers bracket the whole
+ * span of a craft with {@link #begin} / {@link #end}; {@link #active} tells other code whether a scan
+ * is currently in scope. Never touches Point Blank or TACZ - their mixins own those dependencies.
  */
-public final class PrinterStorage {
+public final class NearbyStorage {
     /** One place items can be counted in and taken from. */
     public interface Source {
         /** How many matching items this could give, stopping early once {@code limit} is reached. */
@@ -51,17 +54,20 @@ public final class PrinterStorage {
 
     private static Level level;
     private static BlockPos origin;
+    private static int range;
     private static Boolean ae2Loaded;
 
     /** Set while a recursive call re-enters the patched method, so the patch does not apply twice. */
     private static boolean busy;
 
-    private PrinterStorage() {
+    private NearbyStorage() {
     }
 
-    public static void begin(Level printerLevel, BlockPos printerPos) {
-        level = printerLevel;
-        origin = printerPos;
+    /** {@code searchRange}: how far to scan, in blocks - each caller's own config value. */
+    public static void begin(Level craftingLevel, BlockPos craftingPos, int searchRange) {
+        level = craftingLevel;
+        origin = craftingPos;
+        range = searchRange;
     }
 
     public static void end() {
@@ -69,9 +75,13 @@ public final class PrinterStorage {
         origin = null;
     }
 
-    /** True only on the server, during a printer craft, with the feature switched on. */
+    /**
+     * True only on the server, while a craft that called {@link #begin} is in progress. Callers gate
+     * this behind their own config toggle themselves - {@code begin} is only ever invoked when a
+     * feature's own toggle is on, so this needs no toggle of its own.
+     */
     public static boolean active() {
-        return !busy && level != null && !level.isClientSide && Config.PRINTER_NEARBY_STORAGE.get();
+        return !busy && level != null && !level.isClientSide;
     }
 
     public static void enter() {
@@ -118,11 +128,14 @@ public final class PrinterStorage {
     }
 
     /**
-     * What storage around {@code pos} holds of the {@code wanted} items, for a player looking at the
-     * printer. Combined the way {@link #count} does: inventories add up, ME networks are not summed.
+     * What storage around {@code pos} holds of the {@code wanted} items - {@code item -> true} for
+     * everything. For a player looking at the crafting station ({@code PrinterNetwork}), or for
+     * building a one-off composite {@link IItemHandler} over a single synchronous craft
+     * ({@code tacz.NearbyBackedItemHandler}). Combined the way {@link #count} does: inventories add
+     * up, ME networks are not summed.
      */
-    public static Map<Item, Integer> tally(Level printerLevel, BlockPos pos, Predicate<Item> wanted) {
-        var scan = scan(printerLevel, pos);
+    public static Map<Item, Integer> tally(Level craftingLevel, BlockPos pos, int searchRange, Predicate<Item> wanted) {
+        var scan = scan(craftingLevel, pos, searchRange);
 
         var total = new HashMap<Item, Integer>();
         for (var source : scan.inventories)
@@ -134,7 +147,7 @@ public final class PrinterStorage {
             source.tally(wanted, one);
             one.forEach((item, count) -> best.merge(item, count, Math::max));
         }
-        best.forEach((item, count) -> total.merge(item, count, PrinterStorage::add));
+        best.forEach((item, count) -> total.merge(item, count, NearbyStorage::add));
 
         return total;
     }
@@ -148,15 +161,19 @@ public final class PrinterStorage {
      * an inventory: an interface's stocked slots are part of what its ME view already offers.
      */
     private static Scan scan(Level level, BlockPos center) {
+        return scan(level, center, range <= 0 ? 6 : range);
+    }
+
+    /** {@code tally} passes its own range explicitly, since it never calls {@link #begin}. */
+    private static Scan scan(Level level, BlockPos center, int range) {
         var scan = new Scan(new ArrayList<>(), new ArrayList<>());
-        int range = Config.PRINTER_STORAGE_RANGE.get();
 
         for (var pos : BlockPos.betweenClosed(center.offset(-range, -VERTICAL_RANGE, -range), center.offset(range, VERTICAL_RANGE, range))) {
             if (pos.equals(center) || !level.isLoaded(pos))
                 continue;
 
             if (isAe2Loaded()) {
-                var network = Ae2PrinterStorage.at(level, pos);
+                var network = Ae2NearbyStorage.at(level, pos);
                 if (network != null) {
                     scan.networks.add(network);
                     continue;
@@ -217,7 +234,7 @@ public final class PrinterStorage {
             for (int slot = 0; slot < handler.getSlots(); slot++) {
                 var stack = handler.getStackInSlot(slot);
                 if (!stack.isEmpty() && wanted.test(stack.getItem()))
-                    out.merge(stack.getItem(), stack.getCount(), PrinterStorage::add);
+                    out.merge(stack.getItem(), stack.getCount(), NearbyStorage::add);
             }
         }
     }
