@@ -39,14 +39,16 @@ public final class Config {
 
     public static final ModConfigSpec.BooleanValue GUN_DAMAGE_SCALING = BUILDER
             .comment(
-                    "Scale gun damage up with the held gun's Apothic Ascension rarity. A TACZ gun's damage is",
-                    "fixed by its gun pack and only gains a few flat points from affixes, so it falls far",
-                    "behind Ascension's mobs, whose health and armor are tuned for melee gear. Guns of",
-                    "Ascension's rarities get a damage multiplier; every other rarity is untouched.",
+                    "Scale gun damage up with the held gun's Apothic Ascension rarity. A gun's damage is fixed by",
+                    "its gun pack (TACZ) or its own base stat (Point Blank) and only gains a few flat points",
+                    "from affixes, so it falls far behind Ascension's mobs, whose health and armor are tuned",
+                    "for melee gear. Guns of Ascension's rarities get a damage multiplier; every other rarity",
+                    "is untouched.",
                     "",
-                    "Applies to bullet hits fired by players (including Ragnarok's fire/ice and armor-piercing",
-                    "parts). The multiplier climbs from Legendary to Apotheotic on the same curve the affix",
-                    "extrapolation uses, reaching gunDamageMaxMultiplier at Apotheotic.",
+                    "Applies to bullet hits fired by players - TACZ (including Ragnarok's fire/ice and",
+                    "armor-piercing parts) and Vic's Point Blank alike. The multiplier climbs from Legendary",
+                    "to Apotheotic on the same curve the affix extrapolation uses, reaching",
+                    "gunDamageMaxMultiplier at Apotheotic.",
                     "",
                     "Server-side: the server needs this mod, clients do not.")
             .define("gunDamageScaling", true);

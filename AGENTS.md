@@ -226,14 +226,24 @@ that was 1054 affixes, 447 patched, 0 invalid ranges. Worth redoing when the sca
 
 ### Gun damage scaling (`apotheosis/GunDamageHandler`)
 
-A TACZ gun's damage is fixed by its gun pack and never grows with rarity; Ascension's mobs are tuned
-for melee gear. `GunDamageHandler` multiplies `LivingIncomingDamageEvent` amounts when the source is a
-player and the damage type is in `tacz:bullets` (TACZ's bullets plus Ragnarok's fire/ice) or Ragnarok's
-`bugfix/armor_piercing_parts` (TACZ splits one hit into normal + armor-ignoring events; miss the second
-and half the hit is unscaled - the tag also holds a mob type, hence the player check). The multiplier
-uses the *held* stack's Ascension rarity and `RarityPatcher.CURVE`, so 1x below Legendary and
-`gunDamageMaxMultiplier` at Apotheotic. The Apotheosis type is confined to `compat/ApothicRarityLookup`.
-The default max (20x) is a guess, not measured against Ascension's mobs.
+A gun's damage is fixed by its gun pack (TACZ) or its own base stat (Point Blank) and never grows with
+rarity; Ascension's mobs are tuned for melee gear. `GunDamageHandler` multiplies
+`LivingIncomingDamageEvent` amounts when the source is a player and either:
+
+- the damage type is in `tacz:bullets` (TACZ's bullets plus Ragnarok's fire/ice) or Ragnarok's
+  `bugfix/armor_piercing_parts` (TACZ splits one hit into normal + armor-ignoring events; miss the
+  second and half the hit is unscaled - the tag also holds a mob type, hence the player check); or
+- Point Blank is loaded, the target isn't the shooter, and the shooter's main hand holds a `GunItem`.
+  Point Blank doesn't tag its damage type - `HurtingItem#hurtEntity` deals plain
+  `player.damageSources().playerAttack(player)` - so it is recognised the same way Apothic-PB's own
+  `GunDamageHandler` does it (verified by reading that mod's source): gate on the main-hand item, and
+  exclude the shooter as target so an explosive launcher's self-splash isn't scaled as if it were a hit
+  landed on someone else. The Point Blank type is confined to `pointblank/compat/PointBlankGunLookup`.
+
+The multiplier uses the *held* stack's Ascension rarity and `RarityPatcher.CURVE`, so 1x below Legendary
+and `gunDamageMaxMultiplier` at Apotheotic. The Apotheosis type is confined to `compat/ApothicRarityLookup`.
+The default max (20x) is a guess, not measured against Ascension's mobs. It never touches anything a
+tooltip reads - only the amount at the moment `LivingIncomingDamageEvent` fires.
 
 ### Point Blank printer storage (`mixin/PointBlankInventoryUtilsMixin`, `mixin/PrinterBlockEntityMixin`, `pointblank/PrinterStorage`)
 

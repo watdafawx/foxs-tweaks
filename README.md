@@ -90,11 +90,13 @@ it loads (nothing is shipped or overwritten; configurable in `foxstweaks-common.
   own `ancient` rarity, so a gun reforged at the Ancient Reforging table got no affixes. They now
   accept `ancientreforging:ancient` with Ragnarok's Ancient values.
 
-- **Gun damage scaling** (`gunDamageScaling`, `gunDamageMaxMultiplier`): a TACZ gun's damage is fixed by
-  its gun pack, so it falls behind Ascension's mobs, which are tuned for melee gear. Bullet hits from a
-  player holding a gun of an Ascension rarity are multiplied, from about 3x at Legendary up to
-  `gunDamageMaxMultiplier` (default 20) at Apotheotic, on the same curve as the affix extrapolation.
-  A starting point to tune, not a balanced number.
+- **Gun damage scaling** (`gunDamageScaling`, `gunDamageMaxMultiplier`): a gun's damage is fixed by its
+  gun pack (TACZ) or its own base stat (Vic's Point Blank), so it falls behind Ascension's mobs, which
+  are tuned for melee gear. Bullet hits from a player holding a gun of an Ascension rarity are
+  multiplied, from about 3x at Legendary up to `gunDamageMaxMultiplier` (default 20) at Apotheotic, on
+  the same curve as the affix extrapolation. Works with either or both gun mods installed. Never shows
+  in a tooltip's `Damage:` line - it only scales the number at the moment of a hit. A starting point to
+  tune, not a balanced number.
 
 ## Vic's Point Blank — weapon printer pulls from nearby storage
 
