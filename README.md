@@ -126,6 +126,12 @@ otherwise still say "not enough" for something nearby storage covers, so that's 
 way the printer's Craft button is. Both sides need this mod for the display to be accurate; without it
 on the client, the display just goes back to counting pockets only, same as vanilla TACZ.
 
+## TACZ — clear a locked ammo box
+
+TACZ's ammo box (creative ones included) locks to whichever ammo it's first right-clicked on, with no
+built-in way to change it. Sneak + right-click in the air with a held box, and `ammoBoxReset` clears
+its stocked type so a different one can be set.
+
 ## EZActions — instant icon picker
 
 EZActions' icon picker indexes every item and resolves every name slowly in the background after each
@@ -145,6 +151,7 @@ re-resolved; language and resource packs are ignored, so delete the file after s
 | Gun damage scaling | Apotheosis + Apothic Ascension (+ TACZ) | Server |
 | Printer nearby storage | Vic's Point Blank | Both (server crafts, client enables the button) |
 | Gunsmith table nearby storage | TACZ | Both (server crafts, client shows accurate counts) |
+| Ammo box reset | TACZ | Server |
 | Icon picker cache | EZActions | Client |
 
 Research is kept in a server-authoritative data attachment keyed by `<item id>#<ability id>`, and

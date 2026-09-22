@@ -4,7 +4,7 @@ Guidance for AI agents working in this repository.
 
 ## What this is
 
-A NeoForge **1.21.1** mod (`foxstweaks`, "Fox's Tweaks") that is really seven unrelated
+A NeoForge **1.21.1** mod (`foxstweaks`, "Fox's Tweaks") that is really eight unrelated
 quality-of-life features sharing a jar:
 
 1. **Relics integration** — auto-completes the constellation "star puzzle" research, both on pickup
@@ -17,7 +17,8 @@ quality-of-life features sharing a jar:
 5. **Point Blank printer storage** — server-side (+ client for the Craft button); the weapon printer
    can pull ingredients from nearby chests and AE2.
 6. **TACZ gunsmith table storage** — server-side; every gun pack's own workbench can do the same.
-7. **EZActions icon picker cache** — client-side mixin that makes its icon picker open fast.
+7. **TACZ ammo box reset** — server-side; clears a creative ammo box's locked-in ammo type.
+8. **EZActions icon picker cache** — client-side mixin that makes its icon picker open fast.
 
 **Every parent mod is optional.** The mod must load and behave correctly with either, both, or
 neither installed. This is the single most important invariant in the codebase — see
@@ -383,6 +384,24 @@ it again for any future patch that wants "items from the player's network".
 - **Verified in-game** for the Point Blank printer, against an ExtendedAE ME Extended Interface with
   nothing configured. The TACZ gunsmith table path reuses the same `NearbyStorage`/`Ae2NearbyStorage`
   code and is expected to behave the same, but has not itself been separately observed working.
+
+### TACZ ammo box reset (`tacz/AmmoBoxResetHandler`)
+
+TACZ's ammo box (`IAmmoBox`/`AmmoBoxItemDataAccessor`, a real public TACZ API - unlike everything else
+TACZ-related in this mod, which pokes private classes) locks to whichever ammo `setAmmoId` was last
+called with (right-clicking it on a stack of that ammo) and offers no way to change it afterwards.
+`AmmoBoxItem` has no `use()` override, so right-clicking it in the air currently does nothing at all -
+free real estate. Sneak + right-click claims that gesture and removes the `AmmoId`/`AmmoCount` NBT keys
+from the stack's `CUSTOM_DATA` component, which is exactly what an unset box looks like
+(`getAmmoId`'s default falls back to `DefaultAssets.EMPTY_AMMO_ID` when the tag is absent).
+
+Deliberately **not** using the real `IAmmoBox` API or a compile dependency: TACZ has no confirmed
+Modrinth NeoForge/1.21.1 coordinate to point `compileOnly` at (its Modrinth listing only has Forge/1.20.x
+builds), so this reaches TACZ by the ammo box item's runtime class name
+(`com.tacz.guns.item.AmmoBoxItem`) and hardcodes the two NBT tag key strings (`AmmoId`, `AmmoCount`,
+verified via `javap` against TACZ 1.1.8-hotfix-r6) instead - plain vanilla `DataComponents`/`CustomData`,
+no TACZ type at compile time or runtime. No mixin needed either, since nothing is intercepted - this is
+a normal event listener. Toggle: `ammoBoxReset`.
 
 ### EZActions icon picker (`mixin/IconPickerScreenMixin`, `client/compat/IconNameCache`)
 

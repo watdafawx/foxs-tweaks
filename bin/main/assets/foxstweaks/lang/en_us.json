@@ -7,6 +7,8 @@
 
   "foxstweaks.affix_panel.caption": "Fox's Tweaks - Affix Info",
 
+  "foxstweaks.ammo_box.cleared": "Ammo type cleared - right-click a different ammo to set it",
+
   "key.categories.foxstweaks": "Fox's Tweaks",
   "key.foxstweaks.show_affix_info": "Show Affixes & Gem Sockets"
 }

@@ -4,7 +4,15 @@
   "package": "dev.mtop.foxstweaks.mixin",
   "compatibilityLevel": "JAVA_21",
   "mixins": [
-    "DynamicRegistryMixin"
+    "DynamicRegistryMixin",
+    "GunSmithTableBlockEntityMixin",
+    "GunSmithTableMenuMixin",
+    "PointBlankInventoryUtilsMixin",
+    "PrinterBlockEntityMixin"
+  ],
+  "client": [
+    "GunSmithTableScreenMixin",
+    "IconPickerScreenMixin"
   ],
   "injectors": {
     "defaultRequire": 1

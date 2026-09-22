@@ -101,6 +101,15 @@ public final class Config {
                     "Vertically it looks at most 2 blocks up and down.")
             .defineInRange("taczWorkbenchStorageRange", 6, 1, 16);
 
+    public static final ModConfigSpec.BooleanValue AMMO_BOX_RESET = BUILDER
+            .comment(
+                    "Let a held TACZ ammo box's stocked ammo type be cleared with sneak + right-click in the",
+                    "air, so a different type can be set afterwards. TACZ locks a box to whichever ammo it was",
+                    "first right-clicked on and gives no way to change it otherwise (creative boxes included).",
+                    "",
+                    "Server-side: the server needs this mod, clients do not.")
+            .define("ammoBoxReset", true);
+
     public static final ModConfigSpec.BooleanValue CURIOS_TOOLTIP_WORKAROUND = BUILDER
             .comment(
                     "Recover the hovered item ourselves when a screen's own tooltip rendering forgets to",
