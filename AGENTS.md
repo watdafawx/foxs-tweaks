@@ -4,21 +4,24 @@ Guidance for AI agents working in this repository.
 
 ## What this is
 
-A NeoForge **1.21.1** mod (`foxstweaks`, "Fox's Tweaks") that is really eight unrelated
+A NeoForge **1.21.1** mod (`foxstweaks`, "Fox's Tweaks") that is really nine unrelated
 quality-of-life features sharing a jar:
 
 1. **Relics integration** — auto-completes the constellation "star puzzle" research, both on pickup
    and via a button on the research screen.
 2. **Apotheosis integration** — a second tooltip panel, shown while a key is held, listing an item's
    affixes, attributes and gem sockets without touching the main tooltip.
-3. **Apotheosis rarity compat** — server-side data patches that make third-party affix packs work
+3. **Apotheosis affix toggles** — a hotkey opens the held item's own tooltip as a clickable overlay
+   (any item, not just the few Apotheosis itself lets you toggle); click an affix line to disable or
+   re-enable it.
+4. **Apotheosis rarity compat** — server-side data patches that make third-party affix packs work
    with Apothic Ascension's rarities, and Ragnarok's gun affixes work with Ancient Reforging.
-4. **Gun damage scaling** — server-side; guns of Apothic Ascension rarities deal more damage.
-5. **Point Blank printer storage** — server-side (+ client for the Craft button); the weapon printer
+5. **Gun damage scaling** — server-side; guns of Apothic Ascension rarities deal more damage.
+6. **Point Blank printer storage** — server-side (+ client for the Craft button); the weapon printer
    can pull ingredients from nearby chests and AE2.
-6. **TACZ gunsmith table storage** — server-side; every gun pack's own workbench can do the same.
-7. **TACZ ammo box reset** — server-side; clears a creative ammo box's locked-in ammo type.
-8. **EZActions icon picker cache** — client-side mixin that makes its icon picker open fast.
+7. **TACZ gunsmith table storage** — server-side; every gun pack's own workbench can do the same.
+8. **TACZ ammo box reset** — server-side; clears a creative ammo box's locked-in ammo type.
+9. **EZActions icon picker cache** — client-side mixin that makes its icon picker open fast.
 
 **Every parent mod is optional.** The mod must load and behave correctly with either, both, or
 neither installed. This is the single most important invariant in the codebase — see
@@ -103,9 +106,12 @@ Consequently:
 - **Apotheosis code needs no such care**, because those handlers hang off vanilla events and only
   reach Apotheosis classes inside method bodies, which classload lazily. They are still guarded by a
   `ModList.isLoaded("apotheosis")` check before the first call.
-- **All Apotheosis references are confined to `client/compat/ApothicTooltip` and
-  `compat/ApothicTestGear`.** Keep it that way; touching an Apotheosis class from anywhere that gets
-  loaded eagerly will throw `NoClassDefFoundError` on a pack without it.
+- **All Apotheosis references are confined to a handful of `compat`/`client/compat` classes** —
+  `client/compat/ApothicTooltip`, `compat/ApothicTestGear`, `compat/ApothicRarityLookup`,
+  `compat/ApothicAffixToggle` and `client/compat/AffixToggleScreen`. Keep it that way; touching an
+  Apotheosis class from anywhere that gets loaded eagerly will throw `NoClassDefFoundError` on a pack
+  without it. A new one is fine — the rule is "no eager class touches an Apotheosis type", not "these
+  exact files".
 
 When changing any of this, verify by launching a dev client with the relevant mods **removed** from
 `run/mods/`. That is the only way to catch a violation; it compiles fine either way.
@@ -148,6 +154,65 @@ the panel uses the same dark tooltip styling as the main tooltip and can end up 
 extra slack beyond vanilla's own padding for the same reason: `mainWidth`/`mainHeight` only measure
 the plain content box, and a rarity-tier item's decorative Apotheosis border is drawn outside it, so
 the plain-box geometry alone can still let that border visually touch the panel.
+
+### Per-affix toggles (`compat/ApothicAffixToggle`, `client/compat/AffixToggleScreen`)
+
+`key.foxstweaks.toggle_affixes` (unbound by default) opens the held item's own tooltip as a
+clickable overlay — hover an affix line and click to disable or re-enable it. Any item, not just
+the few Apotheosis itself ships a toggle for (its own mining-radius affix, etc). There is no
+separate list to keep in sync with the tooltip (Stoneforming's icon row included: that line is a
+`TooltipComponent`, not text, so a string-matched highlight against a custom menu could never find
+it).
+
+Most affixes (Vein Mining, Sculk Affinity, the lot) are Apotheosis' own behaviour and never pass
+through this mod at all, so a cosmetic "ignore this affix" flag would do nothing for them. The only
+way to actually stop one from firing is to remove it from Apotheosis' own `ItemAffixes` data
+component (`Apoth.Components.AFFIXES`) — `ApothicAffixToggle.setEnabled` does exactly that, via the
+public `ItemAffixes.Builder`/`AffixHelper.setAffixes` API, no mixin needed. The removed id and level
+are kept in `FoxsTweaksComponents.DISABLED_AFFIXES` (a component of our own, holding no Apotheosis
+type) so re-enabling restores the exact level instead of re-rolling it, and so the affix tooltip
+panel (`ApothicTooltip`) can still list a disabled affix, struck through — `streamAffixes` alone
+would never see it once removed.
+
+This is authoritative item state, not rendering, so the overlay mutates the client stack this frame
+(so the tooltip rebuilds immediately) and sends `ToggleAffixPayload` (a plain id + bool, no
+Apotheosis type) to the server, which does the actual removal/restoration against the sender's
+main-hand stack. `affixToggleGui` gates both sides — the server needs it for a toggle to take
+effect, the client needs it for the key and overlay to exist. `AffixToggleNetwork` is registered
+unconditionally like `storage.NearbyItemsNetwork`; its handler lambda is the only thing that
+reaches `ApothicAffixToggle`, guarded by the same `ModList.isLoaded("apotheosis")` check used
+everywhere else.
+
+A disabled affix is invisible everywhere by default once removed from `ItemAffixes` — including
+Apotheosis' own normal tooltip, which reads that component directly and has no idea foxstweaks ever
+touched it. `AffixTooltipHandler`'s `RenderTooltipEvent.GatherComponents` hook (priority `LOWEST`,
+so after Apotheosis has swapped its marker lines for components) puts a "❌ " line back **where the
+affix used to be**: `ApothicTooltip#insertDisabledLines` builds the tooltip of a copy with the
+disabled affixes restored (the "ghost", cached on `ItemStack.hashItemAndComponents`), finds each
+affix's line in it, and inserts after the nearest line above it that also exists in the real
+tooltip. That works for attribute-block lines ("+3.25 Luck") too, without hardcoding Apotheosis'
+ordering. Anchors that are Apotheosis marker text in the ghost (`APOTH_STONEFORMING_MARKER`,
+`APOTH_SOCKET_MARKER`) are matched against the component that replaced them.
+
+`AffixInstance#getName(true)` is the affix's plain name ("Great Fortune" / "Infernal");
+`getName(false)` is the possessive fragment Apotheosis stitches into the item's own display name
+("of Great Fortune"). Never use either as a tooltip match candidate — those fragments live inside
+the item title, so `contains()` lights up the name line instead of the affix. Match the live
+description, an `AttributeProvidingAffix` modifier line ("+7.75 Fire Damage"), or our ❌ line.
+Skip index 0 (the title) in `bindAffixes` / `highlightLine` for the same reason.
+
+The overlay is a `Screen` that draws nothing of its own except a title/hint and a hover outline:
+`renderBackground` is empty (vanilla menu blur would otherwise sit on top of the tooltip), and
+`render` calls `graphics.renderTooltip` on the live main-hand stack. Hit-testing walks the same
+`GatherComponents` list the tooltip just drew, matching text lines by description / attribute
+modifier / ❌ body, and Stoneforming by `StoneformingComponent` rather than the
+`APOTH_STONEFORMING_MARKER` sentinel. Clicking a non-affix line is a no-op; Escape still closes.
+
+The hovered line's ▶ is applied by **element index** (`AffixTooltipHandler.highlightIndex`), not by
+matching text: the overlay measures with the index at -1, then draws the same stack, so both gathers
+yield the same list. A text line is restyled; a component line (Stoneforming's icon row) is wrapped in
+`client/HighlightedTooltipComponent`, which draws the ▶ and delegates to the wrapped component's own
+renderer. It holds only a vanilla `TooltipComponent`, so it's safe to register unconditionally.
 
 ### Recovering the hovered item on a broken screen
 

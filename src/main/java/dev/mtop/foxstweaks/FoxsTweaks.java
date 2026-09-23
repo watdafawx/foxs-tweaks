@@ -1,5 +1,6 @@
 package dev.mtop.foxstweaks;
 
+import dev.mtop.foxstweaks.apotheosis.AffixToggleNetwork;
 import dev.mtop.foxstweaks.relics.RelicsIntegration;
 import dev.mtop.foxstweaks.storage.NearbyItemsNetwork;
 import net.neoforged.bus.api.IEventBus;
@@ -15,7 +16,8 @@ import net.neoforged.fml.config.ModConfig;
  * auto-solve button sits next to the hint button on the research screen.
  *
  * <p><b>Apotheosis</b> ({@code client.AffixTooltipHandler}) - a second tooltip listing affixes and
- * gem sockets, shown while a key is held.
+ * gem sockets, shown while a key is held. {@code client.AffixToggleKeyHandler} additionally lets any
+ * affix on the held item be switched off and back on ({@link AffixToggleNetwork}).
  *
  * <p>Neither parent mod is required. The Relics half is wired up here rather than through
  * {@code @EventBusSubscriber} because FML loads annotated classes unconditionally, which would
@@ -36,6 +38,9 @@ public class FoxsTweaks {
         // Registered unconditionally - an unused optional channel costs nothing, and both the
         // Point Blank printer and TACZ's gunsmith table may want to send on it.
         modBus.addListener(NearbyItemsNetwork::register);
+        modBus.addListener(AffixToggleNetwork::register);
+
+        FoxsTweaksComponents.COMPONENTS.register(modBus);
 
         if (ModList.get().isLoaded(RELICS))
             RelicsIntegration.init();

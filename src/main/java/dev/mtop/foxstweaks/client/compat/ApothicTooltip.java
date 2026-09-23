@@ -1,6 +1,7 @@
 package dev.mtop.foxstweaks.client.compat;
 
 import com.mojang.datafixers.util.Either;
+import dev.mtop.foxstweaks.compat.ApothicAffixToggle;
 import dev.shadowsoffire.apotheosis.Apoth.Components;
 import dev.shadowsoffire.apotheosis.affix.Affix;
 import dev.shadowsoffire.apotheosis.affix.AffixHelper;
@@ -8,6 +9,7 @@ import dev.shadowsoffire.apotheosis.affix.AffixInstance;
 import dev.shadowsoffire.apotheosis.affix.AttributeProvidingAffix;
 import dev.shadowsoffire.apotheosis.client.AdventureModuleClient;
 import dev.shadowsoffire.apotheosis.client.SocketTooltipRenderer;
+import dev.shadowsoffire.apotheosis.client.StoneformingTooltipRenderer;
 import dev.shadowsoffire.apotheosis.socket.SocketHelper;
 import dev.shadowsoffire.apotheosis.util.ApothMiscUtil;
 import net.minecraft.ChatFormatting;
@@ -23,9 +25,15 @@ import net.neoforged.neoforge.common.util.AttributeUtil;
 
 import java.util.ArrayList;
 import java.util.Comparator;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Set;
 import java.util.stream.Collectors;
+
+import net.minecraft.client.Minecraft;
+import net.minecraft.client.gui.screens.Screen;
+import net.minecraft.resources.ResourceLocation;
+import net.neoforged.neoforge.common.util.AttributeTooltipContext;
 
 /**
  * Builds the Apotheosis half of the second tooltip.
@@ -42,9 +50,9 @@ public final class ApothicTooltip {
     private ApothicTooltip() {
     }
 
-    /** True when the stack has anything worth showing: sockets (even empty ones) or affixes. */
+    /** True when the stack has anything worth showing: sockets (even empty ones) or affixes, active or disabled. */
     public static boolean hasInfo(ItemStack stack) {
-        return SocketHelper.getSockets(stack) > 0 || AffixHelper.hasAffixes(stack);
+        return SocketHelper.getSockets(stack) > 0 || ApothicAffixToggle.hasAnyAffixes(stack);
     }
 
     public static List<Either<FormattedText, TooltipComponent>> build(ItemStack stack) {
@@ -84,13 +92,20 @@ public final class ApothicTooltip {
                         return;
                     }
 
-                    Component description = instance.getDescription(ctx);
+                    // getAugmentingText(), not getDescription() - a few affixes (StoneformingAffix,
+                    // for one) return a sentinel from getDescription() that Apotheosis' own tooltip
+                    // code swaps for a custom icon component; getAugmentingText() is the real text,
+                    // which is exactly what a plain line here needs. See AffixToggleScreen for the
+                    // same fix, in more detail.
+                    Component description = instance.getAugmentingText(ctx);
 
                     if (description.getContents() == PlainTextContents.EMPTY)
                         return;
 
                     elements.add(Either.left(prefixed(description, instance)));
                 });
+
+        elements.addAll(disabledAffixLines(stack));
 
         if (stack.has(Components.DURABILITY_BONUS) && !stack.has(DataComponents.UNBREAKABLE)) {
             Component durability = Component.translatable("affix.apotheosis:durable.desc",
@@ -111,6 +126,293 @@ public final class ApothicTooltip {
 
         return elements;
     }
+
+    /**
+     * Disabled-affix lines, one per affix the overlay pulled off the item. Uses the same description
+     * the live tooltip showed ("Enemies below 20% max health will be executed"), not
+     * {@code getName(true)} ("Executing") - that name is a fragment Apotheosis stitches into the
+     * item title, and reading it as a standalone row was a real bug here once.
+     *
+     * <p>Only {@link #build} (the Ctrl panel) uses this list as-is, after its live affix block. The
+     * item's own tooltip places each line where its affix used to be - see {@link #insertDisabledLines}.
+     */
+    public static List<Either<FormattedText, TooltipComponent>> disabledAffixLines(ItemStack stack) {
+        List<Either<FormattedText, TooltipComponent>> lines = new ArrayList<>();
+        var ctx = AdventureModuleClient.tooltipCtx();
+
+        ApothicAffixToggle.list(stack).stream().filter(row -> !row.enabled()).forEach(row ->
+                lines.add(Either.left(disabledLine(row.instance(), ctx))));
+
+        return lines;
+    }
+
+    /**
+     * The live tooltip's own wording for this affix, with a red ❌ prefix. Attribute affixes have
+     * no description (their line is a modifier); Stoneforming's {@code getDescription()} is a
+     * sentinel swapped for an icon row, so {@code getAugmentingText()} is the readable fallback
+     * once that component is gone.
+     */
+    public static Component disabledLine(AffixInstance instance, AttributeTooltipContext ctx) {
+        Component body = tooltipBody(instance, ctx);
+        Component marked = Component.literal("❌ ").withStyle(ChatFormatting.RED)
+                .append(body.copy().withStyle(ChatFormatting.RED));
+
+        return ApothMiscUtil.dotPrefix(marked);
+    }
+
+    public static Component tooltipBody(AffixInstance instance, AttributeTooltipContext ctx) {
+        if (instance.getAffix() instanceof AttributeProvidingAffix attributeAffix) {
+            List<Component> modifiers = new ArrayList<>();
+
+            attributeAffix.gatherModifierTooltips(instance, ctx, modifiers::add);
+
+            if (!modifiers.isEmpty())
+                return modifiers.getFirst();
+        } else if (!isStoneformingMarker(instance, ctx)) {
+            Component description = instance.getDescription(ctx);
+
+            if (description.getContents() != PlainTextContents.EMPTY)
+                return description;
+        }
+
+        Component augmenting = instance.getAugmentingText(ctx);
+
+        if (augmenting.getContents() != PlainTextContents.EMPTY)
+            return augmenting;
+
+        return instance.getName(true);
+    }
+
+    /**
+     * Map one gathered tooltip element back onto an affix. Text lines match the real description
+     * (or an attribute affix's modifier line, or our ❌ disabled line). Stoneforming's real tooltip
+     * line is a {@link StoneformingTooltipRenderer.StoneformingComponent} swapped in for the
+     * {@code APOTH_STONEFORMING_MARKER} sentinel - match that by component type, not by text.
+     */
+    public static ApothicAffixToggle.Row matchRow(
+            Either<FormattedText, TooltipComponent> element,
+            List<ApothicAffixToggle.Row> rows,
+            Set<ResourceLocation> claimed,
+            AttributeTooltipContext ctx) {
+        if (element.right().isPresent()) {
+            TooltipComponent component = element.right().get();
+
+            if (component instanceof SocketTooltipRenderer.SocketComponent)
+                return null;
+
+            if (component instanceof StoneformingTooltipRenderer.StoneformingComponent) {
+                for (ApothicAffixToggle.Row row : rows) {
+                    ResourceLocation id = row.instance().getAffix().id();
+
+                    if (claimed.contains(id) || !row.enabled())
+                        continue;
+
+                    if (isStoneformingMarker(row.instance(), ctx))
+                        return row;
+                }
+            }
+
+            return null;
+        }
+
+        String line = element.left().map(FormattedText::getString).orElse("");
+
+        if (line.isEmpty())
+            return null;
+
+        for (ApothicAffixToggle.Row row : rows) {
+            ResourceLocation id = row.instance().getAffix().id();
+
+            if (claimed.contains(id))
+                continue;
+
+            AffixInstance instance = row.instance();
+
+            if (!row.enabled()) {
+                if (line.contains("❌") && matchCandidates(instance, false, ctx).stream().anyMatch(line::contains))
+                    return row;
+
+                continue;
+            }
+
+            if (matchCandidates(instance, true, ctx).stream().anyMatch(line::contains))
+                return row;
+        }
+
+        return null;
+    }
+
+    public static List<String> matchCandidates(AffixInstance instance, boolean enabled, AttributeTooltipContext ctx) {
+        List<String> candidates = new ArrayList<>();
+
+        if (!enabled) {
+            // The live description ("+7.75 Fire Damage"), never getName(true) ("Infernal") -
+            // that fragment is stitched into the item title, so contains() would light up the
+            // name line instead of the affix we are actually hovering.
+            candidates.add(tooltipBody(instance, ctx).getString());
+            return candidates;
+        }
+
+        if (instance.getAffix() instanceof AttributeProvidingAffix attributeAffix) {
+            attributeAffix.gatherModifierTooltips(instance, ctx, line -> candidates.add(line.getString()));
+            return candidates;
+        }
+
+        if (isStoneformingMarker(instance, ctx))
+            return candidates;
+
+        Component description = instance.getDescription(ctx);
+
+        if (description.getContents() != PlainTextContents.EMPTY)
+            candidates.add(description.getString());
+
+        return candidates;
+    }
+
+    public static boolean isStoneformingMarker(AffixInstance instance, AttributeTooltipContext ctx) {
+        return instance.getDescription(ctx).getString().contains("APOTH_STONEFORMING");
+    }
+
+    /**
+     * Puts a "❌" line for each disabled affix where that affix's own line would be, rather than
+     * appending them all at the end.
+     *
+     * <p>Where "would be" is found by building the tooltip of a copy with the disabled affixes put
+     * back (the ghost), finding each affix's line in it, and walking up to the nearest line above it
+     * that also exists in the real tooltip - the ❌ goes right after that anchor. This keeps working
+     * for affix lines in the attribute block ("+3.25 Luck"), not just the description block, without
+     * hardcoding Apotheosis' ordering. Anything with no anchor falls back to the end.
+     *
+     * <p>The ghost's lines are cached on the stack's hash - this runs every frame the tooltip is up.
+     */
+    public static void insertDisabledLines(ItemStack stack, List<Either<FormattedText, TooltipComponent>> elements) {
+        List<ApothicAffixToggle.Row> disabled = ApothicAffixToggle.list(stack).stream().filter(row -> !row.enabled()).toList();
+
+        if (disabled.isEmpty())
+            return;
+
+        var ctx = AdventureModuleClient.tooltipCtx();
+        List<String> ghost = ghostLines(stack, disabled);
+
+        record Placed(int ghostIndex, Either<FormattedText, TooltipComponent> line) {
+        }
+
+        List<Placed> placed = new ArrayList<>();
+        Set<Integer> disabledIndices = new HashSet<>();
+
+        for (ApothicAffixToggle.Row row : disabled) {
+            int index = ghostIndexOf(ghost, row.instance(), ctx);
+
+            if (index >= 0)
+                disabledIndices.add(index);
+
+            placed.add(new Placed(index < 0 ? Integer.MAX_VALUE : index, Either.left(disabledLine(row.instance(), ctx))));
+        }
+
+        placed.sort(Comparator.comparingInt(Placed::ghostIndex));
+
+        List<Either<FormattedText, TooltipComponent>> inserted = new ArrayList<>();
+
+        for (Placed p : placed) {
+            int at = -1;
+
+            for (int k = Math.min(p.ghostIndex(), ghost.size()) - 1; k >= 0 && at < 0; k--) {
+                String anchor = ghost.get(k);
+
+                if (anchor.isBlank() || disabledIndices.contains(k))
+                    continue;
+
+                int found = find(elements, anchor, inserted);
+
+                if (found >= 0)
+                    at = found + 1;
+            }
+
+            if (at < 0)
+                at = elements.size();
+
+            // Earlier ❌ lines already sitting after the same anchor came first in the ghost too.
+            while (at < elements.size() && containsIdentity(inserted, elements.get(at)))
+                at++;
+
+            elements.add(at, p.line());
+            inserted.add(p.line());
+        }
+    }
+
+    private static int cachedGhostKey;
+    private static List<String> cachedGhost = List.of();
+
+    private static List<String> ghostLines(ItemStack stack, List<ApothicAffixToggle.Row> disabled) {
+        int key = ItemStack.hashItemAndComponents(stack);
+
+        if (key == cachedGhostKey && !cachedGhost.isEmpty())
+            return cachedGhost;
+
+        ItemStack ghost = stack.copy();
+
+        for (ApothicAffixToggle.Row row : disabled)
+            ApothicAffixToggle.setEnabled(ghost, row.instance().getAffix().id(), true);
+
+        cachedGhost = Screen.getTooltipFromItem(Minecraft.getInstance(), ghost).stream().map(Component::getString).toList();
+        cachedGhostKey = key;
+
+        return cachedGhost;
+    }
+
+    /** The affix's line in the ghost tooltip (which is raw lines - Stoneforming is still its marker text there). */
+    private static int ghostIndexOf(List<String> ghost, AffixInstance instance, AttributeTooltipContext ctx) {
+        List<String> keys = isStoneformingMarker(instance, ctx)
+                ? List.of(STONEFORMING_MARKER)
+                : matchCandidates(instance, true, ctx);
+
+        // From 1: the title carries affix name fragments.
+        for (int i = 1; i < ghost.size(); i++) {
+            String line = ghost.get(i);
+
+            if (keys.stream().anyMatch(key -> !key.isEmpty() && line.contains(key)))
+                return i;
+        }
+
+        return -1;
+    }
+
+    /** Real-tooltip index of a ghost line. Apotheosis' markers have become components by now, so match those by type. */
+    private static int find(List<Either<FormattedText, TooltipComponent>> elements, String anchor,
+            List<Either<FormattedText, TooltipComponent>> inserted) {
+        for (int i = 0; i < elements.size(); i++) {
+            var element = elements.get(i);
+
+            if (containsIdentity(inserted, element))
+                continue;
+
+            if (element.left().isPresent()) {
+                if (element.left().get().getString().equals(anchor))
+                    return i;
+            } else if (element.right().get() instanceof StoneformingTooltipRenderer.StoneformingComponent) {
+                if (anchor.contains(STONEFORMING_MARKER))
+                    return i;
+            } else if (element.right().get() instanceof SocketTooltipRenderer.SocketComponent) {
+                if (anchor.contains(SOCKET_MARKER))
+                    return i;
+            }
+        }
+
+        return -1;
+    }
+
+    private static boolean containsIdentity(List<?> list, Object value) {
+        for (Object o : list) {
+            if (o == value)
+                return true;
+        }
+
+        return false;
+    }
+
+    /** Apotheosis' private placeholder text, swapped for a component in its own GatherComponents listener. */
+    private static final String STONEFORMING_MARKER = "APOTH_STONEFORMING_MARKER";
+    private static final String SOCKET_MARKER = "APOTH_SOCKET_MARKER";
 
     /**
      * Apotheosis stars affixes past the standard maximum level and dots the rest.

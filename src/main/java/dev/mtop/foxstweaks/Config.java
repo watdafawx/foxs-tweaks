@@ -37,6 +37,19 @@ public final class Config {
                     "Client-side only.")
             .define("affixTooltipPanel", true);
 
+    public static final ModConfigSpec.BooleanValue AFFIX_TOGGLE_GUI = BUILDER
+            .comment(
+                    "Let the 'toggle affixes' key (unbound by default - set it under Controls) open the held",
+                    "item's own tooltip as a clickable overlay: hover an affix line and click to disable or",
+                    "re-enable it. Works for any item, not just the handful Apotheosis itself lets you toggle",
+                    "(mining radius, etc). A disabled affix is actually removed from the item (so it truly",
+                    "stops applying, including effects this mod never touches) and kept so it can be put back",
+                    "exactly as it was; it still shows on the tooltip as a red ❌ line.",
+                    "",
+                    "The server needs this mod for a toggle to actually take effect; the client needs it too",
+                    "for the key and overlay to exist at all.")
+            .define("affixToggleGui", true);
+
     public static final ModConfigSpec.BooleanValue GUN_DAMAGE_SCALING = BUILDER
             .comment(
                     "Scale gun damage up with the held gun's Apothic Ascension rarity. A gun's damage is fixed by",

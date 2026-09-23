@@ -7,8 +7,12 @@
 
   "foxstweaks.affix_panel.caption": "Fox's Tweaks - Affix Info",
 
+  "foxstweaks.affix_toggle.title": "Affixes - %s",
+  "foxstweaks.affix_toggle.hint": "Click an affix to disable or enable it",
+
   "foxstweaks.ammo_box.cleared": "Ammo type cleared - right-click a different ammo to set it",
 
   "key.categories.foxstweaks": "Fox's Tweaks",
-  "key.foxstweaks.show_affix_info": "Show Affixes & Gem Sockets"
+  "key.foxstweaks.show_affix_info": "Show Affixes & Gem Sockets",
+  "key.foxstweaks.toggle_affixes": "Toggle Affixes on Held Item"
 }
