@@ -12,7 +12,8 @@
   ],
   "client": [
     "GunSmithTableScreenMixin",
-    "IconPickerScreenMixin"
+    "IconPickerScreenMixin",
+    "TrashSlotGuiHandlerMixin"
   ],
   "injectors": {
     "defaultRequire": 1
