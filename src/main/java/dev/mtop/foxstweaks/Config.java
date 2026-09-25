@@ -204,6 +204,17 @@ public final class Config {
                     "Server-side. Does nothing without Ars Nouveau and ApotSpawner.")
             .define("apotspawnerSource", true);
 
+    public static final ModConfigSpec.BooleanValue APOTSPAWNER_OWN_XP_FLUID = BUILDER
+            .comment(
+                    "Make ApotSpawner's spawners always export their own liquid experience (20 mB per XP,",
+                    "tagged c:experience), even with Create Enchantment Industry installed. Otherwise they",
+                    "switch to CEI's experience (1 mB per XP), which Just Dire Things' Experience Holder and",
+                    "other c:experience tanks refuse. Turn off if CEI machines should pull XP straight from",
+                    "spawners.",
+                    "",
+                    "Server-side. Does nothing without ApotSpawner.")
+            .define("apotspawnerOwnXpFluid", true);
+
     public static final ModConfigSpec.BooleanValue HOSTILE_NETWORKS_SOURCE = BUILDER
             .comment(
                     "Feed Ars Nouveau's Vitalic Sourcelink from Hostile Neural Networks' simulation chamber:",

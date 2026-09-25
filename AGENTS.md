@@ -552,6 +552,21 @@ kills gave 8200, 5 ExtraHNN Ultimate runs of a 4-mob model gave 4000, 2 Simulati
 being applied, not run. Tested against Ars 5.13.1, Botany Pots 21.1.44, HNN 6.5.1, ApotSpawner 1.2.0,
 ExtraHNN 2.2.5 and HNI 1.0.16. Re-check the hooked member names when any of these update.
 
+### ApotSpawner XP fluid (`mixin/ApotSpawnerXpFluidMixin`)
+
+When Create Enchantment Industry is installed, ApotSpawner's `ExperienceFluidCompat#exportedFluid()` switches
+the spawner's fluid output to CEI's `create_enchantment_industry:experience` (1 mB per XP) instead of its own
+`apotspawner:liquid_experience` (20 mB per XP). CEI's fluid is not in `c:experience`, so Just Dire Things'
+Experience Holder (and any other tank that checks `c:experience`) refuses it. Tagging it with KubeJS would not
+fix that: the holder always counts 20 mB as 1 XP, so it would keep only 1/20 of the XP. The mixin makes
+`exportedFluid()` return ApotSpawner's own fluid. `millibucketsPerXp()` derives the rate from the same method,
+so it becomes 20 too. The spawner stores XP as points, not fluid, so switching loses nothing. The catch: CEI
+machines can no longer take XP straight from a spawner. Toggle: `apotspawnerOwnXpFluid` (default on).
+Verified on the dev server by draining the spawner's fluid capability straight into the holder's. With the
+toggle on, 1000 mB of `apotspawner:liquid_experience` became 50 XP in the holder and 50 XP left the spawner.
+With it off, CEI's fluid was offered and 0 was accepted. Against ApotSpawner 1.2.0, CEI 2.4.2 and Just Dire
+Things 1.5.7.
+
 ### Client vs server
 
 - The **auto-solve button** is client-only. It invents no packet: it calls
