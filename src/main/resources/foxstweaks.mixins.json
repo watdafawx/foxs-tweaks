@@ -11,6 +11,7 @@
     "PrinterBlockEntityMixin"
   ],
   "client": [
+    "GuideMeHotkeyMixin",
     "GunSmithTableScreenMixin",
     "IconPickerScreenMixin",
     "TrashSlotGuiHandlerMixin"

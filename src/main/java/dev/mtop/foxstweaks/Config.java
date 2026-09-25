@@ -177,6 +177,14 @@ public final class Config {
                     "Client-side only. Does nothing without EZActions.")
             .define("iconPickerCache", true);
 
+    public static final ModConfigSpec.BooleanValue GUIDEME_TOOLTIP_FIX = BUILDER
+            .comment(
+                    "Stop GuideME's 'Hold [G] to open guide' tooltip line from flickering, or showing another",
+                    "item's guide, when some other mod builds a tooltip for a different item every tick.",
+                    "",
+                    "Client-side only. Does nothing without GuideME.")
+            .define("guidemeTooltipFix", true);
+
     public static final ModConfigSpec SPEC = BUILDER.build();
 
     private Config() {

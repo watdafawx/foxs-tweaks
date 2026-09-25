@@ -484,6 +484,19 @@ things fails soft (the picker just goes back to being slow) — the mixin config
 It sits in the `client` section. Against EZActions 2.0.3.5; re-check the member names on update.
 Toggle: `iconPickerCache`.
 
+### GuideME hotkey tooltip (`mixin/GuideMeHotkeyMixin`)
+
+GuideME's `OpenGuideHotkey.handleTooltip` keeps one global state (`previousItemId`, `guidebookPages`,
+hold progress). It refreshes that state only for the first tooltip built after each client tick
+(`newTick`) and reuses it for every other tooltip that tick. So when any other mod builds a tooltip for a
+different item every tick, the hovered item's "Hold [G] to open guide" line flickers, or shows the other
+item's guide (upstream: GuideME#81, closed without a fix). The mixin hides the line on a tooltip for an
+untracked item unless that tooltip is the tick's first. When the first tooltip is for an item with no
+guide page, it puts the previous state back, including the unused tick, so an item with no guide can't
+take over the hovered item's line. Targets by string with `@Shadow`s on GuideME's private statics, so it
+needs no GuideME compile dependency. Against GuideME 21.1.19; re-check the field names on update. Client
+section. Toggle: `guidemeTooltipFix`.
+
 ### Client vs server
 
 - The **auto-solve button** is client-only. It invents no packet: it calls
