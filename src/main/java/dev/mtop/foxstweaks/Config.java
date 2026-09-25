@@ -185,6 +185,34 @@ public final class Config {
                     "Client-side only. Does nothing without GuideME.")
             .define("guidemeTooltipFix", true);
 
+    public static final ModConfigSpec.BooleanValue BOTANY_POTS_SOURCE = BUILDER
+            .comment(
+                    "Feed Ars Nouveau's Agronomic Sourcelink from crops grown in Botany Pots (any pot built on",
+                    "Botany Pots - tiered, power, dimensional pots and Botany Gardens included). Each harvest",
+                    "counts as one growth of that plant in the world: 20 source, 45 for Ars' magic plants,",
+                    "50 for saplings, 100 for magic saplings. A sourcelink within 15 blocks of the pot collects it.",
+                    "",
+                    "Server-side. Does nothing without Ars Nouveau and Botany Pots.")
+            .define("botanyPotsSource", true);
+
+    public static final ModConfigSpec.BooleanValue APOTSPAWNER_SOURCE = BUILDER
+            .comment(
+                    "Feed Ars Nouveau's Vitalic Sourcelink from kills simulated by ApotSpawner Nexus' virtual",
+                    "spawners, the same 200 source a real death nearby gives. A sourcelink within 15 blocks of",
+                    "the spawner collects it; Ars' vitalic death blacklist still applies.",
+                    "",
+                    "Server-side. Does nothing without Ars Nouveau and ApotSpawner.")
+            .define("apotspawnerSource", true);
+
+    public static final ModConfigSpec.BooleanValue HOSTILE_NETWORKS_SOURCE = BUILDER
+            .comment(
+                    "Feed Ars Nouveau's Vitalic Sourcelink from Hostile Neural Networks' simulation chamber:",
+                    "each finished mob simulation counts as one death (200 source). Block data models are not",
+                    "mobs and give nothing. A sourcelink within 15 blocks of the chamber collects it.",
+                    "",
+                    "Server-side. Does nothing without Ars Nouveau and Hostile Neural Networks.")
+            .define("hostileNetworksSource", true);
+
     public static final ModConfigSpec SPEC = BUILDER.build();
 
     private Config() {

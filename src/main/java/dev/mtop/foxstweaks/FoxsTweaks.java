@@ -31,6 +31,7 @@ public class FoxsTweaks {
     public static final String RELICS = "relics";
     public static final String APOTHEOSIS = "apotheosis";
     public static final String POINT_BLANK = "pointblank";
+    public static final String ARS_NOUVEAU = "ars_nouveau";
 
     public FoxsTweaks(IEventBus modBus, ModContainer container) {
         container.registerConfig(ModConfig.Type.COMMON, Config.SPEC);

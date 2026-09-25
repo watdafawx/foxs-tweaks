@@ -4,8 +4,8 @@ Guidance for AI agents working in this repository.
 
 ## What this is
 
-A NeoForge **1.21.1** mod (`foxstweaks`, "Fox's Tweaks") that is really nine unrelated
-quality-of-life features sharing a jar:
+A NeoForge **1.21.1** mod (`foxstweaks`, "Fox's Tweaks") that is really a bundle of unrelated
+quality-of-life features sharing a jar, among them:
 
 1. **Relics integration** — auto-completes the constellation "star puzzle" research, both on pickup
    and via a button on the research screen.
@@ -22,6 +22,8 @@ quality-of-life features sharing a jar:
 7. **TACZ gunsmith table storage** — server-side; every gun pack's own workbench can do the same.
 8. **TACZ ammo box reset** — server-side; clears a creative ammo box's locked-in ammo type.
 9. **EZActions icon picker cache** — client-side mixin that makes its icon picker open fast.
+10. **Ars Nouveau source from simulations** — server-side; Botany Pots harvests feed Agronomic
+    Sourcelinks, ApotSpawner and Hostile Neural Networks simulated kills feed Vitalic ones.
 
 **Every parent mod is optional.** The mod must load and behave correctly with either, both, or
 neither installed. This is the single most important invariant in the codebase — see
@@ -496,6 +498,39 @@ guide page, it puts the previous state back, including the unused tick, so an it
 take over the hovered item's line. Targets by string with `@Shadow`s on GuideME's private statics, so it
 needs no GuideME compile dependency. Against GuideME 21.1.19; re-check the field names on update. Client
 section. Toggle: `guidemeTooltipFix`.
+
+### Ars Nouveau source from simulated growth and kills (`ars/compat/ArsSourcelinks`, three mixins)
+
+Ars' Agronomic and Vitalic sourcelinks listen for `CropGrowEvent.Post` and `LivingDeathEvent`. Crops in
+pots never grow in the world, and a simulated kill has no death, so those listeners never fire. Each
+mixin reports its event through `SourcelinkEventQueue.addManaEvent`, the call Ars' own listeners make,
+with the same amounts (crop 20, magic plant 45, sapling 50, magic sapling 100, death 200). That keeps the
+15-block range, the "is it full" check and the particle as Ars' own. The queue gives each event to the
+**first** sourcelink of that type in range, so a test with two sourcelinks near one source can look like
+one of them gets nothing.
+
+- **`BotanyPotsCropMixin`** (`botanyPotsSource`) hooks `BasicCrop#onHarvest`. That is the only `Crop`
+  implementation in the pack (`BlockDerivedCrop` extends it without overriding), and every pot mod
+  (Botany Pots, Tiers, Power Pots, Dimensional Pots, Botany Gardens) calls it, so one hook covers them
+  all. `BotanyPotContext` has no position. Botany Pots' own `BlockEntityContext` gives the pot, and any
+  other context (Botany Gardens' `CellContext`) is asked for its loot `ORIGIN`. Botany Gardens calls
+  `onHarvest` once per loot roll, so its yield upgrades also raise the source.
+- **`ApotSpawnerKillMixin`** (`apotspawnerSource`) hooks the `HEAD` of `SpawnerEventHandler#generateDeathRewards`
+  (once per simulated kill). The last parameter is a private type, so the arguments are taken with
+  MixinExtras `@Local(argsOnly = true)`. The caller catches `RuntimeException` and logs
+  `Virtual kill failed for spawner at ...`, so a throw in our code shows up there.
+- **`SimChamberMixin`** (`hostileNetworksSource`) hooks `SimChamberTileEntity#serverTick` at
+  `DataModelItem.setIters`, which runs once per finished simulation in either mode. Only
+  `EntityDataModel` counts, since a block data model is not a kill. The entity type is still checked
+  against Ars' vitalic death blacklist.
+
+Ars types appear only in `ArsSourcelinks`. The mixins target by string and do nothing until
+`ArsSourcelinks.loaded()` is true. Compile-only: `ars_nouveau_version`, `botanypots_version` (Modrinth
+version ids) and `hnn_version` (Shadows' maven). **Verified on a headless dev server** (`runServer`
+with RCON, blocks set up by NBT): 5 wheat harvests in a hopper pot gave 100 source, 2 in a garden cell
+gave 40, 9 HNN simulations gave 1800, and 41 ApotSpawner kills gave 8200. Tested against Ars 5.13.1,
+Botany Pots 21.1.44, HNN 6.5.1 and ApotSpawner 1.2.0. Re-check the hooked member names when any of
+these update.
 
 ### Client vs server
 

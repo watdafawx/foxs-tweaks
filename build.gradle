@@ -85,6 +85,9 @@ dependencies {
     compileOnly "maven.modrinth:shatterbyte-lib:${octolib_version}" // OctoLib; "shatterbyte-lib" is its Modrinth slug.
     compileOnly "maven.modrinth:vics-point-blank:${pointblank_version}"
     compileOnly "maven.modrinth:ae2:${ae2_version}"
+    compileOnly "maven.modrinth:ars-nouveau:${ars_nouveau_version}"
+    compileOnly "maven.modrinth:botany-pots:${botanypots_version}"
+    compileOnly "dev.shadowsoffire:HostileNeuralNetworks:${minecraft_version}-${hnn_version}"
 }
 
 tasks.withType(JavaCompile).configureEach {
