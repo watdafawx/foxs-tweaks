@@ -7,8 +7,11 @@
     "ApotSpawnerKillMixin",
     "BotanyPotsCropMixin",
     "DynamicRegistryMixin",
+    "ExtraHnnModelingMixin",
+    "ExtraHnnSimMixin",
     "GunSmithTableBlockEntityMixin",
     "GunSmithTableMenuMixin",
+    "HniSimChamberMixin",
     "PointBlankInventoryUtilsMixin",
     "PrinterBlockEntityMixin",
     "SimChamberMixin"

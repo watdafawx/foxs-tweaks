@@ -23,7 +23,8 @@ quality-of-life features sharing a jar, among them:
 8. **TACZ ammo box reset** — server-side; clears a creative ammo box's locked-in ammo type.
 9. **EZActions icon picker cache** — client-side mixin that makes its icon picker open fast.
 10. **Ars Nouveau source from simulations** — server-side; Botany Pots harvests feed Agronomic
-    Sourcelinks, ApotSpawner and Hostile Neural Networks simulated kills feed Vitalic ones.
+    Sourcelinks; ApotSpawner kills and Hostile Neural Networks (plus ExtraHNN / HNI) simulations feed
+    Vitalic ones.
 
 **Every parent mod is optional.** The mod must load and behave correctly with either, both, or
 neither installed. This is the single most important invariant in the codebase — see
@@ -519,18 +520,37 @@ one of them gets nothing.
   (once per simulated kill). The last parameter is a private type, so the arguments are taken with
   MixinExtras `@Local(argsOnly = true)`. The caller catches `RuntimeException` and logs
   `Virtual kill failed for spawner at ...`, so a throw in our code shows up there.
-- **`SimChamberMixin`** (`hostileNetworksSource`) hooks `SimChamberTileEntity#serverTick` at
-  `DataModelItem.setIters`, which runs once per finished simulation in either mode. Only
-  `EntityDataModel` counts, since a block data model is not a kill. The entity type is still checked
-  against Ars' vitalic death blacklist.
+- **HNN and its addon machines** all go through `ars/compat/HnnSimulations#finished(machine, modelStack)`.
+  Every one of them updates the data model stack once per finished simulation, so each mixin grabs that
+  stack and nothing else. The helper reads the mobs from it: a plain HNN model holds one, and ExtraHNN's
+  merged model holds up to four in its `extrahnn:extra_data_model` component, read by registry id so
+  ExtraHNN is not a compile dependency. Only `EntityDataModel` counts, since a block data model is not a
+  kill, and each mob is still checked against Ars' vitalic death blacklist.
+  - `SimChamberMixin` (`hostileNetworksSource`): `@ModifyArg` on `setIters` in HNN's
+    `SimChamberTileEntity#serverTick`, which runs in both inference and training mode.
+  - `ExtraHnnSimMixin` / `ExtraHnnModelingMixin` (`extraHnnSource`): the same, in ExtraHNN's
+    `UltimateSimChamberTileEntity#setResult` and `SimulationModelingTileEntity#result`. The target is
+    only the name `setIters`, so it matches both `DataModelItem`'s and `ExtraDataModelItem`'s. The
+    Ultimate chamber's version multiplier (more drops per run) does not add deaths, but a 4-mob merged
+    model counts 4, which matches the 4 prediction matrices it uses up.
+  - `HniSimChamberMixin` (`hostileNeuralIndustrializationSource`): `@ModifyExpressionValue` on
+    `getUpdatedModel` in `onCraft` of both Hostile Neural Industrialization machines, the electric one
+    and the multiblock. `setIters` itself lives in HNI's interface default method, which a mixin cannot
+    hook, and the return value is a plain `ItemStack`, so no Modern Industrialization type is needed.
 
-Ars types appear only in `ArsSourcelinks`. The mixins target by string and do nothing until
-`ArsSourcelinks.loaded()` is true. Compile-only: `ars_nouveau_version`, `botanypots_version` (Modrinth
-version ids) and `hnn_version` (Shadows' maven). **Verified on a headless dev server** (`runServer`
-with RCON, blocks set up by NBT): 5 wheat harvests in a hopper pot gave 100 source, 2 in a garden cell
-gave 40, 9 HNN simulations gave 1800, and 41 ApotSpawner kills gave 8200. Tested against Ars 5.13.1,
-Botany Pots 21.1.44, HNN 6.5.1 and ApotSpawner 1.2.0. Re-check the hooked member names when any of
-these update.
+Ars types appear only in `ArsSourcelinks`, and HNN types only in `HnnSimulations` and HNN-only mixins.
+The mixins target by string and do nothing until `ArsSourcelinks.loaded()` is true. Compile-only:
+`ars_nouveau_version`, `botanypots_version` (Modrinth version ids) and `hnn_version` (Shadows' maven).
+A wrong target **method** name crashes the game at load even with `required: false`, because
+`defaultRequire` is 1 (that happened with `SimulationModelingTileEntity`, whose method is `result`, not
+`serverTick`). A missing target **class** only logs a warning.
+
+**Verified on a headless dev server** (`runServer` with RCON, blocks set up by NBT): 5 wheat harvests in
+a hopper pot gave 100 source, 2 in a garden cell gave 40, 5 HNN simulations gave 1000, 41 ApotSpawner
+kills gave 8200, 5 ExtraHNN Ultimate runs of a 4-mob model gave 4000, 2 Simulation Modeling runs gave
+400, and 4 HNI electric chamber recipes gave 800. The HNI multiblock was only checked for the mixin
+being applied, not run. Tested against Ars 5.13.1, Botany Pots 21.1.44, HNN 6.5.1, ApotSpawner 1.2.0,
+ExtraHNN 2.2.5 and HNI 1.0.16. Re-check the hooked member names when any of these update.
 
 ### Client vs server
 

@@ -213,6 +213,23 @@ public final class Config {
                     "Server-side. Does nothing without Ars Nouveau and Hostile Neural Networks.")
             .define("hostileNetworksSource", true);
 
+    public static final ModConfigSpec.BooleanValue EXTRA_HNN_SOURCE = BUILDER
+            .comment(
+                    "As hostileNetworksSource, for ExtraHNN's Ultimate Simulation Chamber and Simulation Modeling",
+                    "machine. A merged data model counts one death per mob in it; the chamber tier's drop",
+                    "multiplier does not add deaths.",
+                    "",
+                    "Server-side. Does nothing without Ars Nouveau and ExtraHNN.")
+            .define("extraHnnSource", true);
+
+    public static final ModConfigSpec.BooleanValue HNI_SOURCE = BUILDER
+            .comment(
+                    "As hostileNetworksSource, for Hostile Neural Industrialization's Modern Industrialization",
+                    "sim chambers (single-block and multiblock): each finished recipe counts as one death.",
+                    "",
+                    "Server-side. Does nothing without Ars Nouveau and Hostile Neural Industrialization.")
+            .define("hostileNeuralIndustrializationSource", true);
+
     public static final ModConfigSpec SPEC = BUILDER.build();
 
     private Config() {
