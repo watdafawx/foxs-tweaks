@@ -1,6 +1,8 @@
 package dev.mtop.foxstweaks;
 
 import dev.mtop.foxstweaks.apotheosis.AffixToggleNetwork;
+import dev.mtop.foxstweaks.gag.TemporalPouchCurio;
+import dev.mtop.foxstweaks.gag.TemporalPouchNetwork;
 import dev.mtop.foxstweaks.relics.RelicsIntegration;
 import dev.mtop.foxstweaks.storage.NearbyItemsNetwork;
 import net.neoforged.bus.api.IEventBus;
@@ -8,6 +10,7 @@ import net.neoforged.fml.ModContainer;
 import net.neoforged.fml.ModList;
 import net.neoforged.fml.common.Mod;
 import net.neoforged.fml.config.ModConfig;
+import net.neoforged.fml.event.lifecycle.FMLCommonSetupEvent;
 
 /**
  * Quality-of-life tweaks for gear mods, as a set of independent optional integrations.
@@ -32,6 +35,8 @@ public class FoxsTweaks {
     public static final String APOTHEOSIS = "apotheosis";
     public static final String POINT_BLANK = "pointblank";
     public static final String ARS_NOUVEAU = "ars_nouveau";
+    public static final String GAG = "gag";
+    public static final String CURIOS = "curios";
 
     public FoxsTweaks(IEventBus modBus, ModContainer container) {
         container.registerConfig(ModConfig.Type.COMMON, Config.SPEC);
@@ -40,8 +45,12 @@ public class FoxsTweaks {
         // Point Blank printer and TACZ's gunsmith table may want to send on it.
         modBus.addListener(NearbyItemsNetwork::register);
         modBus.addListener(AffixToggleNetwork::register);
+        modBus.addListener(TemporalPouchNetwork::register);
 
         FoxsTweaksComponents.COMPONENTS.register(modBus);
+
+        if (TemporalPouchNetwork.isAvailable())
+            modBus.addListener((FMLCommonSetupEvent event) -> event.enqueueWork(TemporalPouchCurio::register));
 
         if (ModList.get().isLoaded(RELICS))
             RelicsIntegration.init();

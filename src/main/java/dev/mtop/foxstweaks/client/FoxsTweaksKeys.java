@@ -35,10 +35,18 @@ public class FoxsTweaksKeys {
             InputConstants.UNKNOWN.getValue(),
             CATEGORY);
 
+    /** Uses the Temporal Pouch in its Curios slot on the looked-at block (see {@code client.TemporalPouchKeyHandler}). Unbound by default. */
+    public static final KeyMapping USE_TEMPORAL_POUCH = new KeyMapping(
+            "key." + FoxsTweaks.MODID + ".use_temporal_pouch",
+            InputConstants.Type.KEYSYM,
+            InputConstants.UNKNOWN.getValue(),
+            CATEGORY);
+
     @SubscribeEvent
     public static void onRegisterKeyMappings(RegisterKeyMappingsEvent event) {
         event.register(SHOW_AFFIX_INFO);
         event.register(TOGGLE_AFFIXES);
+        event.register(USE_TEMPORAL_POUCH);
     }
 
     /**

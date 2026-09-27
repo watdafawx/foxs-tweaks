@@ -1,0 +1,7 @@
+{
+  "neoforge:conditions": [{ "type": "neoforge:mod_loaded", "modid": "gag" }],
+  "size": 1,
+  "order": 250,
+  "icon": "foxstweaks:slot/temporal_pouch",
+  "validators": ["curios:tag"]
+}

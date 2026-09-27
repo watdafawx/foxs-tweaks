@@ -203,6 +203,17 @@ public final class Config {
                     "Client-side only. Does nothing without TACZ.")
             .define("taczAttachmentTooltipNumbers", true);
 
+    public static final ModConfigSpec.BooleanValue TEMPORAL_POUCH_CURIO = BUILDER
+            .comment(
+                    "Gadgets Against Grind's Temporal Pouch gets its own Curios slot, keeps filling with time",
+                    "while it sits there, and a hotkey (Options -> Controls, unbound by default) uses it on the",
+                    "block you're looking at as if it were in your hand. The slot itself comes from data and",
+                    "shows whenever GAG and Curios are both installed; this toggle turns off the filling and",
+                    "the hotkey.",
+                    "",
+                    "Server + client. Does nothing without GAG and Curios.")
+            .define("temporalPouchCurio", true);
+
     public static final ModConfigSpec.BooleanValue AE2_EMI_QUICK_FILL = BUILDER
             .comment(
                     "Let EMI's craft binds (shift-click a stack in the index, favorites or craftables) fill",

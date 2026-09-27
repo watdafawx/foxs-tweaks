@@ -25,6 +25,8 @@ quality-of-life features sharing a jar, among them:
 10. **Ars Nouveau source from simulations** — server-side; Botany Pots harvests feed Agronomic
     Sourcelinks; ApotSpawner kills and Hostile Neural Networks (plus ExtraHNN / HNI) simulations feed
     Vitalic ones.
+11. **GAG Temporal Pouch curio** — a Curios slot for Gadgets Against Grind's Temporal Pouch, which keeps
+    filling there, plus a hotkey that uses it on the looked-at block.
 
 **Every parent mod is optional.** The mod must load and behave correctly with either, both, or
 neither installed. This is the single most important invariant in the codebase — see
@@ -527,6 +529,29 @@ addend in the refit screen's unit (s, kg, m, m/s, rpm, % for armor ignore), `per
 fastutil's), so no TACZ compile dependency; anything it can't read is left unchanged. Against TACZ
 1.1.8-hotfix-r6; re-check the modifier classes' keys and value shapes on update. Client section. Toggle:
 `taczAttachmentTooltipNumbers`.
+
+### GAG Temporal Pouch curio (`gag/TemporalPouchCurio`, `gag/TemporalPouchNetwork`, `client/TemporalPouchKeyHandler`)
+
+The slot is pure data: `data/foxstweaks/curios/slots/temporal_pouch.json` and `.../curios/entities/temporal_pouch.json`
+(both behind a `neoforge:mod_loaded` condition on `gag`, which Curios honours) plus the item tag
+`data/curios/tags/item/temporal_pouch.json` holding `gag:time_sand_pouch` (`required: false`). Icon:
+`textures/slot/temporal_pouch.png`, picked up by Curios' blocks-atlas `slot/` source. Slot name lang key:
+`curios.identifier.temporal_pouch`.
+
+GAG's `TemporalPouchItem` only gains time in `inventoryTick`, which Curios never calls, so
+`TemporalPouchCurio` (an `ICurioItem` registered with `CuriosApi.registerCurio` in common setup, only when both
+GAG and Curios are loaded) runs `ItemStack.inventoryTick` from `curioTick` every 20 ticks. GAG's own
+anti-stacking check (zero the smaller of two pouches) only scans the main inventory, so the equipped pouch
+skips ticking while another pouch is in the inventory.
+
+The hotkey (`key.foxstweaks.use_temporal_pouch`, unbound) sends an empty `UsePouchPayload` when the client
+is looking at a block. The server ray-traces itself (`player.pick` at `blockInteractionRange`, then
+`canInteractWithBlock` and `mayInteract`), finds the equipped pouch with `findFirstCurio`, and calls
+`useOn` with a `UseOnContext` built on the curio stack: `TemporalPouchItem.useOn` takes its stack from
+`ctx.getItemInHand()`, so no hand swapping is needed. Curios types live only in `TemporalPouchCurio`;
+`TemporalPouchNetwork` reaches it behind `isAvailable()`. Curios is a `compileOnly` dependency; GAG is not
+needed at compile time (looked up by id). Against GAG 5.2.0 and Curios 9.5.1. Toggle: `temporalPouchCurio`
+(filling + hotkey; the slot itself is data and stays).
 
 ### Ars Nouveau source from simulated growth and kills (`ars/compat/ArsSourcelinks`, three mixins)
 

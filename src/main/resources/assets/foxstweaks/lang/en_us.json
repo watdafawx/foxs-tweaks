@@ -4,15 +4,13 @@
   "foxstweaks.research.autosolve.clear": "Clears %s wrong connection(s) first.",
   "foxstweaks.research.autosolve.free": "Costs no experience.",
   "foxstweaks.research.autosolve.locked": "This constellation is already complete.",
-
   "foxstweaks.affix_panel.caption": "Fox's Tweaks - Affix Info",
-
   "foxstweaks.affix_toggle.title": "Affixes - %s",
   "foxstweaks.affix_toggle.hint": "Click an affix to disable or enable it",
-
   "foxstweaks.ammo_box.cleared": "Ammo type cleared - right-click a different ammo to set it",
-
   "key.categories.foxstweaks": "Fox's Tweaks",
   "key.foxstweaks.show_affix_info": "Show Affixes & Gem Sockets",
-  "key.foxstweaks.toggle_affixes": "Toggle Affixes on Held Item"
+  "key.foxstweaks.toggle_affixes": "Toggle Affixes on Held Item",
+  "key.foxstweaks.use_temporal_pouch": "Use Temporal Pouch (Curio Slot)",
+  "curios.identifier.temporal_pouch": "Temporal Pouch"
 }
