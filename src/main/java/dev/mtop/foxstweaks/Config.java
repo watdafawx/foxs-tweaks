@@ -195,6 +195,14 @@ public final class Config {
                     "Client-side only. Does nothing without Sophisticated Backpacks.")
             .define("backpackRenderInfoCache", true);
 
+    public static final ModConfigSpec.BooleanValue TACZ_ATTACHMENT_TOOLTIP_NUMBERS = BUILDER
+            .comment(
+                    "Show how much a TACZ attachment changes each stat in its tooltip, not just which stats it",
+                    "changes: '+ ADS Time (+0.1s)', '- Vertical Recoil (-10%)'. Units match TACZ's refit screen.",
+                    "",
+                    "Client-side only. Does nothing without TACZ.")
+            .define("taczAttachmentTooltipNumbers", true);
+
     public static final ModConfigSpec.BooleanValue AE2_EMI_QUICK_FILL = BUILDER
             .comment(
                     "Let EMI's craft binds (shift-click a stack in the index, favorites or craftables) fill",

@@ -514,6 +514,20 @@ which `deserialize` migrates onto the stack) are not cached. The component type 
 Against Sophisticated Backpacks 3.26.3; re-check that `fromPhysicalStack` still has only read-only callers
 on update. Client section. Toggle: `backpackRenderInfoCache`.
 
+### TACZ attachment tooltip numbers (`mixin/TaczAttachmentTooltipMixin`)
+
+TACZ's attachment tooltip lists which stats an attachment changes ("+ ADS Time") but not by how much. Each
+modifier type's `JsonProperty.initComponents()` adds `tooltip.tacz.attachment.<stat>.increase|decrease`
+lines once, and `ClientAttachmentItemTooltip` reads them via `JsonProperty.getComponents()`. The mixin hooks
+`getComponents` (RETURN) and returns a per-instance cached copy with the numbers appended: it matches each
+line's translation key, picks that stat's `Modifier` out of `getValue()` (the value itself; `Pair` left/right
+for recoil pitch/yaw and sound distance; the `InaccuracyType` map entry; or a `MoveSpeed` getter) and prints
+addend in the refit screen's unit (s, kg, m, m/s, rpm, % for armor ignore), `percent` and `multiplier` as a
+% change, and "scripted" when a `function` is set. TACZ types are reached only by reflection (`Pair` is
+fastutil's), so no TACZ compile dependency; anything it can't read is left unchanged. Against TACZ
+1.1.8-hotfix-r6; re-check the modifier classes' keys and value shapes on update. Client section. Toggle:
+`taczAttachmentTooltipNumbers`.
+
 ### Ars Nouveau source from simulated growth and kills (`ars/compat/ArsSourcelinks`, three mixins)
 
 Ars' Agronomic and Vitalic sourcelinks listen for `CropGrowEvent.Post` and `LivingDeathEvent`. Crops in
