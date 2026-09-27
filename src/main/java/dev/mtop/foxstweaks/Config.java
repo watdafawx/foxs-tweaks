@@ -185,6 +185,27 @@ public final class Config {
                     "Client-side only. Does nothing without GuideME.")
             .define("guidemeTooltipFix", true);
 
+    public static final ModConfigSpec.BooleanValue BACKPACK_RENDER_INFO_CACHE = BUILDER
+            .comment(
+                    "Stop Sophisticated Backpacks re-reading a backpack's render data every frame. Drawing a",
+                    "backpack (hotbar, inventory, worn on your back) re-parsed its whole render tag, upgrade",
+                    "items included, each time it was drawn. This keeps the parsed result until the backpack's",
+                    "render data changes.",
+                    "",
+                    "Client-side only. Does nothing without Sophisticated Backpacks.")
+            .define("backpackRenderInfoCache", true);
+
+    public static final ModConfigSpec.BooleanValue AE2_EMI_QUICK_FILL = BUILDER
+            .comment(
+                    "Let EMI's craft binds (shift-click a stack in the index, favorites or craftables) fill",
+                    "any AE2 terminal - crafting terminal, pattern encoder, wireless ones - using AE2's own",
+                    "check, which counts the whole ME network and encodes patterns for items you don't have.",
+                    "Replaces the 'AE2: EMI Quick Fill' mod without its freeze: EMI's craftables list keeps",
+                    "EMI's cheap check instead of running AE2's full transfer for every recipe in the pack.",
+                    "",
+                    "Client-side only. Does nothing without AE2 and EMI.")
+            .define("ae2EmiQuickFill", true);
+
     public static final ModConfigSpec.BooleanValue BOTANY_POTS_SOURCE = BUILDER
             .comment(
                     "Feed Ars Nouveau's Agronomic Sourcelink from crops grown in Botany Pots (any pot built on",

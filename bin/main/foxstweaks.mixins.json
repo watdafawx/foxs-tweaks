@@ -4,15 +4,26 @@
   "package": "dev.mtop.foxstweaks.mixin",
   "compatibilityLevel": "JAVA_21",
   "mixins": [
+    "ApotSpawnerKillMixin",
+    "ApotSpawnerXpFluidMixin",
+    "BotanyPotsCropMixin",
     "DynamicRegistryMixin",
+    "ExtraHnnModelingMixin",
+    "ExtraHnnSimMixin",
     "GunSmithTableBlockEntityMixin",
     "GunSmithTableMenuMixin",
+    "HniSimChamberMixin",
     "PointBlankInventoryUtilsMixin",
-    "PrinterBlockEntityMixin"
+    "PrinterBlockEntityMixin",
+    "SimChamberMixin"
   ],
   "client": [
+    "Ae2EmiQuickFillMixin",
+    "EmiCraftablesScanMixin",
+    "GuideMeHotkeyMixin",
     "GunSmithTableScreenMixin",
-    "IconPickerScreenMixin"
+    "IconPickerScreenMixin",
+    "TrashSlotGuiHandlerMixin"
   ],
   "injectors": {
     "defaultRequire": 1

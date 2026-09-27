@@ -500,6 +500,20 @@ take over the hovered item's line. Targets by string with `@Shadow`s on GuideME'
 needs no GuideME compile dependency. Against GuideME 21.1.19; re-check the field names on update. Client
 section. Toggle: `guidemeTooltipFix`.
 
+### Sophisticated Backpacks render info cache (`mixin/BackpackRenderInfoMixin`)
+
+`BackpackRenderInfo.fromPhysicalStack` builds a new render info from the stack on every call, deep-copying
+the render tag and decoding each upgrade item through the `ItemStack` codec. The item model override
+(`BackpackItemOverrideList.resolve`), `BackpackItemStackRenderer` and `BackpackLayerRenderer` all call it
+per draw, so backpacks in the hotbar or on a back cost ~2.5% of frame time in a spark profile. All three
+only read the result, so the mixin caches it by the `sophisticatedcore:render_info_tag` component
+instance (identity, Guava `weakKeys`, bounded to 256): components are immutable and replaced whenever the
+render data changes, so a changed backpack gets a new key. Stacks without that component (legacy data,
+which `deserialize` migrates onto the stack) are not cached. The component type is looked up by id in
+`BuiltInRegistries.DATA_COMPONENT_TYPE`, so there's no Sophisticated Core/Backpacks compile dependency.
+Against Sophisticated Backpacks 3.26.3; re-check that `fromPhysicalStack` still has only read-only callers
+on update. Client section. Toggle: `backpackRenderInfoCache`.
+
 ### Ars Nouveau source from simulated growth and kills (`ars/compat/ArsSourcelinks`, three mixins)
 
 Ars' Agronomic and Vitalic sourcelinks listen for `CropGrowEvent.Post` and `LivingDeathEvent`. Crops in
@@ -622,3 +636,17 @@ working and the gap is specific to Relics' items (see `apothic_compats` in
   reader will otherwise "simplify" them back into a bug.
 - The panel and the auto-solve button reuse Relics' and Apotheosis' own textures and helpers rather
   than reimplementing them. Prefer that over lookalike art or copied formatting.
+
+### AE2 EMI quick fill (`mixin/Ae2EmiQuickFillMixin`, `mixin/EmiCraftablesScanMixin`, `client/compat/EmiCraftableScan`)
+
+Replaces the "AE2: EMI Quick Fill" mod (`ae2_emi_quick_fill` 1.0.0), which froze the client whenever an
+ME terminal was open. AE2's `AbstractRecipeHandler#canCraft` runs its own transfer check only for EMI's
+`FILL_BUTTON` context; EMI's craft binds (shift-click etc.) use `CRAFTABLE`, which falls to EMI's plain
+inventory check, so they can't fill a pattern encoder. That mod redirected `CRAFTABLE` → `FILL_BUTTON`
+everywhere, including `EmiPlayerInventory#getCraftables` - which asks `canCraft` for every recipe that
+takes any stack in the inventory (with AE2 exposing the network: most of the pack), and reruns on every
+inventory change, i.e. every ME repo update, while the craftables sidebar is visible. Each call became a
+full AE2 transfer. Here the swap is the same, but `EmiCraftablesScanMixin` (`@WrapMethod` on
+`getCraftables`) flags the rebuild and the swap is skipped inside it. Craft binds still go through
+`getPreferredRecipe`/`performFill`, which get AE2's check. Both target by string; EMI is `compileOnly`
+only for the `EmiCraftContext.Type` enum. Against AE2 19.2.17 / EMI 1.1.24. Client. Toggle: `ae2EmiQuickFill`.

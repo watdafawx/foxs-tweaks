@@ -18,6 +18,9 @@
     "SimChamberMixin"
   ],
   "client": [
+    "Ae2EmiQuickFillMixin",
+    "BackpackRenderInfoMixin",
+    "EmiCraftablesScanMixin",
     "GuideMeHotkeyMixin",
     "GunSmithTableScreenMixin",
     "IconPickerScreenMixin",
