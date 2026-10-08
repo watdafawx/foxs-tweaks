@@ -620,6 +620,20 @@ toggle on, 1000 mB of `apotspawner:liquid_experience` became 50 XP in the holder
 With it off, CEI's fluid was offered and 0 was accepted. Against ApotSpawner 1.2.0, CEI 2.4.2 and Just Dire
 Things 1.5.7.
 
+### ApotSpawner missing items (`mixin/ApotSpawnerMissingItemsMixin`)
+
+ApotSpawner keeps each spawner's stored loot (`NeoForgeData.apotspawner.items`) and drop statistics
+(`...statistics.items`) as raw NBT, and `SpawnerStorage` re-parses every entry on each read through
+`root()`. Its item handler reads constantly while a hopper or pipe is attached. An entry whose item came
+from a removed mod never parses and is never dropped, so it logs `Tried to load invalid item` on every
+read. On a live server that was ~1,300 lines a minute from 13 spawners. The mixin hooks `root()`'s
+`RETURN` and, the first time each spawner is read this session (a weak set of block entities), removes
+every entry that fails `ItemStack.parse`. `root()` returns the live tag, so the removal is in place and
+`setChanged()` saves it. Toggle: `apotspawnerDropMissingItems` (default on).
+Verified on the dev server with a spawner holding `pointblank:gunmetal_nugget` plus diamonds, a hopper
+underneath. With the toggle on, each bad entry logged once and was gone, and the diamonds went on into the
+chest. With it off, 167 errors in 10 s and the entry stayed. Against ApotSpawner 1.2.0.
+
 ### Client vs server
 
 - The **auto-solve button** is client-only. It invents no packet: it calls

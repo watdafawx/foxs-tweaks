@@ -255,6 +255,16 @@ public final class Config {
                     "Server-side. Does nothing without ApotSpawner.")
             .define("apotspawnerOwnXpFluid", true);
 
+    public static final ModConfigSpec.BooleanValue APOTSPAWNER_DROP_MISSING_ITEMS = BUILDER
+            .comment(
+                    "Remove items from removed mods out of ApotSpawner spawners' stored loot and drop statistics.",
+                    "ApotSpawner keeps them forever and re-parses them on every read, logging \"Tried to load",
+                    "invalid item\" thousands of times an hour. Each spawner is cleaned once, the first time it is",
+                    "read. The items are already lost either way; this is what vanilla does for a chest.",
+                    "",
+                    "Server-side. Does nothing without ApotSpawner.")
+            .define("apotspawnerDropMissingItems", true);
+
     public static final ModConfigSpec.BooleanValue HOSTILE_NETWORKS_SOURCE = BUILDER
             .comment(
                     "Feed Ars Nouveau's Vitalic Sourcelink from Hostile Neural Networks' simulation chamber:",
