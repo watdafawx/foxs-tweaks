@@ -27,6 +27,10 @@ quality-of-life features sharing a jar, among them:
     Vitalic ones.
 11. **GAG Temporal Pouch curio** — a Curios slot for Gadgets Against Grind's Temporal Pouch, which keeps
     filling there, plus a hotkey that uses it on the looked-at block.
+12. **Stale mixin guard** — `mixinguard/StaleMixinCanceller` switches off *other* mods' mixins that
+    call a class the mod they patch has since deleted (e.g. ExtendedAE Plus's JEI bookmark mixin after
+    JEI 19.64 removed `CombinedInputHandler`). Without it the target class fails to load and the parent
+    mod breaks. Logs `Disabled mixin ...` per cancel. Runs through MixinSquared, bundled jar-in-jar.
 
 **Every parent mod is optional.** The mod must load and behave correctly with either, both, or
 neither installed. This is the single most important invariant in the codebase — see
@@ -660,6 +664,19 @@ refuses to affix or socket anything mapping to no category, so `no loot category
 relics not receiving affixes - if the vanilla gear affixes fine alongside them, Apotheosis itself is
 working and the gap is specific to Relics' items (see `apothic_compats` in
 [Local setup](#local-setup)).
+
+### Stale mixin guard
+
+MixinSquared (the one bundled dependency) finds `StaleMixinCanceller` through
+`META-INF/services` and asks it about each mixin **when the target class loads**, not at startup -
+so the `Disabled mixin` line appears late (JEI's bookmark overlay loads on world join). The guard only
+cancels when a target class exists, and a method/field owner in the same two-segment package root
+as a target (`mezz/jei`, `appeng/...`) is missing - Mixin resolves every such owner while preparing,
+so those mixins would crash anyway. It must touch nothing but Mixin and ASM: it runs before
+Minecraft classes exist.
+
+Dev runs load this mod from `build/classes`, so jar-in-jar is skipped: drop
+`mixinsquared-neoforge-<version>.jar` into `run/mods/` to exercise the guard there.
 
 ## Known upstream bugs (not ours — do not "fix" them here)
 

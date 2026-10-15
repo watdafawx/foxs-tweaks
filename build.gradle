@@ -65,6 +65,12 @@ repositories {
         url "https://api.modrinth.com/maven"
         content { includeGroup "maven.modrinth" }
     }
+
+    // MixinSquared, bundled (jar-in-jar) for StaleMixinCanceller.
+    maven {
+        url "https://maven.bawnorton.com/releases"
+        content { includeGroup "com.github.bawnorton.mixinsquared" }
+    }
 }
 
 dependencies {
@@ -89,6 +95,12 @@ dependencies {
     compileOnly "maven.modrinth:ars-nouveau:${ars_nouveau_version}"
     compileOnly "maven.modrinth:botany-pots:${botanypots_version}"
     compileOnly "dev.shadowsoffire:HostileNeuralNetworks:${minecraft_version}-${hnn_version}"
+
+    // The one real dependency, shipped inside our jar: lets StaleMixinCanceller switch off other
+    // mods' mixins that broke when the mod they patch updated. The neoforge artifact is the
+    // bootstrap (it nests the common jar); the common jar is only needed to compile against the API.
+    jarJar(implementation("com.github.bawnorton.mixinsquared:mixinsquared-neoforge:${mixinsquared_version}"))
+    compileOnly "com.github.bawnorton.mixinsquared:mixinsquared-common:${mixinsquared_version}"
 }
 
 tasks.withType(JavaCompile).configureEach {
