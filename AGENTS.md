@@ -31,6 +31,10 @@ quality-of-life features sharing a jar, among them:
     call a class the mod they patch has since deleted (e.g. ExtendedAE Plus's JEI bookmark mixin after
     JEI 19.64 removed `CombinedInputHandler`). Without it the target class fails to load and the parent
     mod breaks. Logs `Disabled mixin ...` per cancel. Runs through MixinSquared, bundled jar-in-jar.
+13. **Bedrock Ores thread fix** — server-side; `mixin/BedrockOresCleanupMixin` hands Bedrock Ores'
+    unconfigured-ore cleanup queueing to the server thread. Distant Horizons' server-side world gen
+    adds bedrock ores from its own threads, which corrupted the queue and crashed the server tick
+    ("pos is null" in `UnconfiguredOreCleanup.isLoaded`).
 
 **Every parent mod is optional.** The mod must load and behave correctly with either, both, or
 neither installed. This is the single most important invariant in the codebase — see

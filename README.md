@@ -140,6 +140,13 @@ restarts. With `iconPickerCache` the item list is built at once and names are re
 `cache/foxstweaks_icon_names.json` (per mod: only items from mods you updated, added or removed are
 re-resolved; language and resource packs are ignored, so delete the file after switching language). It also stops the picker rescanning its whole list every frame once names are done.
 
+## Bedrock Ores — no crash with Distant Horizons on the server
+
+Bedrock Ores queues unconfigured bedrock ores for removal in a list only the server thread may touch.
+Distant Horizons' server-side world generation places bedrock ores from its own threads, which breaks
+that list and crashes the server ("pos is null" in `UnconfiguredOreCleanup`). Those calls now go to
+the server thread. Always on; server only.
+
 ## Which side needs what
 
 | Feature | Needs | Side |
@@ -153,6 +160,7 @@ re-resolved; language and resource packs are ignored, so delete the file after s
 | Gunsmith table nearby storage | TACZ | Both (server crafts, client shows accurate counts) |
 | Ammo box reset | TACZ | Server |
 | Icon picker cache | EZActions | Client |
+| Bedrock Ores thread fix | Bedrock Ores | Server |
 
 Research is kept in a server-authoritative data attachment keyed by `<item id>#<ability id>`, and
 `ResearchData` refuses to write unless handed a `ServerPlayer` — so solving on pickup needs this
