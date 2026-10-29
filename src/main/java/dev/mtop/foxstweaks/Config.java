@@ -291,7 +291,63 @@ public final class Config {
                     "Server-side. Does nothing without Ars Nouveau and Hostile Neural Industrialization.")
             .define("hostileNeuralIndustrializationSource", true);
 
+    // Performance patches. Each one targets another mod by class name, so a pack without that mod
+    // simply never applies it; the toggle switches it off in a pack that has the mod.
+
+    public static final ModConfigSpec.BooleanValue TRANSMOG_INVENTORY_FAST_PATH = BUILDER
+            .comment(
+                    "Stop Transmog copying your whole inventory every time something looks at it while the",
+                    "game is drawing. Transmog swaps in each item's transmogged look by building a full copy",
+                    "of the inventory per call; trinket layers, HUDs and ritual renderers call it many times a",
+                    "frame (~10% of frame time in a spark profile). When nothing in the inventory is",
+                    "transmogged the copy would be identical, so the real inventory is returned instead.",
+                    "",
+                    "Client-side only. Does nothing without Transmog.")
+            .define("transmogInventoryFastPath", true);
+
+    public static final ModConfigSpec.BooleanValue ARCHITECTURY_FAST_EVENTS = BUILDER
+            .comment(
+                    "Make Architectury's events call their listeners directly. For every listener of every",
+                    "event, Architectury looked the method up again through reflection (MethodHandles",
+                    "unreflect) and invoked it the slowest way; with many Architectury mods that was a few",
+                    "percent of both client frame time and server tick time.",
+                    "",
+                    "Both sides. Does nothing without Architectury.")
+            .define("architecturyFastEvents", true);
+
+    public static final ModConfigSpec.BooleanValue CURIOS_CACHE_HANDLER_FIX = BUILDER
+            .comment(
+                    "Let Curios Performance Fix's client cache actually hit. Its cache is rebuilt whenever it",
+                    "is asked through a different Curios inventory object, but Curios hands out a new one on",
+                    "every lookup, so most lookups rebuilt it. This reuses one inventory object per entity",
+                    "for up to a second (the same refresh window the cache itself uses).",
+                    "",
+                    "Client-side only. Does nothing without Curios Performance Fix.")
+            .define("curiosCacheHandlerFix", true);
+
+    public static final ModConfigSpec.BooleanValue GPUSHIFT_CLASSIFIER_CACHE = BUILDER
+            .comment(
+                    "Remember GPUShift's particle category per particle type. It worked the category out",
+                    "again for every particle spawned, lower-casing class names up the class hierarchy each",
+                    "time; the answer never changes for a given particle class.",
+                    "",
+                    "Client-side only. Does nothing without GPUShift.")
+            .define("gpushiftClassifierCache", true);
+
     public static final ModConfigSpec SPEC = BUILDER.build();
+
+    /**
+     * Reads a toggle without throwing when the config isn't loaded yet. Patches on hot paths (events,
+     * rendering) can run before FML loads the COMMON config, where {@code get()} throws; those calls just
+     * take the original, unpatched path.
+     */
+    public static boolean enabled(ModConfigSpec.BooleanValue value) {
+        if (!SPEC.isLoaded()) {
+            return false;
+        }
+
+        return value.get();
+    }
 
     private Config() {
     }

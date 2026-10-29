@@ -724,3 +724,27 @@ full AE2 transfer. Here the swap is the same, but `EmiCraftablesScanMixin` (`@Wr
 `getCraftables`) flags the rebuild and the swap is skipped inside it. Craft binds still go through
 `getPreferredRecipe`/`performFill`, which get AE2's check. Both target by string; EMI is `compileOnly`
 only for the `EmiCraftContext.Type` enum. Against AE2 19.2.17 / EMI 1.1.24. Client. Toggle: `ae2EmiQuickFill`.
+
+### Performance patches (`mixin/TransmogInventoryMixin`, `ArchitecturyEventInvokeMixin`, `CuriosCacheHandlerMixin`, `GpuShiftClassifierMixin`)
+
+Four patches found by spark-profiling a large pack (TNP Limitless 8). Each targets its mod by string (or, for
+Transmog, by MixinSquared `@TargetHandler` with `require = 0`), so a pack without that mod never applies it, and
+each reads its toggle through `Config.enabled(...)`, which returns false (original path) while the COMMON config
+is not loaded yet - Architectury events fire during mod construction, before it is.
+
+- **Transmog** (`transmogInventoryFastPath`, client): Transmog's `getInventory` hook copies all 41 slots into a new
+  `Inventory` per call while rendering; ~10% of frame time. Skipped when no stack has `transmog:appearance_item`,
+  since the copy would then equal the original. Against Transmog 1.6.0.
+- **Architectury** (`architecturyFastEvents`, both sides): `EventFactory.invokeMethod` unreflected and
+  `invokeWithArguments`-ed per listener per fire. Replaced by `Method#invoke`, cause unwrapped from
+  `InvocationTargetException` and sneaky-rethrown so callers see the same exception as before; an
+  `IllegalAccessException` falls back to the original. Against Architectury 13.0.11.
+- **Curios Performance Fix** (`curiosCacheHandlerFix`, client): `getFromHandler` rebuilds its snapshot whenever the
+  handler instance differs, and Curios makes a new `CurioInventoryCapability` per lookup. The handler argument is
+  swapped for one remembered per wearer for up to 1 s (the cache's own `SAFETY_REFRESH_NANOS`). Against CPF 1.0.4.
+- **GPUShift** (`gpushiftClassifierCache`, client): `ParticleCategoryClassifier.classify` result cached per particle
+  class in a `ClassValue`; calls with a null `ModPresence` are not cached. Against GPUShift 1.2.8-bugfix.2.
+
+Considered and left out: skipping Iris' redundant `glBindFramebuffer` calls needs the current binding, and a
+`glGet` for it stalls under NVIDIA threaded optimization; AsyncParticles' O(n) `anIterator.remove` under Smart
+Particles' limit stops mattering once `particleLimit` is raised.
