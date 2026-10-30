@@ -31,6 +31,8 @@
     "GuideMeHotkeyMixin",
     "GunSmithTableScreenMixin",
     "IconPickerScreenMixin",
+    "IrisOptionListSearchMixin",
+    "IrisShaderScreenSearchMixin",
     "SbEmiFillButtonMixin",
     "SbEmiFillerMixin",
     "TaczAttachmentTooltipMixin",

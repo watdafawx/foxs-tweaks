@@ -355,6 +355,14 @@ public final class Config {
                     "Client-side only. Does nothing without EMI and Sophisticated Backpacks.")
             .define("sbEmiFill", true);
 
+    public static final ModConfigSpec.BooleanValue IRIS_SETTINGS_SEARCH = BUILDER
+            .comment(
+                    "Search box under Iris' shader pack settings. Type part of a setting's name, id or",
+                    "description (e.g. \"colored light\") to list every matching setting from all menus.",
+                    "",
+                    "Client-side only. Does nothing without Iris.")
+            .define("irisSettingsSearch", true);
+
     public static final ModConfigSpec.IntValue DEBUG_LOG_LOOT_ROLLS = BUILDER
             .comment(
                     "Debugging aid, off by default. When above 0, logs a stack trace for each of the first N",

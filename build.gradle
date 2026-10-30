@@ -92,6 +92,7 @@ dependencies {
     compileOnly "maven.modrinth:vics-point-blank:${pointblank_version}"
     compileOnly "maven.modrinth:ae2:${ae2_version}"
     compileOnly "maven.modrinth:emi:${emi_version}"
+    compileOnly "maven.modrinth:iris:${iris_version}"
     compileOnly "maven.modrinth:ars-nouveau:${ars_nouveau_version}"
     compileOnly "maven.modrinth:botany-pots:${botanypots_version}"
     compileOnly "dev.shadowsoffire:HostileNeuralNetworks:${minecraft_version}-${hnn_version}"
