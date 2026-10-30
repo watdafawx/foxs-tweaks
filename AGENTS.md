@@ -748,3 +748,17 @@ is not loaded yet - Architectury events fire during mod construction, before it 
 Considered and left out: skipping Iris' redundant `glBindFramebuffer` calls needs the current binding, and a
 `glGet` for it stalls under NVIDIA threaded optimization; AsyncParticles' O(n) `anIterator.remove` under Smart
 Particles' limit stops mattering once `particleLimit` is raised.
+
+### Lootr vs Modern Chickens (`mixin/ChickensRadiationLootMixin`, `mixin/LootRollLoggerMixin`, `debug/LootRollLog`)
+
+Structure chests were left as plain chests full of loot instead of becoming Lootr chests. Lootr converts only
+while a container's loot table is still attached; vanilla rolls the table the first time anything calls
+`getItem`. Modern Chickens' Mekanism radiation compat (`MekanismRadiationCompat.onLevelTick`, once a second, every
+container in loaded chunks) read them through `RadioactiveContentHelper.hasRadioactiveItems` seconds after
+generation. The patch answers false for a `RandomizableContainer` whose loot table is unrolled (it is empty, so
+nothing radioactive). Verified on TNP Limitless 8: 3 fresh villages, 57 Lootr containers, 0 pre-rolled.
+Toggle: `chickensRadiationKeepLoot`. Against Modern Chickens 2.7.8.
+
+`debugLogLootRolls` (default 0) logs a stack trace for the first N loot rolls of any `RandomizableContainer`,
+with the player (if any) and level type - the tool that found this. State lives in `LootRollLog` because an
+interface mixin may not declare fields (Mixin rejects it with `InvalidInterfaceMixinException`).

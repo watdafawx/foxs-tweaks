@@ -334,6 +334,25 @@ public final class Config {
                     "Client-side only. Does nothing without GPUShift.")
             .define("gpushiftClassifierCache", true);
 
+    public static final ModConfigSpec.BooleanValue CHICKENS_RADIATION_KEEP_LOOT = BUILDER
+            .comment(
+                    "Stop Modern Chickens' Mekanism radiation check from filling structure chests. It reads every",
+                    "container in loaded chunks once a second, and reading a chest that still has its loot table",
+                    "rolls the loot into it, so new village and dungeon chests were filled before Lootr could turn",
+                    "them into per-player loot chests. Containers with an unrolled loot table are skipped (they",
+                    "are empty, so they can't hold anything radioactive).",
+                    "",
+                    "Server-side. Does nothing without Modern Chickens' Mekanism integration.")
+            .define("chickensRadiationKeepLoot", true);
+
+    public static final ModConfigSpec.IntValue DEBUG_LOG_LOOT_ROLLS = BUILDER
+            .comment(
+                    "Debugging aid, off by default. When above 0, logs a stack trace for each of the first N",
+                    "times a chest/barrel (any RandomizableContainer) rolls its loot table with no player",
+                    "opening it - i.e. some mod read its contents. Used to find what fills structure loot",
+                    "before Lootr can convert it. Look for 'Loot rolled without a player' in latest.log.")
+            .defineInRange("debugLogLootRolls", 0, 0, 1000);
+
     public static final ModConfigSpec SPEC = BUILDER.build();
 
     /**
