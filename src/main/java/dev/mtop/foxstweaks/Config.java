@@ -345,6 +345,16 @@ public final class Config {
                     "Server-side. Does nothing without Modern Chickens' Mekanism integration.")
             .define("chickensRadiationKeepLoot", true);
 
+    public static final ModConfigSpec.BooleanValue SB_EMI_FILL = BUILDER
+            .comment(
+                    "Make EMI's \"+\" work in a crafting table for Sophisticated Backpacks recipes (tier upgrades,",
+                    "dyeing). Sophisticated Core shows them in EMI split into pieces, so EMI said \"Current",
+                    "workstation does not support recipe\". The fill uses a full copy of the recipe instead.",
+                    "Switches itself off per recipe once Sophisticated Core shows full recipes.",
+                    "",
+                    "Client-side only. Does nothing without EMI and Sophisticated Backpacks.")
+            .define("sbEmiFill", true);
+
     public static final ModConfigSpec.IntValue DEBUG_LOG_LOOT_ROLLS = BUILDER
             .comment(
                     "Debugging aid, off by default. When above 0, logs a stack trace for each of the first N",

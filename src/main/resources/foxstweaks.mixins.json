@@ -31,6 +31,8 @@
     "GuideMeHotkeyMixin",
     "GunSmithTableScreenMixin",
     "IconPickerScreenMixin",
+    "SbEmiFillButtonMixin",
+    "SbEmiFillerMixin",
     "TaczAttachmentTooltipMixin",
     "TransmogInventoryMixin",
     "TrashSlotGuiHandlerMixin"
