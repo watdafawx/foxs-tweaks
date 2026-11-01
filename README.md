@@ -147,6 +147,21 @@ Distant Horizons' server-side world generation places bedrock ores from its own 
 that list and crashes the server ("pos is null" in `UnconfiguredOreCleanup`). Those calls now go to
 the server thread. Always on; server only.
 
+## Inventory Profiles Next — buttons that stay put
+
+IPN's editor and settings buttons get placed per screen, so they wander and pile onto other mods' UI.
+With **FTB Library** installed, two IPN buttons join FTB's sidebar instead (top-left, next to the FTB
+icons), drawn in FTB's style and moved or hidden in FTB's sidebar edit mode like any FTB button.
+
+- **Editor** (grid + pencil): click opens IPN's editor for the current screen. **Shift+click** toggles
+  IPN *ignore* for this screen, **Ctrl+click** for this container, **Alt+click** *player side only*. A red
+  corner dot means IPN ignores this screen, yellow means player side only. Saved to IPN's own
+  `player-defined.json`, so IPN's editor shows the same settings.
+- **Settings** (grid + gear): opens IPN's general config.
+
+Turn IPN's own buttons off in its GUI settings (*Enable Overlay Editor Button*, *Enable Settings Button
+in Inventory*). Toggle: `ipnSidebarButtons`. Client-side only.
+
 ## Which side needs what
 
 | Feature | Needs | Side |

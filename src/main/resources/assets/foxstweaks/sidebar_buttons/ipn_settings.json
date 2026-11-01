@@ -1,0 +1,6 @@
+{
+  "icon": ["foxstweaks:icons/ipn_settings"],
+  "sort_index": 901,
+  "click": ["static_method:dev.mtop.foxstweaks.client.compat.IpnSidebar:clickSettings"],
+  "required_mods": ["inventoryprofilesnext"]
+}

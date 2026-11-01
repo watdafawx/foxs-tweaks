@@ -8,6 +8,7 @@ import dev.mtop.foxstweaks.storage.NearbyItemsNetwork;
 import net.neoforged.bus.api.IEventBus;
 import net.neoforged.fml.ModContainer;
 import net.neoforged.fml.ModList;
+import net.neoforged.fml.loading.FMLEnvironment;
 import net.neoforged.fml.common.Mod;
 import net.neoforged.fml.config.ModConfig;
 import net.neoforged.fml.event.lifecycle.FMLCommonSetupEvent;
@@ -54,5 +55,9 @@ public class FoxsTweaks {
 
         if (ModList.get().isLoaded(RELICS))
             RelicsIntegration.init();
+
+        // IPN buttons in FTB Library's sidebar. Client only; IpnSidebar imports FTB and IPN types.
+        if (FMLEnvironment.dist.isClient() && ModList.get().isLoaded("ftblibrary") && ModList.get().isLoaded("inventoryprofilesnext"))
+            dev.mtop.foxstweaks.client.compat.IpnSidebar.init(modBus);
     }
 }

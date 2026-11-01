@@ -27,6 +27,15 @@ neoForge {
             gameDirectory = file('run')
         }
 
+        // Low-memory client for UI-only checks: own game dir (run-lite/, gitignored), 1 GB heap.
+        // Put just the mods under test in run-lite/mods.
+        clientLite {
+            client()
+            gameDirectory = file('run-lite')
+            jvmArguments.addAll('-Xms256M', '-Xmx1G', '-XX:+UseSerialGC')
+            programArguments.addAll('--quickPlaySingleplayer', 'New World')
+        }
+
         // Headless: enough to load datapacks and read the log, e.g. to check what the affix patcher did.
         // Needs the same hand-placed jars as the client, in run-server/mods.
         server {
@@ -66,6 +75,12 @@ repositories {
         content { includeGroup "maven.modrinth" }
     }
 
+    // FTB's own maven - FTB Library, for its sidebar button API.
+    maven {
+        url "https://maven.ftb.dev/releases"
+        content { includeGroup "dev.ftb.mods" }
+    }
+
     // MixinSquared, bundled (jar-in-jar) for StaleMixinCanceller.
     maven {
         url "https://maven.bawnorton.com/releases"
@@ -96,6 +111,12 @@ dependencies {
     compileOnly "maven.modrinth:ars-nouveau:${ars_nouveau_version}"
     compileOnly "maven.modrinth:botany-pots:${botanypots_version}"
     compileOnly "dev.shadowsoffire:HostileNeuralNetworks:${minecraft_version}-${hnn_version}"
+    // Inventory Profiles Next (Kotlin) + its library. kotlin-stdlib only so javac can see the Kotlin
+    // types (Function0, DefaultConstructorMarker) that appear in IPN's class signatures.
+    compileOnly "maven.modrinth:inventory-profiles-next:${ipn_version}"
+    compileOnly "maven.modrinth:libipn:${libipn_version}"
+    compileOnly "org.jetbrains.kotlin:kotlin-stdlib:2.1.0"
+    compileOnly "dev.ftb.mods:ftb-library-neoforge:${ftblibrary_version}"
 
     // The one real dependency, shipped inside our jar: lets StaleMixinCanceller switch off other
     // mods' mixins that broke when the mod they patch updated. The neoforge artifact is the

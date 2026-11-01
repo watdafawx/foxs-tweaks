@@ -35,6 +35,15 @@ quality-of-life features sharing a jar, among them:
     unconfigured-ore cleanup queueing to the server thread. Distant Horizons' server-side world gen
     adds bedrock ores from its own threads, which corrupted the queue and crashed the server tick
     ("pos is null" in `UnconfiguredOreCleanup.isLoaded`).
+14. **IPN buttons in FTB's sidebar** — client-side; `client/compat/IpnSidebar` adds Inventory Profiles
+    Next editor + settings buttons to FTB Library's sidebar via plain sidebar JSON
+    (`assets/foxstweaks/sidebar_buttons/`) whose click is FTB's `static_method:` action. Shift/Ctrl/Alt+click
+    on the editor toggles IPN ignore (screen / container) or player-side-only, saved the way IPN's own
+    editor saves (`client/compat/IpnBridge`, the only class importing IPN). Needs FTB Library *and* IPN.
+    Dev testing: `build.bat runClientLite` (game dir `run-lite/`, 1 GB heap) with just IPN, libIPN,
+    Kotlin for Forge, FTB Library and Architectury in `run-lite/mods`. IPN 2.2.5 crashes on a near-empty
+    mod list (cyclic static init, `Features.ENABLE_PROFILES$delegate` null); `IpnSidebar#devInitOrder`
+    works around it in dev runs only.
 
 **Every parent mod is optional.** The mod must load and behave correctly with either, both, or
 neither installed. This is the single most important invariant in the codebase — see

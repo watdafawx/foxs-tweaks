@@ -12,5 +12,7 @@
   "key.foxstweaks.show_affix_info": "Show Affixes & Gem Sockets",
   "key.foxstweaks.toggle_affixes": "Toggle Affixes on Held Item",
   "key.foxstweaks.use_temporal_pouch": "Use Temporal Pouch (Curio Slot)",
-  "curios.identifier.temporal_pouch": "Temporal Pouch"
+  "curios.identifier.temporal_pouch": "Temporal Pouch",
+  "sidebar_button.foxstweaks.ipn_editor": "IPN Editor",
+  "sidebar_button.foxstweaks.ipn_settings": "IPN Settings"
 }

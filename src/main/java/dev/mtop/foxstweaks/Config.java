@@ -363,6 +363,17 @@ public final class Config {
                     "Client-side only. Does nothing without Iris.")
             .define("irisSettingsSearch", true);
 
+    public static final ModConfigSpec.BooleanValue IPN_SIDEBAR_BUTTONS = BUILDER
+            .comment(
+                    "Inventory Profiles Next editor + settings buttons in FTB Library's sidebar (top-left, next to",
+                    "the FTB icons; move or hide them in FTB's sidebar edit mode). Click = open. On the editor button:",
+                    "Shift+click = toggle IPN ignore for this screen, Ctrl+click = for this container,",
+                    "Alt+click = player-side only; a corner dot shows the state. Turn IPN's own per-screen",
+                    "buttons off in its GUI settings.",
+                    "",
+                    "Client-side only. Needs both Inventory Profiles Next and FTB Library.")
+            .define("ipnSidebarButtons", true);
+
     public static final ModConfigSpec.IntValue DEBUG_LOG_LOOT_ROLLS = BUILDER
             .comment(
                     "Debugging aid, off by default. When above 0, logs a stack trace for each of the first N",
