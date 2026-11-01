@@ -25,7 +25,8 @@ public class ResearchScreenHandler {
 
     @SubscribeEvent
     public static void onScreenInit(ScreenEvent.Init.Post event) {
-        if (!Config.AUTO_SOLVE_BUTTON.get() || !(event.getScreen() instanceof AbilityResearchScreen screen))
+        // Screen check first: this fires for every screen, including ones opened before configs load.
+        if (!(event.getScreen() instanceof AbilityResearchScreen screen) || !Config.AUTO_SOLVE_BUTTON.get())
             return;
 
         // Relics itself returns early from init() in these cases, so there is no hint button to sit
