@@ -1,5 +1,9 @@
 # Changelog
 
+## 1.18.1
+
+- Author is now watdafawx (was mtop); Java packages moved from dev.mtop to dev.watdafawx. No gameplay changes.
+
 ## 1.18.0
 
 - Inventory Profiles Next: IPN's editor and settings buttons can now sit in FTB Library's sidebar,
