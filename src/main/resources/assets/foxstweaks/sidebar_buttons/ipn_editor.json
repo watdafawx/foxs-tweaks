@@ -1,6 +1,6 @@
 {
   "icon": ["foxstweaks:icons/ipn_editor"],
   "sort_index": 900,
-  "click": ["static_method:dev.mtop.foxstweaks.client.compat.IpnSidebar:clickEditor"],
+  "click": ["static_method:dev.watdafawx.foxstweaks.client.compat.IpnSidebar:clickEditor"],
   "required_mods": ["inventoryprofilesnext"]
 }
