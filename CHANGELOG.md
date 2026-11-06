@@ -1,5 +1,10 @@
 # Changelog
 
+
+## 1.20.1
+
+- Fixed: the stale mixin guard switched off Accessories' compat-layer config mixin, so Accessories failed to load ("No endec available for class ...SlotIdRedirect") and took dependent mods with it. The guard took a call into endec (a library owo-lib bundles) for a missing owo-lib internal. It now only treats a class as the patched mod's own when the first three package segments match, and checks every class loader before calling one missing.
+
 ## 1.20.0
 
 - EMI Slim is now part of Fox's Tweaks: EMI shares one item list per tag across its recipes and keeps

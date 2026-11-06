@@ -28,8 +28,15 @@ import java.util.concurrent.ConcurrentHashMap;
  *   <li>at least one target class must be found, which proves the lookup reaches that mod's jar;</li>
  *   <li>only method and field owners count - Mixin resolves every one of those while preparing,
  *       so a missing one is a guaranteed crash, not a maybe;</li>
- *   <li>the missing owner must sit in the same package root as a target (e.g. both
- *       {@code mezz.jei.*}), i.e. the patched mod changed its own internals.</li>
+ *   <li>the missing owner must sit in the same three-segment package root as a target (e.g. both
+ *       {@code mezz.jei.common}), i.e. the patched mod changed its own internals. Two segments was
+ *       too coarse: one author's separate libraries share them - {@code io.wispforest.owo} (owo-lib)
+ *       vs {@code io.wispforest.endec}, a library owo bundles - and the guard took a call into endec
+ *       for an owo internal, then cancelled Accessories' compat-layer {@code ConfigWrapperMixin},
+ *       which took Accessories down with it;</li>
+ *   <li>the owner must be missing from every class loader we can ask, not just Mixin's. Jar-in-jar
+ *       libraries (endec again) live on another module layer that Mixin's resource lookup doesn't
+ *       search, so "not found there" alone isn't "missing".</li>
  * </ul>
  *
  * <p>Loaded by MixinSquared through {@code META-INF/services} during mixin config preparation, long
@@ -103,25 +110,37 @@ public final class StaleMixinCanceller implements MixinCanceller {
 
     private boolean exists(String internalName) {
         return exists.computeIfAbsent(internalName, n -> {
-            try (InputStream in = MixinService.getService().getResourceAsStream(n + ".class")) {
-                return in != null;
+            String resource = n + ".class";
+            try (InputStream in = MixinService.getService().getResourceAsStream(resource)) {
+                if (in != null) return true;
             } catch (IOException e) {
                 return true; // Unknown counts as present: never cancel on a failed read.
             }
+            // Mixin's lookup only sees the game layer; libraries can sit on other layers.
+            for (ClassLoader loader : new ClassLoader[]{
+                    Thread.currentThread().getContextClassLoader(),
+                    StaleMixinCanceller.class.getClassLoader(),
+                    ClassLoader.getSystemClassLoader()}) {
+                if (loader != null && loader.getResource(resource) != null) return true;
+            }
+            return false;
         });
     }
 
-    /** True when {@code owner} and some target share their first two package segments. */
+    /** True when {@code owner} and some target share their first three package segments. */
     private static boolean sharesRoot(String owner, List<String> targets) {
         String root = root(owner);
         return root != null && targets.stream().anyMatch(t -> root.equals(root(t)));
     }
 
+    /** First three package segments ({@code io/wispforest/owo}), or null for a shallower package. */
     private static String root(String internalName) {
-        int first = internalName.indexOf('/');
-        if (first < 0) return null;
-        int second = internalName.indexOf('/', first + 1);
-        return second < 0 ? null : internalName.substring(0, second);
+        int end = -1;
+        for (int i = 0; i < 3; i++) {
+            end = internalName.indexOf('/', end + 1);
+            if (end < 0) return null;
+        }
+        return internalName.substring(0, end);
     }
 
     private static String internal(String name) {

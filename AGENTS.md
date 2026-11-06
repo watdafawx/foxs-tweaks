@@ -738,8 +738,9 @@ working and the gap is specific to Relics' items (see `apothic_compats` in
 MixinSquared (the one bundled dependency) finds `StaleMixinCanceller` through
 `META-INF/services` and asks it about each mixin **when the target class loads**, not at startup -
 so the `Disabled mixin` line appears late (JEI's bookmark overlay loads on world join). The guard only
-cancels when a target class exists, and a method/field owner in the same two-segment package root
-as a target (`mezz/jei`, `appeng/...`) is missing - Mixin resolves every such owner while preparing,
+cancels when a target class exists, and a method/field owner in the same three-segment package root
+as a target (`mezz/jei/common`, `appeng/api/...`) is missing from every class loader (Mixin's lookup
+only sees the game layer; jar-in-jar libraries live elsewhere) - Mixin resolves every such owner while preparing,
 so those mixins would crash anyway. It must touch nothing but Mixin and ASM: it runs before
 Minecraft classes exist.
 
