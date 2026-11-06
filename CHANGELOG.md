@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 1.20.0
 
 - EMI Slim is now part of Fox's Tweaks: EMI shares one item list per tag across its recipes and keeps
   identical item data once, for several hundred MB less memory on big packs. Remove the separate
