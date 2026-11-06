@@ -1,5 +1,12 @@
 # Changelog
 
+## Unreleased
+
+- TACZ: gun, attachment and ammo models draw faster. Invisible zero-area sides are dropped when a
+  model loads (about a quarter of the default gun pack's quads), and drawing no longer allocates per
+  frame. Looks identical. Replaces the performance patch in our TACZ fork, so upstream TACZ can be
+  used. Toggle: `taczFastModelRender` (F3+T to apply).
+
 ## 1.18.1
 
 - Author is now watdafawx (was mtop); Java packages moved from dev.mtop to dev.watdafawx. No gameplay changes.

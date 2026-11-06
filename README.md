@@ -132,6 +132,14 @@ TACZ's ammo box (creative ones included) locks to whichever ammo it's first righ
 built-in way to change it. Sneak + right-click in the air with a held box, and `ammoBoxReset` clears
 its stocked type so a different one can be set.
 
+## TACZ — faster gun model rendering
+
+TACZ draws every gun, attachment and ammo model cube by cube each frame, allocating as it goes and
+emitting sides with zero area (about a quarter of the default gun pack's quads). With
+`taczFastModelRender` each cube is copied once when it loads, minus those invisible sides, and drawn
+with no per-frame allocation. Output is identical; checked vertex by vertex against TACZ's own
+drawing for all 62k cubes of the default gun pack. Changing the setting takes F3+T.
+
 ## EZActions — instant icon picker
 
 EZActions' icon picker indexes every item and resolves every name slowly in the background after each
@@ -174,6 +182,7 @@ in Inventory*). Toggle: `ipnSidebarButtons`. Client-side only.
 | Printer nearby storage | Vic's Point Blank | Both (server crafts, client enables the button) |
 | Gunsmith table nearby storage | TACZ | Both (server crafts, client shows accurate counts) |
 | Ammo box reset | TACZ | Server |
+| Faster gun model rendering | TACZ | Client |
 | Icon picker cache | EZActions | Client |
 | Bedrock Ores thread fix | Bedrock Ores | Server |
 

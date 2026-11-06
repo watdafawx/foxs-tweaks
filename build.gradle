@@ -42,6 +42,15 @@ neoForge {
             programArguments.addAll('--quickPlaySingleplayer', 'New World')
         }
 
+        // Dev-only parity check for the TACZ model fast path (client/dev/TaczModelCheck): draws every TACZ
+        // model cube both ways, writes run-tacz/foxstweaks-tacz-check.txt and quits. Put the TACZ jar in
+        // run-tacz/mods first.
+        taczCheck {
+            client()
+            gameDirectory = file('run-tacz')
+            systemProperty 'foxstweaks.taczCheck', 'true'
+        }
+
         // Headless: enough to load datapacks and read the log, e.g. to check what the affix patcher did.
         // Needs the same hand-placed jars as the client, in run-server/mods.
         server {

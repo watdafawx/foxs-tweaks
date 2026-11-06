@@ -36,6 +36,7 @@
     "SbEmiFillButtonMixin",
     "SbEmiFillerMixin",
     "TaczAttachmentTooltipMixin",
+    "TaczBedrockCubeMixin",
     "TransmogInventoryMixin",
     "TrashSlotGuiHandlerMixin"
   ],

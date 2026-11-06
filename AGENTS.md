@@ -44,6 +44,10 @@ quality-of-life features sharing a jar, among them:
     Kotlin for Forge, FTB Library and Architectury in `run-lite/mods`. IPN 2.2.5 crashes on a near-empty
     mod list (cyclic static init, `Features.ENABLE_PROFILES$delegate` null); `IpnSidebar#devInitOrder`
     works around it in dev runs only.
+15. **TACZ model fast path** — client-side; `mixin/TaczBedrockCubeMixin` + `client/compat/TaczBedrockQuads`
+    draw TACZ's gun/attachment/ammo model cubes from a flat copy without zero-area quads. Replaces our
+    TACZ fork's `perf` branch (its NBT half went upstream). See
+    [TACZ model fast path](#tacz-model-fast-path-mixintaczbedrockcubemixin-clientcompattaczbedrockquads).
 
 **Every parent mod is optional.** The mod must load and behave correctly with either, both, or
 neither installed. This is the single most important invariant in the codebase — see
@@ -546,6 +550,27 @@ addend in the refit screen's unit (s, kg, m, m/s, rpm, % for armor ignore), `per
 fastutil's), so no TACZ compile dependency; anything it can't read is left unchanged. Against TACZ
 1.1.8-hotfix-r6; re-check the modifier classes' keys and value shapes on update. Client section. Toggle:
 `taczAttachmentTooltipNumbers`.
+
+### TACZ model fast path (`mixin/TaczBedrockCubeMixin`, `client/compat/TaczBedrockQuads`)
+
+Ported from our TACZ fork (`watdafawx/TACZ-1.21.1`, branch `perf`) so the pack can run upstream TACZ. TACZ draws
+every model cube through `BedrockCubeBox`/`BedrockCubePerFace#compile` each frame: a `Vector3f` per quad, a
+`Vector4f` per vertex, and all six sides even when a side has zero area (empty per-face UV, flat side of a
+zero-thickness cube) - about 25% of the default gun pack's quads. The mixin (both classes, by name) reads the
+private `polygons` field reflectively once at constructor TAIL, keeps the non-zero-area quads as a flat
+`float[]` (`@Unique foxstweaks$quads`) and replaces `compile` (HEAD, cancel) with an allocation-free loop. Null
+copy = TACZ's own `compile` runs (toggle off at load, or the shape didn't match: one warn, then off for all
+cubes). TACZ builds models on its `ClientAssetLoadDispatcher` worker pool, hence the volatile publication of the
+cached reflection fields. Toggle `taczFastModelRender`, read when a model is built (F3+T to apply).
+
+**Verify with `build.bat runTaczCheck`** (game dir `run-tacz/`, gitignored): put the upstream TACZ jar in
+`run-tacz/mods` and set `EnableLazyClientAssetLoad = false` in `run-tacz/config/tacz-client.toml` (otherwise gun
+models are built on first draw and the check sees only ~200 cubes). `client/dev/TaczModelCheck` (dev only,
+system property `foxstweaks.taczCheck`) builds every gun display plus a few hand-made box-UV cubes, draws each
+cube both ways under a rotated, non-uniformly scaled pose, and requires the fast path's quads to be TACZ's in
+order (positions/normals to 1e-5 relative, colour/uv/light exact) with every skipped quad zero-area on screen.
+Report: `run-tacz/foxstweaks-tacz-check.txt`. Against TACZ 1.1.8-hotfix-r7: 62,513 cubes, 375,078 → 280,880
+quads, draw loop ~2x faster; a swapped normal-matrix term fails parity on ~49k cubes.
 
 ### GAG Temporal Pouch curio (`gag/TemporalPouchCurio`, `gag/TemporalPouchNetwork`, `client/TemporalPouchKeyHandler`)
 

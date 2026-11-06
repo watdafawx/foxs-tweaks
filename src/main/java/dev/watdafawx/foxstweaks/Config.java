@@ -203,6 +203,16 @@ public final class Config {
                     "Client-side only. Does nothing without TACZ.")
             .define("taczAttachmentTooltipNumbers", true);
 
+    public static final ModConfigSpec.BooleanValue TACZ_FAST_MODEL_RENDER = BUILDER
+            .comment(
+                    "Draw TACZ gun, attachment and ammo models faster. Each model cube is copied once when it",
+                    "loads, without its zero-area sides (empty faces and the flat sides of paper-thin cubes),",
+                    "and then drawn with no per-frame allocation. Looks identical. Read when models load, so",
+                    "a change takes a resource reload (F3+T).",
+                    "",
+                    "Client-side only. Does nothing without TACZ.")
+            .define("taczFastModelRender", true);
+
     public static final ModConfigSpec.BooleanValue TEMPORAL_POUCH_CURIO = BUILDER
             .comment(
                     "Gadgets Against Grind's Temporal Pouch gets its own Curios slot, keeps filling with time",

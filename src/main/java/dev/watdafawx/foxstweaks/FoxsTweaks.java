@@ -59,5 +59,9 @@ public class FoxsTweaks {
         // IPN buttons in FTB Library's sidebar. Client only; IpnSidebar imports FTB and IPN types.
         if (FMLEnvironment.dist.isClient() && ModList.get().isLoaded("ftblibrary") && ModList.get().isLoaded("inventoryprofilesnext"))
             dev.watdafawx.foxstweaks.client.compat.IpnSidebar.init(modBus);
+
+        // Dev-only parity check for the TACZ model fast path; `build.bat taczCheck` sets the property.
+        if (FMLEnvironment.dist.isClient() && !FMLEnvironment.production && Boolean.getBoolean("foxstweaks.taczCheck") && ModList.get().isLoaded("tacz"))
+            dev.watdafawx.foxstweaks.client.dev.TaczModelCheck.install();
     }
 }
