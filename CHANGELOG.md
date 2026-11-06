@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 1.19.0
 
 - TACZ: gun, attachment and ammo models draw faster. Invisible zero-area sides are dropped when a
   model loads (about a quarter of the default gun pack's quads), and drawing no longer allocates per
