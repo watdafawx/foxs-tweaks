@@ -63,5 +63,9 @@ public class FoxsTweaks {
         // Dev-only parity check for the TACZ model fast path; `build.bat taczCheck` sets the property.
         if (FMLEnvironment.dist.isClient() && !FMLEnvironment.production && Boolean.getBoolean("foxstweaks.taczCheck") && ModList.get().isLoaded("tacz"))
             dev.watdafawx.foxstweaks.client.dev.TaczModelCheck.install();
+
+        // Dev-only check for EMI Slim; `build.bat runEmiSlimCheck` sets the property.
+        if (FMLEnvironment.dist.isClient() && !FMLEnvironment.production && Boolean.getBoolean("foxstweaks.emiSlimCheck") && ModList.get().isLoaded("emi"))
+            dev.watdafawx.foxstweaks.client.dev.EmiSlimCheck.install();
     }
 }

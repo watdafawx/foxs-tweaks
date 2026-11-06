@@ -51,6 +51,14 @@ neoForge {
             systemProperty 'foxstweaks.taczCheck', 'true'
         }
 
+        // Dev-only check for EMI Slim (client/dev/EmiSlimCheck): flat world, sharing + change-isolation checks,
+        // writes run-emi/foxstweaks-emislim-check.txt and quits. Put the EMI jar in run-emi/mods first.
+        emiSlimCheck {
+            client()
+            gameDirectory = file('run-emi')
+            systemProperty 'foxstweaks.emiSlimCheck', 'true'
+        }
+
         // Headless: enough to load datapacks and read the log, e.g. to check what the affix patcher did.
         // Needs the same hand-placed jars as the client, in run-server/mods.
         server {

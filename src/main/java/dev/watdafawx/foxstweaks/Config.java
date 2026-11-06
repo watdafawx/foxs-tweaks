@@ -177,6 +177,24 @@ public final class Config {
                     "Client-side only. Does nothing without EZActions.")
             .define("iconPickerCache", true);
 
+    public static final ModConfigSpec.BooleanValue EMI_SHARE_TAG_LISTS = BUILDER
+            .comment(
+                    "EMI Slim: every EMI tag ingredient of the same tag shares one item list instead of its",
+                    "own copy. When EMI or a plugin changes a stack in it (remainders, amounts), that one",
+                    "ingredient gets its own list first, so the change still reaches only that recipe. Saves",
+                    "hundreds of MB on big packs. Turns itself off if its EMI mixins don't all apply.",
+                    "",
+                    "Client-side only. Does nothing without EMI. Applies on the next EMI reload.")
+            .define("emiShareTagLists", true);
+
+    public static final ModConfigSpec.BooleanValue EMI_INTERN_PATCHES = BUILDER
+            .comment(
+                    "EMI Slim: identical item component data on EMI's item stacks is kept once and shared.",
+                    "The stacks themselves are never shared.",
+                    "",
+                    "Client-side only. Does nothing without EMI. Applies on the next EMI reload.")
+            .define("emiInternPatches", true);
+
     public static final ModConfigSpec.BooleanValue GUIDEME_TOOLTIP_FIX = BUILDER
             .comment(
                     "Stop GuideME's 'Hold [G] to open guide' tooltip line from flickering, or showing another",

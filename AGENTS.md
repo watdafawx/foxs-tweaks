@@ -48,6 +48,9 @@ quality-of-life features sharing a jar, among them:
     draw TACZ's gun/attachment/ammo model cubes from a flat copy without zero-area quads. Replaces our
     TACZ fork's `perf` branch (its NBT half went upstream). See
     [TACZ model fast path](#tacz-model-fast-path-mixintaczbedrockcubemixin-clientcompattaczbedrockquads).
+16. **EMI Slim** — client-side; `emi/*` + `mixin/EmiSlim*Mixin` cut EMI's duplicated item data (shared
+    tag stack lists, interned component patches). Merged in from the standalone EMI Slim mod (0.1.1). See
+    [EMI Slim](#emi-slim-emi-mixinemislimmixin).
 
 **Every parent mod is optional.** The mod must load and behave correctly with either, both, or
 neither installed. This is the single most important invariant in the codebase — see
@@ -571,6 +574,33 @@ cube both ways under a rotated, non-uniformly scaled pose, and requires the fast
 order (positions/normals to 1e-5 relative, colour/uv/light exact) with every skipped quad zero-area on screen.
 Report: `run-tacz/foxstweaks-tacz-check.txt`. Against TACZ 1.1.8-hotfix-r7: 62,513 cubes, 375,078 → 280,880
 quads, draw loop ~2x faster; a swapped normal-matrix term fails parity on ~49k cubes.
+
+### EMI Slim (`emi/*`, `mixin/EmiSlim*Mixin`)
+
+Merged in from the standalone EMI Slim mod (`watdafawx/emi-slim` 0.1.1, now retired). Against EMI 1.1.24.
+
+- **Tag lists shared** (`emiShareTagLists`): `EmiTags#getValues` is wrapped so every `TagEmiIngredient` of a tag
+  holds one `SharedTagList`. EMI and plugins mutate stacks they got from an ingredient (`setRemainder`,
+  `setAmount`, `setChance`, `comparison`), so `EmiSlimStackMixin` calls `TagShare.beforeChange` first: the
+  ingredient the stack was reached through (thread-local `LAST`, set in `getEmiStacks` of `TagEmiIngredient` and
+  `ListEmiIngredient`) gets its own list still holding the stack, and the shared list gets an unchanged copy in
+  that slot. `ListEmiIngredient`'s flat `fullList` is rebuilt when `TagShare.epoch` moved.
+- **Component patches interned** (`emiInternPatches`): `ItemEmiStack`'s `componentChanges` goes through a weak
+  Guava interner. Stacks themselves are never shared.
+- **Toggles are latched per EMI reload** (`EmiSlim.latch`, from `EmiStackList#clear` HEAD), not read live:
+  switching sharing off mid-load would stop owner tracking while shared lists exist. Sharing also stays off if
+  `EmiStack`, `TagEmiIngredient` or `ListEmiIngredient` don't implement our interfaces, i.e. their mixins didn't
+  apply; sharing without owner tracking would leak one recipe's remainder into every recipe of that tag.
+- The `emi/` classes import EMI types and are only reached from EMI mixins.
+
+**Verify with `build.bat runEmiSlimCheck`** (game dir `run-emi/`, gitignored, EMI jar in `run-emi/mods`).
+`client/dev/EmiSlimCheck` (dev only, property `foxstweaks.emiSlimCheck`) makes a flat world and checks sharing,
+that a change through an owner reaches only that owner (direct, picked-out stack, via `ListEmiIngredient`), patch
+interning, and that real recipe tag inputs mostly share. Report: `run-emi/foxstweaks-emislim-check.txt`. Proven
+able to fail: both toggles off fails the 5 sharing/interning checks; disabling owner tracking fails the 3 owner
+checks. Measured as the standalone mod on TNP Limitless 8 (live heap 60 s after "Reloaded EMI"): 14,209 → 13,739
+MB, `ItemEmiStack` 12.49 M → 6.35 M, `DataComponentPatch` 2.59 M → 0.16 M. The log line `EMI Slim: tag lists
+built ...` after each EMI bake shows it working in a pack.
 
 ### GAG Temporal Pouch curio (`gag/TemporalPouchCurio`, `gag/TemporalPouchNetwork`, `client/TemporalPouchKeyHandler`)
 

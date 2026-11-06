@@ -1,5 +1,12 @@
 # Changelog
 
+## Unreleased
+
+- EMI Slim is now part of Fox's Tweaks: EMI shares one item list per tag across its recipes and keeps
+  identical item data once, for several hundred MB less memory on big packs. Remove the separate
+  `emislim` jar. Toggles: `emiShareTagLists`, `emiInternPatches` (replace the old
+  `-Demislim.shareTags` / `-Demislim.internPatches` switches; apply on the next EMI reload).
+
 ## 1.19.0
 
 - TACZ: gun, attachment and ammo models draw faster. Invisible zero-area sides are dropped when a

@@ -140,6 +140,15 @@ emitting sides with zero area (about a quarter of the default gun pack's quads).
 with no per-frame allocation. Output is identical; checked vertex by vertex against TACZ's own
 drawing for all 62k cubes of the default gun pack. Changing the setting takes F3+T.
 
+## EMI — less memory (EMI Slim)
+
+EMI keeps a separate copy of the item list for every recipe ingredient that uses a tag, and separate
+copies of identical item data. With `emiShareTagLists` every ingredient of a tag shares one list (if
+EMI or a plugin changes a stack for one recipe, that recipe gets its own copy first, so nothing leaks
+between recipes), and with `emiInternPatches` identical item component data is kept once. On TNP
+Limitless 8 that was about 470 MB less heap. Replaces the separate EMI Slim mod; remove its jar.
+Settings apply on the next EMI reload.
+
 ## EZActions — instant icon picker
 
 EZActions' icon picker indexes every item and resolves every name slowly in the background after each
@@ -184,6 +193,7 @@ in Inventory*). Toggle: `ipnSidebarButtons`. Client-side only.
 | Ammo box reset | TACZ | Server |
 | Faster gun model rendering | TACZ | Client |
 | Icon picker cache | EZActions | Client |
+| EMI memory savings (EMI Slim) | EMI | Client |
 | Bedrock Ores thread fix | Bedrock Ores | Server |
 
 Research is kept in a server-authoritative data attachment keyed by `<item id>#<ability id>`, and
