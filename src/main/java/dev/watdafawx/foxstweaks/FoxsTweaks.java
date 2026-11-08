@@ -56,6 +56,10 @@ public class FoxsTweaks {
         if (ModList.get().isLoaded(RELICS))
             RelicsIntegration.init();
 
+        // FTB sidebar clicks on owo-lib screens (Accessories). Client only; imports FTB types.
+        if (FMLEnvironment.dist.isClient() && ModList.get().isLoaded("ftblibrary"))
+            dev.watdafawx.foxstweaks.client.compat.FtbSidebarRelease.init();
+
         // IPN buttons in FTB Library's sidebar. Client only; IpnSidebar imports FTB and IPN types.
         if (FMLEnvironment.dist.isClient() && ModList.get().isLoaded("ftblibrary") && ModList.get().isLoaded("inventoryprofilesnext"))
             dev.watdafawx.foxstweaks.client.compat.IpnSidebar.init(modBus);

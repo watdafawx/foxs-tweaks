@@ -34,6 +34,7 @@
     "EmiSlimStackMixin",
     "EmiSlimTagIngredientMixin",
     "EmiSlimTagsMixin",
+    "FtbSidebarTooltipFlushMixin",
     "GpuShiftClassifierMixin",
     "GuideMeHotkeyMixin",
     "GunSmithTableScreenMixin",

@@ -44,6 +44,11 @@ quality-of-life features sharing a jar, among them:
     Kotlin for Forge, FTB Library and Architectury in `run-lite/mods`. IPN 2.2.5 crashes on a near-empty
     mod list (cyclic static init, `Features.ENABLE_PROFILES$delegate` null); `IpnSidebar#devInitOrder`
     works around it in dev runs only.
+    **owo-lib screens (Accessories' default `AccessoriesExperimentalScreen`)** broke the whole FTB sidebar:
+    owo's UI adapter spans the screen, so it wins vanilla's release lookup (`getChildAt`) and FTB, which fires
+    clicks on release, never sees them (`client/compat/FtbSidebarRelease` forwards the release); and the
+    tooltip text got clipped by owo's scissors at the next `flush()` (`mixin/FtbSidebarTooltipFlushMixin`
+    flushes as the sidebar finishes). Test with Accessories + owo-lib added to `run-lite/mods`.
 15. **TACZ model fast path** — client-side; `mixin/TaczBedrockCubeMixin` + `client/compat/TaczBedrockQuads`
     draw TACZ's gun/attachment/ammo model cubes from a flat copy without zero-area quads. Replaces our
     TACZ fork's `perf` branch (its NBT half went upstream). See

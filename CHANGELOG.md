@@ -1,5 +1,8 @@
 # Changelog
 
+## 1.20.2
+
+- Fixed: FTB Library's sidebar buttons (ours and FTB's own) did nothing on Accessories' default screen, and their tooltips drew an empty box. owo-lib's UI layer swallowed the mouse release FTB clicks on, and clipped the tooltip text. Both are worked around now; other screens are unaffected.
 
 ## 1.20.1
 
