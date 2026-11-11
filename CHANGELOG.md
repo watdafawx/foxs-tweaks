@@ -1,5 +1,12 @@
 # Changelog
 
+## 1.21.0
+
+- Relics: right-click a relic in any inventory (empty cursor) to open its description screen at once, no more holding the research key. There is also an "Open Relic Description" key under Controls (unbound by default). Toggle: `relicRightClickOpen`.
+- Relics: auto-level. A new star toggle under the upgrade / reroll / reset buttons on an ability's screen marks the ability that relic levels up by itself whenever you have the experience and upgrade points, costing exactly what a manual upgrade costs. Works on relics in your inventory and Curios slots; needs this mod on the server. Toggles: `relicAutoLevel`, `relicAutoLevelMinXp` (experience points always left over, default 0).
+- Relics: auto rank-up. A relic with an auto-level ability ranks up once it is at max level and that ability can take no more upgrades. Ranking up resets ability levels and unspent points, as in Relics itself. Toggle: `relicAutoRankup`.
+- Relics: abilities that are researched and high enough level are unlocked automatically, without the five card clicks. Applies to every carried relic. Toggle: `relicAutoUnlock`.
+
 ## 1.20.2
 
 - Fixed: FTB Library's sidebar buttons (ours and FTB's own) did nothing on Accessories' default screen, and their tooltips drew an empty box. owo-lib's UI layer swallowed the mouse release FTB clicks on, and clipped the tooltip text. Both are worked around now; other screens are unaffected.

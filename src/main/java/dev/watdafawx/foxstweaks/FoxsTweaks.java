@@ -47,6 +47,7 @@ public class FoxsTweaks {
         modBus.addListener(NearbyItemsNetwork::register);
         modBus.addListener(AffixToggleNetwork::register);
         modBus.addListener(TemporalPouchNetwork::register);
+        modBus.addListener(dev.watdafawx.foxstweaks.relics.AutoLevelNetwork::register);
 
         FoxsTweaksComponents.COMPONENTS.register(modBus);
 
@@ -67,6 +68,10 @@ public class FoxsTweaks {
         // Dev-only parity check for the TACZ model fast path; `build.bat taczCheck` sets the property.
         if (FMLEnvironment.dist.isClient() && !FMLEnvironment.production && Boolean.getBoolean("foxstweaks.taczCheck") && ModList.get().isLoaded("tacz"))
             dev.watdafawx.foxstweaks.client.dev.TaczModelCheck.install();
+
+        // Dev-only screenshot of the Relics auto-level toggle; `build.bat relicsShot` sets the property.
+        if (FMLEnvironment.dist.isClient() && !FMLEnvironment.production && Boolean.getBoolean("foxstweaks.relicsShot") && ModList.get().isLoaded(RELICS))
+            dev.watdafawx.foxstweaks.client.dev.RelicsShot.install();
 
         // Dev-only check for EMI Slim; `build.bat runEmiSlimCheck` sets the property.
         if (FMLEnvironment.dist.isClient() && !FMLEnvironment.production && Boolean.getBoolean("foxstweaks.emiSlimCheck") && ModList.get().isLoaded("emi"))

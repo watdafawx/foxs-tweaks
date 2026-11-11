@@ -28,6 +28,51 @@ public final class Config {
                     "solve on demand, or turn this off to hide the button entirely.")
             .define("autoSolveButton", true);
 
+    public static final ModConfigSpec.BooleanValue RELIC_RIGHT_CLICK_OPEN = BUILDER
+            .comment(
+                    "Right-click a relic in any inventory screen (with an empty cursor) to open its Relics",
+                    "description screen at once, instead of holding the research key for a second. Right-click",
+                    "no longer picks the relic up while this is on - left-click still does.",
+                    "",
+                    "There is also a 'Open Relic Description' key under Controls (unbound by default) that opens",
+                    "it for whichever relic the cursor is over. Client-side only.")
+            .define("relicRightClickOpen", true);
+
+    public static final ModConfigSpec.BooleanValue RELIC_AUTO_LEVEL = BUILDER
+            .comment(
+                    "Let a relic level up one chosen ability by itself. Open an ability's screen and click the",
+                    "arrow button to mark it; from then on, whenever you carry that relic (inventory or Curios)",
+                    "and have enough experience and upgrade points, the ability is upgraded for you. It costs",
+                    "exactly what a manual upgrade costs - nothing is skipped, and a relic with no chosen",
+                    "ability is never touched.",
+                    "",
+                    "Server-side: the server needs this mod, and the client needs it for the button.")
+            .define("relicAutoLevel", true);
+
+    public static final ModConfigSpec.IntValue RELIC_AUTO_LEVEL_MIN_XP = BUILDER
+            .comment(
+                    "Experience points (not levels) auto-level always leaves you with. An upgrade is skipped",
+                    "if paying for it would drop your total below this. 0 = spend everything. For scale: level 30",
+                    "is 1395 points, level 40 is 2920.")
+            .defineInRange("relicAutoLevelMinXp", 0, 0, 1_000_000);
+
+    public static final ModConfigSpec.BooleanValue RELIC_AUTO_UNLOCK = BUILDER
+            .comment(
+                    "Unlock relic abilities automatically. Relics makes you click each ability card five times",
+                    "once it is researched and the relic's level is high enough; with this on, every carried relic",
+                    "(inventory or Curios) gets its ready abilities unlocked for you. Free, like the clicks.",
+                    "",
+                    "Applies to all relics, independent of relicAutoLevel. Server-side.")
+            .define("relicAutoUnlock", true);
+
+    public static final ModConfigSpec.BooleanValue RELIC_AUTO_RANKUP = BUILDER
+            .comment(
+                    "Rank a relic up automatically once it reaches its maximum level. Only applies to relics",
+                    "with an auto-level ability chosen (see relicAutoLevel), and only once that ability can",
+                    "take no more upgrades. Note that ranking up resets every ability level and upgrade point",
+                    "to zero - that is how Relics' ranks work - after which auto-level starts again.")
+            .define("relicAutoRankup", true);
+
     public static final ModConfigSpec.BooleanValue AFFIX_TOOLTIP_PANEL = BUILDER
             .comment(
                     "Show the second tooltip panel listing an item's Apotheosis affixes, attributes and gem",

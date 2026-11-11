@@ -18,6 +18,7 @@ public final class RelicsIntegration {
 
     public static void init() {
         NeoForge.EVENT_BUS.register(AutoResearchHandler.class);
+        NeoForge.EVENT_BUS.register(AutoLevelHandler.class);
         NeoForge.EVENT_BUS.register(RelicsTestCommand.class);
 
         if (FMLEnvironment.dist == Dist.CLIENT)

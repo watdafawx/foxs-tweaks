@@ -9,6 +9,11 @@ quality-of-life features sharing a jar, among them:
 
 1. **Relics integration** — auto-completes the constellation "star puzzle" research, both on pickup
    and via a button on the research screen.
+   Also: right-click / key opens a relic's description screen (`relics/client/RelicQuickOpenHandler`);
+   auto-level, rank-up, min XP and ability unlock run server-side in `relics/AutoLevelHandler` (chosen ability
+   lives in the `auto_level_ability` data component, set by `AutoLevelPayload` from `AutoLevelWidget` on the
+   ability screen). Dev check: `build.bat runRelicsShot` (game dir `run-relics/`, needs relics, curios, OctoLib,
+   architectury jars) writes `foxstweaks-relics-check.txt`.
 2. **Apotheosis integration** — a second tooltip panel, shown while a key is held, listing an item's
    affixes, attributes and gem sockets without touching the main tooltip.
 3. **Apotheosis affix toggles** — a hotkey opens the held item's own tooltip as a clickable overlay

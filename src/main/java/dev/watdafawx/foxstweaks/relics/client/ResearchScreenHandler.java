@@ -23,6 +23,16 @@ public class ResearchScreenHandler {
     private static final int PLATE_X = 192;
     private static final int PLATE_Y = 222;
 
+    /** Below Relics' upgrade (y 63) / reroll (84) / reset (105) buttons, same column. */
+    @SubscribeEvent
+    public static void onAbilityScreenInit(ScreenEvent.Init.Post event) {
+        if (!(event.getScreen() instanceof it.hurts.sskirillss.relics.client.screen.description.ability.AbilityDescriptionScreen screen)
+                || !Config.RELIC_AUTO_LEVEL.get())
+            return;
+
+        screen.addRenderableWidget(new AutoLevelWidget(screen.x + 289, screen.y + 126, screen));
+    }
+
     @SubscribeEvent
     public static void onScreenInit(ScreenEvent.Init.Post event) {
         // Screen check first: this fires for every screen, including ones opened before configs load.

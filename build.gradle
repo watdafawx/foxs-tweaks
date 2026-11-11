@@ -59,6 +59,14 @@ neoForge {
             systemProperty 'foxstweaks.emiSlimCheck', 'true'
         }
 
+        // Dev-only screenshot of the Relics auto-level toggle (client/dev/RelicsShot): shots land in
+        // run-relics/. Needs relics, curios, OctoLib, architectury jars in run-relics/mods.
+        relicsShot {
+            client()
+            gameDirectory = file('run-relics')
+            systemProperty 'foxstweaks.relicsShot', 'true'
+        }
+
         // Headless: enough to load datapacks and read the log, e.g. to check what the affix patcher did.
         // Needs the same hand-placed jars as the client, in run-server/mods.
         server {

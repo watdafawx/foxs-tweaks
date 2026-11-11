@@ -13,5 +13,6 @@ public final class RelicsClientIntegration {
 
     public static void init() {
         NeoForge.EVENT_BUS.register(ResearchScreenHandler.class);
+        NeoForge.EVENT_BUS.register(dev.watdafawx.foxstweaks.relics.client.RelicQuickOpenHandler.class);
     }
 }

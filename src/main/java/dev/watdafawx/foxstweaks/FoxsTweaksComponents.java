@@ -18,6 +18,13 @@ public final class FoxsTweaksComponents {
                     .networkSynchronized(DisabledAffixes.STREAM_CODEC)
                     .build());
 
+    /** Ability id a relic levels up on its own (see {@code relics.AutoLevelHandler}). Absent = auto-level off. */
+    public static final DeferredHolder<DataComponentType<?>, DataComponentType<String>> AUTO_LEVEL_ABILITY =
+            COMPONENTS.register("auto_level_ability", () -> DataComponentType.<String>builder()
+                    .persistent(com.mojang.serialization.Codec.STRING)
+                    .networkSynchronized(net.minecraft.network.codec.ByteBufCodecs.STRING_UTF8)
+                    .build());
+
     private FoxsTweaksComponents() {
     }
 }

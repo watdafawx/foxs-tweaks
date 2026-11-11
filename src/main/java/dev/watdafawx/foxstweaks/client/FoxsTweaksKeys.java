@@ -42,8 +42,16 @@ public class FoxsTweaksKeys {
             InputConstants.UNKNOWN.getValue(),
             CATEGORY);
 
+    /** Opens Relics' description screen for the relic under the cursor (see {@code relics.client.RelicQuickOpenHandler}). Unbound by default. */
+    public static final KeyMapping OPEN_RELIC = new KeyMapping(
+            "key." + FoxsTweaks.MODID + ".open_relic",
+            InputConstants.Type.KEYSYM,
+            InputConstants.UNKNOWN.getValue(),
+            CATEGORY);
+
     @SubscribeEvent
     public static void onRegisterKeyMappings(RegisterKeyMappingsEvent event) {
+        event.register(OPEN_RELIC);
         event.register(SHOW_AFFIX_INFO);
         event.register(TOGGLE_AFFIXES);
         event.register(USE_TEMPORAL_POUCH);
