@@ -18,6 +18,8 @@
     "GunSmithTableMenuMixin",
     "HniSimChamberMixin",
     "LootRollLoggerMixin",
+    "NetherPortalBlockMixin",
+    "PortalForcerMixin",
     "PointBlankInventoryUtilsMixin",
     "PrinterBlockEntityMixin",
     "SimChamberMixin"

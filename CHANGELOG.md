@@ -1,5 +1,13 @@
 # Changelog
 
+## 1.22.0
+
+- Overworld copy: a second, default overworld (`foxstweaks:overworld_copy`, vanilla noise settings, overworld dimension type and standard biomes) for packs whose main overworld uses a custom world type, so everything vanilla and other mods do to a normal overworld still generates somewhere. Reached by a portal: a frame of the configured block (default crying obsidian), lit with flint and steel or a fire charge, with the same size rules as a Nether portal (2-21 wide, 3-21 tall, corners optional). The portal leads to the other overworld at the same coordinates and back. Uses vanilla portal blocks and a vanilla frame block, so the mod stays optional on clients. Toggle: `overworldCopy` (on by default). Frame blocks or `#tags`: `overworldCopyPortalFrame`.
+- Overworld copy: right-click a portal with a dye to colour it (`overworldCopyPortalDye`); needs the mod on the client to be seen, others see purple. Teleport is instant by default (`overworldCopyInstantTeleport`).
+- Overworld copy: a portal built on arrival goes on the surface, on the flattest ground within 32 blocks, not in a cave. Optional `overworldCopyFlatSurface` (off by default) also levels a ~9x9 pad of surface around it with the biome's own surface block; terrain, caves and everything else are left as generated.
+- Overworld copy: vanilla Nether travel ignores these portals when looking for a portal to arrive at.
+- Dev check: `build.bat runPortalShot` (game dir `run-portal/`, no extra mods).
+
 ## 1.21.0
 
 - Relics: right-click a relic in any inventory (empty cursor) to open its description screen at once, no more holding the research key. There is also an "Open Relic Description" key under Controls (unbound by default). Toggle: `relicRightClickOpen`.

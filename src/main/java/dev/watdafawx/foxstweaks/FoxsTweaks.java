@@ -51,6 +51,12 @@ public class FoxsTweaks {
 
         FoxsTweaksComponents.COMPONENTS.register(modBus);
 
+        // Overworld copy: datapack dimension + portals made of a vanilla frame block and vanilla portal blocks.
+        dev.watdafawx.foxstweaks.dimension.OverworldCopyEvents.init(modBus);
+
+        if (FMLEnvironment.dist.isClient())
+            modBus.addListener(dev.watdafawx.foxstweaks.client.PortalTint::register);
+
         if (TemporalPouchNetwork.isAvailable())
             modBus.addListener((FMLCommonSetupEvent event) -> event.enqueueWork(TemporalPouchCurio::register));
 
@@ -72,6 +78,10 @@ public class FoxsTweaks {
         // Dev-only screenshot of the Relics auto-level toggle; `build.bat relicsShot` sets the property.
         if (FMLEnvironment.dist.isClient() && !FMLEnvironment.production && Boolean.getBoolean("foxstweaks.relicsShot") && ModList.get().isLoaded(RELICS))
             dev.watdafawx.foxstweaks.client.dev.RelicsShot.install();
+
+        // Dev-only check of the overworld-copy portals; `build.bat runPortalShot` sets the property.
+        if (FMLEnvironment.dist.isClient() && !FMLEnvironment.production && Boolean.getBoolean("foxstweaks.portalShot"))
+            dev.watdafawx.foxstweaks.client.dev.PortalShot.install();
 
         // Dev-only check for EMI Slim; `build.bat runEmiSlimCheck` sets the property.
         if (FMLEnvironment.dist.isClient() && !FMLEnvironment.production && Boolean.getBoolean("foxstweaks.emiSlimCheck") && ModList.get().isLoaded("emi"))

@@ -67,6 +67,14 @@ neoForge {
             systemProperty 'foxstweaks.relicsShot', 'true'
         }
 
+        // Dev-only check of the overworld-copy portals (client/dev/PortalShot): flat world, lights a frame,
+        // rides it there and back, dyes it. Report + screenshots land in run-portal/. No extra mods needed.
+        portalShot {
+            client()
+            gameDirectory = file('run-portal')
+            systemProperty 'foxstweaks.portalShot', 'true'
+        }
+
         // Headless: enough to load datapacks and read the log, e.g. to check what the affix patcher did.
         // Needs the same hand-placed jars as the client, in run-server/mods.
         server {

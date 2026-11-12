@@ -73,6 +73,46 @@ public final class Config {
                     "to zero - that is how Relics' ranks work - after which auto-level starts again.")
             .define("relicAutoRankup", true);
 
+    public static final ModConfigSpec.BooleanValue OVERWORLD_COPY = BUILDER
+            .comment(
+                    "Adds a second, default overworld (foxstweaks:overworld_copy): vanilla noise settings, the",
+                    "vanilla overworld dimension type and the standard overworld biomes, so everything vanilla",
+                    "and other mods do to a normal overworld still generates there even when the main",
+                    "overworld uses a custom world type. Reached through a portal (see overworldCopyPortalFrame).",
+                    "",
+                    "Off: the portals stop working and the dimension is not loaded. Restart the world/server",
+                    "after changing it. Anything built in the copy stays on disk.")
+            .define("overworldCopy", true);
+
+    public static final ModConfigSpec.ConfigValue<java.util.List<? extends String>> OVERWORLD_COPY_FRAME = BUILDER
+            .comment(
+                    "Blocks (or #tags) that make a portal frame to the overworld copy. Same rules as a Nether",
+                    "portal: a rectangle of these, 2-21 wide and 3-21 tall inside, corners optional. Light it",
+                    "with flint and steel or a fire charge. The same portal leads back from the copy to the",
+                    "main overworld.",
+                    "",
+                    "minecraft:obsidian is ignored: it would turn every Nether portal into one of these.")
+            .defineListAllowEmpty("overworldCopyPortalFrame", java.util.List.of("minecraft:crying_obsidian"),
+                    () -> "minecraft:crying_obsidian", o -> o instanceof String);
+
+    public static final ModConfigSpec.BooleanValue OVERWORLD_COPY_INSTANT = BUILDER
+            .comment(
+                    "Teleport through a portal to the overworld copy the moment you step in, with no wait.",
+                    "Off: the usual portal delay (the Nether portal game rules) applies.")
+            .define("overworldCopyInstantTeleport", true);
+
+    public static final ModConfigSpec.BooleanValue OVERWORLD_COPY_FLAT = BUILDER
+            .comment(
+                    "When a portal to the overworld copy has to be built, level a small pad of surface around it",
+                    "(about 9x9): the ground is raised or cut to the portal's floor with the biome's own surface",
+                    "block, and anything standing on it is cleared. Terrain, caves and everything else are left",
+                    "as generated. Off by default.")
+            .define("overworldCopyFlatSurface", false);
+
+    public static final ModConfigSpec.BooleanValue OVERWORLD_COPY_DYE = BUILDER
+            .comment("Right-click a portal to the overworld copy with a dye to colour it. Needs the mod on the client to be seen.")
+            .define("overworldCopyPortalDye", true);
+
     public static final ModConfigSpec.BooleanValue AFFIX_TOOLTIP_PANEL = BUILDER
             .comment(
                     "Show the second tooltip panel listing an item's Apotheosis affixes, attributes and gem",

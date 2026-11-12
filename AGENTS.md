@@ -14,6 +14,13 @@ quality-of-life features sharing a jar, among them:
    lives in the `auto_level_ability` data component, set by `AutoLevelPayload` from `AutoLevelWidget` on the
    ability screen). Dev check: `build.bat runRelicsShot` (game dir `run-relics/`, needs relics, curios, OctoLib,
    architectury jars) writes `foxstweaks-relics-check.txt`.
+   **Overworld copy** (`dimension/`, `mixin/NetherPortalBlockMixin`): datapack dimension `foxstweaks:overworld_copy`
+   (gated by the `foxstweaks:overworld_copy` load condition, i.e. the `overworldCopy` config). Portals are vanilla
+   nether_portal blocks in a frame of the configured block; a portal block is "ours" exactly when a complete
+   `CopyShape` surrounds it, and the mixin then keeps it alive, sends it to the other overworld and zeroes the wait.
+   Dye colours live in `PortalColors` (SavedData) and reach clients through `PortalColorsPayload`; the tint is a
+   block colour handler on vanilla's portal block plus our model/texture override. Dev check:
+   `build.bat runPortalShot` writes `run-portal/foxstweaks-portal-check.txt`.
 2. **Apotheosis integration** — a second tooltip panel, shown while a key is held, listing an item's
    affixes, attributes and gem sockets without touching the main tooltip.
 3. **Apotheosis affix toggles** — a hotkey opens the held item's own tooltip as a clickable overlay
