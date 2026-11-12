@@ -95,7 +95,7 @@ public final class ApothicTooltip {
                     // getAugmentingText(), not getDescription() - a few affixes (StoneformingAffix,
                     // for one) return a sentinel from getDescription() that Apotheosis' own tooltip
                     // code swaps for a custom icon component; getAugmentingText() is the real text,
-                    // which is exactly what a plain line here needs. See AffixToggleScreen for the
+                    // which is exactly what a plain line here needs. See ToggleScreen for the
                     // same fix, in more detail.
                     Component description = instance.getAugmentingText(ctx);
 
@@ -147,14 +147,14 @@ public final class ApothicTooltip {
     }
 
     /**
-     * The live tooltip's own wording for this affix, with a red ❌ prefix. Attribute affixes have
+     * The live tooltip's own wording for this affix, with a red X icon prefix. Attribute affixes have
      * no description (their line is a modifier); Stoneforming's {@code getDescription()} is a
      * sentinel swapped for an icon row, so {@code getAugmentingText()} is the readable fallback
      * once that component is gone.
      */
     public static Component disabledLine(AffixInstance instance, AttributeTooltipContext ctx) {
         Component body = tooltipBody(instance, ctx);
-        Component marked = Component.literal("❌ ").withStyle(ChatFormatting.RED)
+        Component marked = dev.watdafawx.foxstweaks.client.ToggleIcons.off()
                 .append(body.copy().withStyle(ChatFormatting.RED));
 
         return ApothMiscUtil.dotPrefix(marked);
@@ -181,65 +181,6 @@ public final class ApothicTooltip {
             return augmenting;
 
         return instance.getName(true);
-    }
-
-    /**
-     * Map one gathered tooltip element back onto an affix. Text lines match the real description
-     * (or an attribute affix's modifier line, or our ❌ disabled line). Stoneforming's real tooltip
-     * line is a {@link StoneformingTooltipRenderer.StoneformingComponent} swapped in for the
-     * {@code APOTH_STONEFORMING_MARKER} sentinel - match that by component type, not by text.
-     */
-    public static ApothicAffixToggle.Row matchRow(
-            Either<FormattedText, TooltipComponent> element,
-            List<ApothicAffixToggle.Row> rows,
-            Set<ResourceLocation> claimed,
-            AttributeTooltipContext ctx) {
-        if (element.right().isPresent()) {
-            TooltipComponent component = element.right().get();
-
-            if (component instanceof SocketTooltipRenderer.SocketComponent)
-                return null;
-
-            if (component instanceof StoneformingTooltipRenderer.StoneformingComponent) {
-                for (ApothicAffixToggle.Row row : rows) {
-                    ResourceLocation id = row.instance().getAffix().id();
-
-                    if (claimed.contains(id) || !row.enabled())
-                        continue;
-
-                    if (isStoneformingMarker(row.instance(), ctx))
-                        return row;
-                }
-            }
-
-            return null;
-        }
-
-        String line = element.left().map(FormattedText::getString).orElse("");
-
-        if (line.isEmpty())
-            return null;
-
-        for (ApothicAffixToggle.Row row : rows) {
-            ResourceLocation id = row.instance().getAffix().id();
-
-            if (claimed.contains(id))
-                continue;
-
-            AffixInstance instance = row.instance();
-
-            if (!row.enabled()) {
-                if (line.contains("❌") && matchCandidates(instance, false, ctx).stream().anyMatch(line::contains))
-                    return row;
-
-                continue;
-            }
-
-            if (matchCandidates(instance, true, ctx).stream().anyMatch(line::contains))
-                return row;
-        }
-
-        return null;
     }
 
     public static List<String> matchCandidates(AffixInstance instance, boolean enabled, AttributeTooltipContext ctx) {
@@ -274,12 +215,12 @@ public final class ApothicTooltip {
     }
 
     /**
-     * Puts a "❌" line for each disabled affix where that affix's own line would be, rather than
+     * Puts a red X line for each disabled affix where that affix's own line would be, rather than
      * appending them all at the end.
      *
      * <p>Where "would be" is found by building the tooltip of a copy with the disabled affixes put
      * back (the ghost), finding each affix's line in it, and walking up to the nearest line above it
-     * that also exists in the real tooltip - the ❌ goes right after that anchor. This keeps working
+     * that also exists in the real tooltip - the X goes right after that anchor. This keeps working
      * for affix lines in the attribute block ("+3.25 Luck"), not just the description block, without
      * hardcoding Apotheosis' ordering. Anything with no anchor falls back to the end.
      *
@@ -331,7 +272,7 @@ public final class ApothicTooltip {
             if (at < 0)
                 at = elements.size();
 
-            // Earlier ❌ lines already sitting after the same anchor came first in the ghost too.
+            // Earlier X lines already sitting after the same anchor came first in the ghost too.
             while (at < elements.size() && containsIdentity(inserted, elements.get(at)))
                 at++;
 

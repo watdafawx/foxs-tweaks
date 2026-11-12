@@ -1,5 +1,12 @@
 # Changelog
 
+## 1.23.0
+
+- Toggle enchantments: any enchantment on any equipped item can be switched off and back on at its exact level (Silk Touch vs Fortune, and so on). Switching off really removes it; a red X line shows where it was in the item tooltip. Curses are not toggleable (`enchantToggleBlacklist`). Re-enabling is refused while an incompatible enchantment is active. Toggle: `enchantToggle` (on by default).
+- New one-key toggle screen replaces the affix overlay: the item's own tooltip look, clickable. Slot strip (head, chest, legs, feet, main hand, offhand) on top, enchantments two per line, affixes one per line with their real descriptions, gem sockets shown read-only. Sizes itself to the item; very long items scroll the affix block. Also opens over the inventory and any container screen. `key.foxstweaks.toggle_affixes` is the only key (unbound by default).
+- Disabled affix and enchantment lines now show a drawn red X instead of the "❌" emoji, which the default font could not render.
+- Dev check: `build.bat runToggleShot` (game dir `run-toggle/`).
+
 ## 1.22.0
 
 - Overworld copy: a second, default overworld (`foxstweaks:overworld_copy`, vanilla noise settings, overworld dimension type and standard biomes) for packs whose main overworld uses a custom world type, so everything vanilla and other mods do to a normal overworld still generates somewhere. Reached by a portal: a frame of the configured block (default crying obsidian), lit with flint and steel or a fire charge, with the same size rules as a Nether portal (2-21 wide, 3-21 tall, corners optional). The portal leads to the other overworld at the same coordinates and back. Uses vanilla portal blocks and a vanilla frame block, so the mod stays optional on clients. Toggle: `overworldCopy` (on by default). Frame blocks or `#tags`: `overworldCopyPortalFrame`.

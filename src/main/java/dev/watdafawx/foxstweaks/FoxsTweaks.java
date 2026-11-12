@@ -1,6 +1,5 @@
 package dev.watdafawx.foxstweaks;
 
-import dev.watdafawx.foxstweaks.apotheosis.AffixToggleNetwork;
 import dev.watdafawx.foxstweaks.gag.TemporalPouchCurio;
 import dev.watdafawx.foxstweaks.gag.TemporalPouchNetwork;
 import dev.watdafawx.foxstweaks.relics.RelicsIntegration;
@@ -20,8 +19,8 @@ import net.neoforged.fml.event.lifecycle.FMLCommonSetupEvent;
  * auto-solve button sits next to the hint button on the research screen.
  *
  * <p><b>Apotheosis</b> ({@code client.AffixTooltipHandler}) - a second tooltip listing affixes and
- * gem sockets, shown while a key is held. {@code client.AffixToggleKeyHandler} additionally lets any
- * affix on the held item be switched off and back on ({@link AffixToggleNetwork}).
+ * gem sockets, shown while a key is held. {@code client.ToggleKeyHandler} additionally lets any
+ * affix on the held item be switched off and back on ({@code enchant.ToggleNetwork}).
  *
  * <p>Neither parent mod is required. The Relics half is wired up here rather than through
  * {@code @EventBusSubscriber} because FML loads annotated classes unconditionally, which would
@@ -45,7 +44,7 @@ public class FoxsTweaks {
         // Registered unconditionally - an unused optional channel costs nothing, and both the
         // Point Blank printer and TACZ's gunsmith table may want to send on it.
         modBus.addListener(NearbyItemsNetwork::register);
-        modBus.addListener(AffixToggleNetwork::register);
+        modBus.addListener(dev.watdafawx.foxstweaks.enchant.ToggleNetwork::register);
         modBus.addListener(TemporalPouchNetwork::register);
         modBus.addListener(dev.watdafawx.foxstweaks.relics.AutoLevelNetwork::register);
 
@@ -82,6 +81,10 @@ public class FoxsTweaks {
         // Dev-only check of the overworld-copy portals; `build.bat runPortalShot` sets the property.
         if (FMLEnvironment.dist.isClient() && !FMLEnvironment.production && Boolean.getBoolean("foxstweaks.portalShot"))
             dev.watdafawx.foxstweaks.client.dev.PortalShot.install();
+
+        // Dev-only check of the toggle overlay; `build.bat runToggleShot` sets the property.
+        if (FMLEnvironment.dist.isClient() && !FMLEnvironment.production && Boolean.getBoolean("foxstweaks.toggleShot"))
+            dev.watdafawx.foxstweaks.client.dev.ToggleShot.install();
 
         // Dev-only check for EMI Slim; `build.bat runEmiSlimCheck` sets the property.
         if (FMLEnvironment.dist.isClient() && !FMLEnvironment.production && Boolean.getBoolean("foxstweaks.emiSlimCheck") && ModList.get().isLoaded("emi"))

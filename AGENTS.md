@@ -154,7 +154,7 @@ Consequently:
   `ModList.isLoaded("apotheosis")` check before the first call.
 - **All Apotheosis references are confined to a handful of `compat`/`client/compat` classes** —
   `client/compat/ApothicTooltip`, `compat/ApothicTestGear`, `compat/ApothicRarityLookup`,
-  `compat/ApothicAffixToggle` and `client/compat/AffixToggleScreen`. Keep it that way; touching an
+  `compat/ApothicAffixToggle` and `client/compat/ApothicRows`. Keep it that way; touching an
   Apotheosis class from anywhere that gets loaded eagerly will throw `NoClassDefFoundError` on a pack
   without it. A new one is fine — the rule is "no eager class touches an Apotheosis type", not "these
   exact files".
@@ -201,64 +201,59 @@ extra slack beyond vanilla's own padding for the same reason: `mainWidth`/`mainH
 the plain content box, and a rarity-tier item's decorative Apotheosis border is drawn outside it, so
 the plain-box geometry alone can still let that border visually touch the panel.
 
-### Per-affix toggles (`compat/ApothicAffixToggle`, `client/compat/AffixToggleScreen`)
+### Toggling enchantments and affixes (`enchant/`, `client/ToggleScreen`)
 
-`key.foxstweaks.toggle_affixes` (unbound by default) opens the held item's own tooltip as a
-clickable overlay — hover an affix line and click to disable or re-enable it. Any item, not just
-the few Apotheosis itself ships a toggle for (its own mining-radius affix, etc). There is no
-separate list to keep in sync with the tooltip (Stoneforming's icon row included: that line is a
-`TooltipComponent`, not text, so a string-matched highlight against a custom menu could never find
-it).
+`key.foxstweaks.toggle_affixes` (unbound by default; the pack's only new key) opens `ToggleScreen`: the
+item's own tooltip look (vanilla tooltip box via `TooltipRenderUtil`) made clickable. Top to bottom: a
+strip of the six equipment slots (HEAD..FEET, MAINHAND, OFFHAND, each with an amber count of switched-off
+entries), the item name, enchantments two per line, affixes one per line, gem sockets (read-only), a hint.
+The box sizes itself to its content; when the item is taller than the screen only the affix block scrolls
+(mouse wheel). The key also works with any container screen open (`ToggleKeyHandler#onScreenKey`): the
+box opens over it, the parent dims behind, and closing returns to it (`ToggleScreen.parent`).
 
-Most affixes (Vein Mining, Sculk Affinity, the lot) are Apotheosis' own behaviour and never pass
-through this mod at all, so a cosmetic "ignore this affix" flag would do nothing for them. The only
-way to actually stop one from firing is to remove it from Apotheosis' own `ItemAffixes` data
-component (`Apoth.Components.AFFIXES`) — `ApothicAffixToggle.setEnabled` does exactly that, via the
-public `ItemAffixes.Builder`/`AffixHelper.setAffixes` API, no mixin needed. The removed id and level
-are kept in `FoxsTweaksComponents.DISABLED_AFFIXES` (a component of our own, holding no Apotheosis
-type) so re-enabling restores the exact level instead of re-rolling it, and so the affix tooltip
-panel (`ApothicTooltip`) can still list a disabled affix, struck through — `streamAffixes` alone
-would never see it once removed.
+Rows come from data, never from reading tooltip text back: `EnchantToggle.list` and, for affixes,
+`client/compat/ApothicRows` (label = `ApothicTooltip#tooltipBody`, the same live description the tooltip
+shows). `ApothicRows` is the only door from the screen into Apotheosis (also `gems()`); it is only reached
+after `ModList.isLoaded("apotheosis")`.
 
-This is authoritative item state, not rendering, so the overlay mutates the client stack this frame
-(so the tooltip rebuilds immediately) and sends `ToggleAffixPayload` (a plain id + bool, no
-Apotheosis type) to the server, which does the actual removal/restoration against the sender's
-main-hand stack. `affixToggleGui` gates both sides — the server needs it for a toggle to take
-effect, the client needs it for the key and overlay to exist. `AffixToggleNetwork` is registered
-unconditionally like `storage.NearbyItemsNetwork`; its handler lambda is the only thing that
-reaches `ApothicAffixToggle`, guarded by the same `ModList.isLoaded("apotheosis")` check used
-everywhere else.
+**Enchantments** (`enchant/EnchantToggle`): disabling really removes the enchantment from the item's
+enchantment component (`EnchantmentHelper.updateEnchantments`) - a cosmetic flag would do nothing for
+effects that run in vanilla or other mods - and stores id + level in `FoxsTweaksComponents.DISABLED_ENCHANTS`
+so re-enabling restores the exact level. Re-enabling is refused when
+`EnchantmentHelper.isEnchantmentCompatible` fails against the live set (Silk Touch + Fortune); the screen
+shows that row locked with a red reason. `Config.ENCHANT_TOGGLE_BLACKLIST` (default: curses) is never toggleable.
+Gated by `enchantToggle`.
 
-A disabled affix is invisible everywhere by default once removed from `ItemAffixes` — including
-Apotheosis' own normal tooltip, which reads that component directly and has no idea foxstweaks ever
-touched it. `AffixTooltipHandler`'s `RenderTooltipEvent.GatherComponents` hook (priority `LOWEST`,
-so after Apotheosis has swapped its marker lines for components) puts a "❌ " line back **where the
-affix used to be**: `ApothicTooltip#insertDisabledLines` builds the tooltip of a copy with the
-disabled affixes restored (the "ghost", cached on `ItemStack.hashItemAndComponents`), finds each
-affix's line in it, and inserts after the nearest line above it that also exists in the real
-tooltip. That works for attribute-block lines ("+3.25 Luck") too, without hardcoding Apotheosis'
-ordering. Anchors that are Apotheosis marker text in the ghost (`APOTH_STONEFORMING_MARKER`,
-`APOTH_SOCKET_MARKER`) are matched against the component that replaced them.
+**Affixes** (`compat/ApothicAffixToggle`): most affixes are Apotheosis' own behaviour and never pass through
+this mod, so the only way to stop one is to remove it from Apotheosis' `ItemAffixes` component
+(`Apoth.Components.AFFIXES`) via the public `ItemAffixes.Builder`/`AffixHelper.setAffixes` API, no mixin.
+The removed id and level go in `FoxsTweaksComponents.DISABLED_AFFIXES` (our component, no Apotheosis type) so
+re-enabling restores the level instead of re-rolling. Gated by `affixToggleGui`.
 
-`AffixInstance#getName(true)` is the affix's plain name ("Great Fortune" / "Infernal");
-`getName(false)` is the possessive fragment Apotheosis stitches into the item's own display name
-("of Great Fortune"). Never use either as a tooltip match candidate — those fragments live inside
-the item title, so `contains()` lights up the name line instead of the affix. Match the live
-description, an `AttributeProvidingAffix` modifier line ("+7.75 Fire Damage"), or our ❌ line.
-Skip index 0 (the title) in `bindAffixes` / `highlightLine` for the same reason.
+**Network**: one payload for both, `ToggleEntryPayload(slot, affix, id, enable)`, registered by
+`ToggleNetwork` on an optional registrar (version "3"). The server acts on `player.getItemBySlot(slot)`;
+the enchant branch needs `enchantToggle`, the affix branch needs `affixToggleGui` and Apotheosis loaded.
+The screen also changes the client stack immediately so the row flips this frame.
 
-The overlay is a `Screen` that draws nothing of its own except a title/hint and a hover outline:
-`renderBackground` is empty (vanilla menu blur would otherwise sit on top of the tooltip), and
-`render` calls `graphics.renderTooltip` on the live main-hand stack. Hit-testing walks the same
-`GatherComponents` list the tooltip just drew, matching text lines by description / attribute
-modifier / ❌ body, and Stoneforming by `StoneformingComponent` rather than the
-`APOTH_STONEFORMING_MARKER` sentinel. Clicking a non-affix line is a no-op; Escape still closes.
+**Tooltips**: a disabled entry is invisible once removed, so the normal item tooltip would hide it.
+`EnchantTooltip` (enchants) and `AffixTooltipHandler` -> `ApothicTooltip#insertDisabledLines` (affixes,
+`RenderTooltipEvent.GatherComponents`, priority `LOWEST`) put a red X line back where the entry used to be.
+For affixes that means building the tooltip of a copy with the disabled affixes restored (the "ghost",
+cached on `ItemStack.hashItemAndComponents`) and inserting after the nearest line above that also exists in
+the real tooltip. The X and check are bitmap glyphs in the `foxstweaks:icons` font
+(`ToggleIcons`; PUA U+E000 / U+E001): the default font has no emoji. The icon component must be an unstyled
+root with siblings, otherwise appended text inherits the icon font and renders as boxes.
 
-The hovered line's ▶ is applied by **element index** (`AffixTooltipHandler.highlightIndex`), not by
-matching text: the overlay measures with the index at -1, then draws the same stack, so both gathers
-yield the same list. A text line is restyled; a component line (Stoneforming's icon row) is wrapped in
-`client/HighlightedTooltipComponent`, which draws the ▶ and delegates to the wrapped component's own
-renderer. It holds only a vanilla `TooltipComponent`, so it's safe to register unconditionally.
+`AffixInstance#getName(true)` is the plain name ("Infernal"); `getName(false)` is the possessive fragment
+Apotheosis stitches into the item title ("of Great Fortune"). Never match tooltip text against either - the
+title contains them. Skip index 0 (the title) when matching ghost lines.
+
+**Dev check**: `build.bat runToggleShot` (game dir `run-toggle/`; put Apotheosis, ApothicAttributes and
+Placebo in `run-toggle/mods` to cover affixes and gems). It builds a flat creative world, an endgame sword, an
+offhand pickaxe and a helmet, clicks real rows and tabs, checks the result on the server, screenshots GUI
+scales 2-4 and the over-inventory case, and writes `run-toggle/foxstweaks-toggle-check.txt`.
+`ToggleScreen.forcedMouse`, `reveal`, `centerOfRow` and `centerOfTab` exist only for it (a real cursor cannot
+be moved on an unfocused window).
 
 ### Recovering the hovered item on a broken screen
 

@@ -4,7 +4,6 @@ import dev.watdafawx.foxstweaks.Config;
 import dev.watdafawx.foxstweaks.FoxsTweaks;
 import com.mojang.datafixers.util.Either;
 import dev.watdafawx.foxstweaks.client.compat.ApothicTooltip;
-import net.minecraft.ChatFormatting;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.Font;
 import net.minecraft.client.gui.screens.inventory.AbstractContainerScreen;
@@ -59,14 +58,6 @@ public class AffixTooltipHandler {
     private static boolean rendering;
 
     private static Boolean apotheosisLoaded;
-
-    /**
-     * Index, in the gathered tooltip elements, of the affix line {@code AffixToggleScreen} is
-     * hovering, or -1. An index rather than text so it works for lines that aren't text at all
-     * (Stoneforming's icon row). Valid because the overlay measures with this at -1 and then draws
-     * the same stack, so both gathers produce the same list.
-     */
-    public static int highlightIndex = -1;
 
     @SubscribeEvent
     public static void onRenderTooltipPre(RenderTooltipEvent.Pre event) {
@@ -130,7 +121,7 @@ public class AffixTooltipHandler {
     /**
      * A disabled affix (see {@code compat.ApothicAffixToggle}) is actually removed from Apotheosis'
      * own affix component, so it disappears from the item's normal tooltip entirely - not just from
-     * this panel. Appends the same "❌ " lines {@link ApothicTooltip#disabledAffixLines} builds for
+     * this panel. Appends the same red X lines {@link ApothicTooltip#disabledAffixLines} builds for
      * the panel to the real tooltip too, unconditionally (no key needed), so a disabled affix still
      * reads as "present but off" rather than vanishing outright.
      */
@@ -138,9 +129,6 @@ public class AffixTooltipHandler {
     // components, so the list we splice into and index into is the one that actually gets drawn.
     @SubscribeEvent(priority = EventPriority.LOWEST)
     public static void onGatherComponents(RenderTooltipEvent.GatherComponents event) {
-        if (!Config.AFFIX_TOGGLE_GUI.get() || !isApotheosisLoaded())
-            return;
-
         ItemStack stack = event.getItemStack();
 
         if (stack.isEmpty())
@@ -148,19 +136,8 @@ public class AffixTooltipHandler {
 
         List<Either<FormattedText, TooltipComponent>> elements = event.getTooltipElements();
 
-        ApothicTooltip.insertDisabledLines(stack, elements);
-
-        if (highlightIndex > 0 && highlightIndex < elements.size())
-            elements.set(highlightIndex, highlighted(elements.get(highlightIndex)));
-    }
-
-    private static Either<FormattedText, TooltipComponent> highlighted(Either<FormattedText, TooltipComponent> element) {
-        if (element.right().isPresent())
-            return Either.right(new HighlightedTooltipComponent(element.right().get()));
-
-        return Either.left(Component.literal("▶ ")
-                .append(Component.literal(element.left().get().getString()))
-                .withStyle(ChatFormatting.YELLOW, ChatFormatting.BOLD));
+        if (Config.AFFIX_TOGGLE_GUI.get() && isApotheosisLoaded())
+            ApothicTooltip.insertDisabledLines(stack, elements);
     }
 
     private static boolean isApotheosisLoaded() {

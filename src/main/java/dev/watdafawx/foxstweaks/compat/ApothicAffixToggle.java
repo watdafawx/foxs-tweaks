@@ -21,7 +21,7 @@ import net.minecraft.world.item.ItemStack;
 
 /**
  * Lets a player pull an individual affix off an item and put it back, for the tooltip-as-controls
- * overlay ({@code client.compat.AffixToggleScreen}). Confines every Apotheosis type used for it to
+ * overlay ({@code client.ToggleScreen}). Confines every Apotheosis type used for it to
  * this one class, alongside {@code client.compat.ApothicTooltip} and
  * {@code client.compat.ApothicTestGear} - see AGENTS.md.
  *
@@ -50,7 +50,7 @@ public final class ApothicAffixToggle {
     /**
      * Every affix the item has, active or disabled, in Apotheosis tooltip order
      * ({@code AffixType} ordinal: STAT, BASIC_EFFECT, ABILITY). Disabled ones stay in that
-     * sequence rather than being dumped at the end - the overlay injects their ❌ line where
+     * sequence rather than being dumped at the end - the overlay injects their X line where
      * the live description sat.
      */
     public static List<Row> list(ItemStack stack) {

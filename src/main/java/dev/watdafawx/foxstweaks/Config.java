@@ -129,11 +129,29 @@ public final class Config {
                     "re-enable it. Works for any item, not just the handful Apotheosis itself lets you toggle",
                     "(mining radius, etc). A disabled affix is actually removed from the item (so it truly",
                     "stops applying, including effects this mod never touches) and kept so it can be put back",
-                    "exactly as it was; it still shows on the tooltip as a red ❌ line.",
+                    "exactly as it was; it still shows on the tooltip as a red X line.",
                     "",
                     "The server needs this mod for a toggle to actually take effect; the client needs it too",
                     "for the key and overlay to exist at all.")
             .define("affixToggleGui", true);
+
+    public static final ModConfigSpec.BooleanValue ENCHANT_TOGGLE = BUILDER
+            .comment(
+                    "Let the toggle key (and the per-slot keys) switch individual enchantments on the held or",
+                    "worn item off and back on, from the same clickable tooltip overlay the affix toggle uses.",
+                    "A disabled enchantment is actually removed from the item and kept so it can be put back at",
+                    "its exact level; it still shows on the tooltip as a red X line.",
+                    "",
+                    "The server needs this mod for a toggle to take effect; the client needs it for the keys.")
+            .define("enchantToggle", true);
+
+    public static final ModConfigSpec.ConfigValue<java.util.List<? extends String>> ENCHANT_TOGGLE_BLACKLIST = BUILDER
+            .comment(
+                    "Enchantments that cannot be toggled off. Curses stay on by default - switching off Curse of",
+                    "Binding would let a cursed piece be taken off, which is a free cheat rather than a convenience.")
+            .defineListAllowEmpty("enchantToggleBlacklist",
+                    java.util.List.of("minecraft:binding_curse", "minecraft:vanishing_curse"),
+                    () -> "minecraft:binding_curse", o -> o instanceof String);
 
     public static final ModConfigSpec.BooleanValue GUN_DAMAGE_SCALING = BUILDER
             .comment(

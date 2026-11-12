@@ -75,6 +75,14 @@ neoForge {
             systemProperty 'foxstweaks.portalShot', 'true'
         }
 
+        // Dev-only check of the enchantment/affix toggle overlay (client/dev/ToggleShot): report + screenshots
+        // land in run-toggle/. Put Apotheosis, ApothicAttributes and Placebo in run-toggle/mods for affixes.
+        toggleShot {
+            client()
+            gameDirectory = file('run-toggle')
+            systemProperty 'foxstweaks.toggleShot', 'true'
+        }
+
         // Headless: enough to load datapacks and read the log, e.g. to check what the affix patcher did.
         // Needs the same hand-placed jars as the client, in run-server/mods.
         server {

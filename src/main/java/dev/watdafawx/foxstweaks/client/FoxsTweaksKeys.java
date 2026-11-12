@@ -28,7 +28,7 @@ public class FoxsTweaksKeys {
             GLFW.GLFW_KEY_LEFT_CONTROL,
             CATEGORY);
 
-    /** Opens the held item's tooltip as a clickable affix-toggle overlay (see {@code client.AffixToggleKeyHandler}). Unbound by default - no vanilla key is free that wouldn't surprise someone. */
+    /** Opens the held item's tooltip as a clickable affix-toggle overlay (see {@code client.ToggleKeyHandler}). Unbound by default - no vanilla key is free that wouldn't surprise someone. */
     public static final KeyMapping TOGGLE_AFFIXES = new KeyMapping(
             "key." + FoxsTweaks.MODID + ".toggle_affixes",
             InputConstants.Type.KEYSYM,

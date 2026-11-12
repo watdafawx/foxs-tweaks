@@ -18,6 +18,13 @@ public final class FoxsTweaksComponents {
                     .networkSynchronized(DisabledAffixes.STREAM_CODEC)
                     .build());
 
+    /** Enchantments the toggle overlay pulled off the item, so they can be restored (see {@code enchant.EnchantToggle}). */
+    public static final DeferredHolder<DataComponentType<?>, DataComponentType<dev.watdafawx.foxstweaks.enchant.DisabledEnchants>> DISABLED_ENCHANTS =
+            COMPONENTS.register("disabled_enchants", () -> DataComponentType.<dev.watdafawx.foxstweaks.enchant.DisabledEnchants>builder()
+                    .persistent(dev.watdafawx.foxstweaks.enchant.DisabledEnchants.CODEC)
+                    .networkSynchronized(dev.watdafawx.foxstweaks.enchant.DisabledEnchants.STREAM_CODEC)
+                    .build());
+
     /** Ability id a relic levels up on its own (see {@code relics.AutoLevelHandler}). Absent = auto-level off. */
     public static final DeferredHolder<DataComponentType<?>, DataComponentType<String>> AUTO_LEVEL_ABILITY =
             COMPONENTS.register("auto_level_ability", () -> DataComponentType.<String>builder()
