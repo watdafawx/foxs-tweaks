@@ -1,0 +1,12 @@
+{
+ "type": "minecraft:flat_cache",
+ "argument": {
+  "type": "minecraft:shifted_noise",
+  "noise": "foxstweaks:vanilla/erosion",
+  "shift_x": "foxstweaks:vanilla/shift_x",
+  "shift_y": 0.0,
+  "shift_z": "foxstweaks:vanilla/shift_z",
+  "xz_scale": 0.25,
+  "y_scale": 0.0
+ }
+}

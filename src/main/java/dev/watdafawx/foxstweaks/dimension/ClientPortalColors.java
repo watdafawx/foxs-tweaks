@@ -13,8 +13,8 @@ import net.minecraft.world.level.Level;
  * of which only run there.
  */
 public final class ClientPortalColors {
-    /** Vanilla's portal purple, applied to the grey portal texture when a portal has no dye. */
-    public static final int DEFAULT = 0xB06CFF;
+    /** No dye: the portal texture is already vanilla purple, so no tint (shader packs read the raw texture). */
+    public static final int DEFAULT = 0xFFFFFF;
 
     private static ResourceKey<Level> dimension;
     private static List<PortalColors.Entry> entries = List.of();

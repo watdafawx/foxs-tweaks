@@ -1,5 +1,10 @@
 # Changelog
 
+## 1.23.1
+
+- Overworld copy: now generates with its own private copy of the vanilla overworld noise settings, density functions and noises (`foxstweaks:vanilla_overworld`), so a datapack that replaces `minecraft:overworld` (ReTerraForged and similar) no longer changes the copy.
+- Overworld copy portals under shader packs: the portal texture is now vanilla purple with a low red channel. Packs like Complementary read the raw texture and ignore the block tint, so the portal came out solid white. Dye colours show without shaders; shader packs that ignore tint show every portal purple.
+
 ## 1.23.0
 
 - Toggle enchantments: any enchantment on any equipped item can be switched off and back on at its exact level (Silk Touch vs Fortune, and so on). Switching off really removes it; a red X line shows where it was in the item tooltip. Curses are not toggleable (`enchantToggleBlacklist`). Re-enabling is refused while an incompatible enchantment is active. Toggle: `enchantToggle` (on by default).
