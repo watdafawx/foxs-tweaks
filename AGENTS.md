@@ -68,6 +68,9 @@ quality-of-life features sharing a jar, among them:
 16. **EMI Slim** — client-side; `emi/*` + `mixin/EmiSlim*Mixin` cut EMI's duplicated item data (shared
     tag stack lists, interned component patches). Merged in from the standalone EMI Slim mod (0.1.1). See
     [EMI Slim](#emi-slim-emi-mixinemislimmixin).
+17. **Kaleidoscope Grilling skewer cache** — `mixin/GrillingDataManagerMixin`, `mixin/SkewerRecipesMixin`
+    (+ `GrillingDataManagerInvoker`) stop Grilling rebuilding its skewer recipe list for every item drawn. See
+    [Kaleidoscope Grilling skewer cache](#kaleidoscope-grilling-skewer-cache-mixingrillingdatamanagermixin-mixinskewerrecipesmixin).
 
 **Every parent mod is optional.** The mod must load and behave correctly with either, both, or
 neither installed. This is the single most important invariant in the codebase — see
@@ -551,6 +554,32 @@ which `deserialize` migrates onto the stack) are not cached. The component type 
 `BuiltInRegistries.DATA_COMPONENT_TYPE`, so there's no Sophisticated Core/Backpacks compile dependency.
 Against Sophisticated Backpacks 3.26.3; re-check that `fromPhysicalStack` still has only read-only callers
 on update. Client section. Toggle: `backpackRenderInfoCache`.
+
+### Kaleidoscope Grilling skewer cache (`mixin/GrillingDataManagerMixin`, `mixin/SkewerRecipesMixin`)
+
+Grilling's `GeneratedSkewerModelMixin` hooks `ItemRenderer.getModel` `RETURN` and calls
+`SkewerRecipes.usesGeneratedModel(stack)` for every item drawn. That calls the private `recipes()`, which rebuilds
+the whole recipe list from `GrillingDataManager.skewersForDisplay()`, which merges three maps into a new `HashMap`
+and `Map.copyOf`s it. A base full of Functional Storage drawers paid that hundreds of times a frame: 6.6% of frame
+time with shaders, 13% without, in a spark profile (ATM10 + DrunkGamblers, Nov 2026). Three caches, all by
+identity, so nothing is hashed:
+
+- `skewersForDisplay()` (`GrillingDataManagerMixin`, `HEAD` cancel, re-implements the merge) while the `SKEWERS`
+  (datapack, replaced whole in `apply`) and `SCRIPT_SKEWERS` (KubeJS/synced, replaced whole in
+  `commitScriptThreadingRecipes`/`replaceSyncedSkewerRecipes`) fields hold the same instances. `BUILT_IN_SKEWERS`
+  is a constant.
+- `recipes()` (`SkewerRecipesMixin`, `@WrapMethod`) by the display map instance, read through
+  `GrillingDataManagerInvoker` before the original runs, so the list is never older than its key.
+- `usesGeneratedModel` per `Item` for as long as the recipe list is the same instance; the answer only depends
+  on the item's id. Every other `SkewerRecipes` helper gets the cached list too.
+
+Everything targets by string with `@Shadow`s typed `Map`/`List`, so Grilling is no compile dependency. Common
+section (the helpers also run on the server). Against Kaleidoscope Grilling 1.1.1; on update re-check that the two
+maps are still only replaced whole, never mutated, and that `usesGeneratedModel` still reads only the item id.
+Dev check: `build.bat runGrillingCheck` (game dir `run-grilling/`, needs kaleidoscope_grilling and
+kaleidoscope_cookery in its `mods/`) checks parity for every item, rebuild on replace and timing, and writes
+`run-grilling/foxstweaks-grilling-check.txt` (first run: 1638 items match, lookup 8152 ns → 192 ns).
+Toggle: `grillingSkewerCache`.
 
 ### TACZ attachment tooltip numbers (`mixin/TaczAttachmentTooltipMixin`)
 

@@ -59,6 +59,15 @@ neoForge {
             systemProperty 'foxstweaks.emiSlimCheck', 'true'
         }
 
+        // Dev-only check of the Kaleidoscope Grilling skewer cache (client/dev/GrillingCheck): flat world, parity +
+        // timing, writes run-grilling/foxstweaks-grilling-check.txt and quits. Put kaleidoscope_grilling and
+        // kaleidoscope_cookery jars in run-grilling/mods first.
+        grillingCheck {
+            client()
+            gameDirectory = file('run-grilling')
+            systemProperty 'foxstweaks.grillingCheck', 'true'
+        }
+
         // Dev-only screenshot of the Relics auto-level toggle (client/dev/RelicsShot): shots land in
         // run-relics/. Needs relics, curios, OctoLib, architectury jars in run-relics/mods.
         relicsShot {

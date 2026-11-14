@@ -89,5 +89,9 @@ public class FoxsTweaks {
         // Dev-only check for EMI Slim; `build.bat runEmiSlimCheck` sets the property.
         if (FMLEnvironment.dist.isClient() && !FMLEnvironment.production && Boolean.getBoolean("foxstweaks.emiSlimCheck") && ModList.get().isLoaded("emi"))
             dev.watdafawx.foxstweaks.client.dev.EmiSlimCheck.install();
+
+        // Dev-only check for the Kaleidoscope Grilling skewer cache; `build.bat runGrillingCheck` sets the property.
+        if (FMLEnvironment.dist.isClient() && !FMLEnvironment.production && Boolean.getBoolean("foxstweaks.grillingCheck") && ModList.get().isLoaded("kaleidoscope_grilling"))
+            dev.watdafawx.foxstweaks.client.dev.GrillingCheck.install();
     }
 }

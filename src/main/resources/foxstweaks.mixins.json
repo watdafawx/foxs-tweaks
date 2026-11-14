@@ -14,6 +14,8 @@
     "DynamicRegistryMixin",
     "ExtraHnnModelingMixin",
     "ExtraHnnSimMixin",
+    "GrillingDataManagerInvoker",
+    "GrillingDataManagerMixin",
     "GunSmithTableBlockEntityMixin",
     "GunSmithTableMenuMixin",
     "HniSimChamberMixin",
@@ -22,7 +24,8 @@
     "PortalForcerMixin",
     "PointBlankInventoryUtilsMixin",
     "PrinterBlockEntityMixin",
-    "SimChamberMixin"
+    "SimChamberMixin",
+    "SkewerRecipesMixin"
   ],
   "client": [
     "Ae2EmiQuickFillMixin",

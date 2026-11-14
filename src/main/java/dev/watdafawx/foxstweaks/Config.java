@@ -316,6 +316,16 @@ public final class Config {
                     "Client-side only. Does nothing without Sophisticated Backpacks.")
             .define("backpackRenderInfoCache", true);
 
+    public static final ModConfigSpec.BooleanValue GRILLING_SKEWER_CACHE = BUILDER
+            .comment(
+                    "Stop Kaleidoscope Grilling rebuilding its skewer recipe list for every item drawn. It",
+                    "checked each item's model against a freshly copied recipe list, so rooms full of drawers,",
+                    "item frames or shelves lost a large share of FPS. The list is kept until datapacks reload",
+                    "or the server sends new skewer recipes.",
+                    "",
+                    "Does nothing without Kaleidoscope Grilling.")
+            .define("grillingSkewerCache", true);
+
     public static final ModConfigSpec.BooleanValue TACZ_ATTACHMENT_TOOLTIP_NUMBERS = BUILDER
             .comment(
                     "Show how much a TACZ attachment changes each stat in its tooltip, not just which stats it",

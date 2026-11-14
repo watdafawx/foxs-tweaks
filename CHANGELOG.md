@@ -1,5 +1,10 @@
 # Changelog
 
+## 1.23.2
+
+- Kaleidoscope Grilling: no longer rebuilds its skewer recipe list for every item drawn. Rooms full of drawers, item frames or shelves lost 6-13% of frame time to it. Results are kept until datapacks reload or the server sends new skewer recipes. Toggle: `grillingSkewerCache`.
+- Dev check: `build.bat runGrillingCheck` (game dir `run-grilling/`).
+
 ## 1.23.1
 
 - Overworld copy: now generates with its own private copy of the vanilla overworld noise settings, density functions and noises (`foxstweaks:vanilla_overworld`), so a datapack that replaces `minecraft:overworld` (ReTerraForged and similar) no longer changes the copy.
