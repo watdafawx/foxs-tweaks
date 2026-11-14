@@ -1,5 +1,11 @@
 # Changelog
 
+## 1.24.0
+
+- Shrink: new "Toggle Shrink" key (Controls, unbound by default) shrinks or unshrinks you with a Shrinking Device from anywhere in your inventory, same power cost and scale as sneak-using it. Needs Fox's Tweaks on the server. Toggle: `shrinkHotkey`.
+- Settings screen: Fox's Tweaks now has an in-game settings screen, from the Mods list "Config" button or the new "Open Fox's Tweaks Settings" key (unbound by default).
+- Dev check: `build.bat runShrinkCheck` (game dir `run-shrink/`).
+
 ## 1.23.2
 
 - Kaleidoscope Grilling: no longer rebuilds its skewer recipe list for every item drawn. Rooms full of drawers, item frames or shelves lost 6-13% of frame time to it. Results are kept until datapacks reload or the server sends new skewer recipes. Toggle: `grillingSkewerCache`.

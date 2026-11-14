@@ -68,6 +68,15 @@ neoForge {
             systemProperty 'foxstweaks.grillingCheck', 'true'
         }
 
+        // Dev-only check of the Shrink hotkey + settings key (client/dev/ShrinkCheck): flat world, presses the real
+        // keys, screenshots the settings screen, writes run-shrink/foxstweaks-shrink-check.txt and quits. Put shrink,
+        // architectury and polylib jars in run-shrink/mods first.
+        shrinkCheck {
+            client()
+            gameDirectory = file('run-shrink')
+            systemProperty 'foxstweaks.shrinkCheck', 'true'
+        }
+
         // Dev-only screenshot of the Relics auto-level toggle (client/dev/RelicsShot): shots land in
         // run-relics/. Needs relics, curios, OctoLib, architectury jars in run-relics/mods.
         relicsShot {

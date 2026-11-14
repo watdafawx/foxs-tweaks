@@ -49,12 +49,28 @@ public class FoxsTweaksKeys {
             InputConstants.UNKNOWN.getValue(),
             CATEGORY);
 
+    /** Toggles shrinking with a Shrink "Shrinking Device" from the inventory (see {@code client.ShrinkKeyHandler}). Unbound by default. */
+    public static final KeyMapping TOGGLE_SHRINK = new KeyMapping(
+            "key." + FoxsTweaks.MODID + ".toggle_shrink",
+            InputConstants.Type.KEYSYM,
+            InputConstants.UNKNOWN.getValue(),
+            CATEGORY);
+
+    /** Opens the Fox's Tweaks settings screen (see {@code client.ConfigScreenKeys}). Unbound by default. */
+    public static final KeyMapping OPEN_CONFIG = new KeyMapping(
+            "key." + FoxsTweaks.MODID + ".open_config",
+            InputConstants.Type.KEYSYM,
+            InputConstants.UNKNOWN.getValue(),
+            CATEGORY);
+
     @SubscribeEvent
     public static void onRegisterKeyMappings(RegisterKeyMappingsEvent event) {
         event.register(OPEN_RELIC);
         event.register(SHOW_AFFIX_INFO);
         event.register(TOGGLE_AFFIXES);
         event.register(USE_TEMPORAL_POUCH);
+        event.register(TOGGLE_SHRINK);
+        event.register(OPEN_CONFIG);
     }
 
     /**

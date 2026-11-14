@@ -316,6 +316,15 @@ public final class Config {
                     "Client-side only. Does nothing without Sophisticated Backpacks.")
             .define("backpackRenderInfoCache", true);
 
+    public static final ModConfigSpec.BooleanValue SHRINK_HOTKEY = BUILDER
+            .comment(
+                    "Let the 'Toggle Shrink' key (Controls, unbound by default) shrink or unshrink you with a",
+                    "Shrink 'Shrinking Device' anywhere in your inventory, like sneak-using it from your hand:",
+                    "same power cost, same scale as set on the device.",
+                    "",
+                    "Needs Fox's Tweaks on the server too. Does nothing without Shrink.")
+            .define("shrinkHotkey", true);
+
     public static final ModConfigSpec.BooleanValue GRILLING_SKEWER_CACHE = BUILDER
             .comment(
                     "Stop Kaleidoscope Grilling rebuilding its skewer recipe list for every item drawn. It",

@@ -47,6 +47,7 @@ public class FoxsTweaks {
         modBus.addListener(dev.watdafawx.foxstweaks.enchant.ToggleNetwork::register);
         modBus.addListener(TemporalPouchNetwork::register);
         modBus.addListener(dev.watdafawx.foxstweaks.relics.AutoLevelNetwork::register);
+        modBus.addListener(dev.watdafawx.foxstweaks.shrink.ShrinkNetwork::register);
 
         FoxsTweaksComponents.COMPONENTS.register(modBus);
 
@@ -55,6 +56,10 @@ public class FoxsTweaks {
 
         if (FMLEnvironment.dist.isClient())
             modBus.addListener(dev.watdafawx.foxstweaks.client.PortalTint::register);
+
+        // Settings screen (Mods list "Config" button + hotkey).
+        if (FMLEnvironment.dist.isClient())
+            dev.watdafawx.foxstweaks.client.ConfigScreenKeys.registerScreen(container);
 
         if (TemporalPouchNetwork.isAvailable())
             modBus.addListener((FMLCommonSetupEvent event) -> event.enqueueWork(TemporalPouchCurio::register));
@@ -93,5 +98,9 @@ public class FoxsTweaks {
         // Dev-only check for the Kaleidoscope Grilling skewer cache; `build.bat runGrillingCheck` sets the property.
         if (FMLEnvironment.dist.isClient() && !FMLEnvironment.production && Boolean.getBoolean("foxstweaks.grillingCheck") && ModList.get().isLoaded("kaleidoscope_grilling"))
             dev.watdafawx.foxstweaks.client.dev.GrillingCheck.install();
+
+        // Dev-only check of the Shrink hotkey and settings key; `build.bat runShrinkCheck` sets the property.
+        if (FMLEnvironment.dist.isClient() && !FMLEnvironment.production && Boolean.getBoolean("foxstweaks.shrinkCheck") && ModList.get().isLoaded("shrink"))
+            dev.watdafawx.foxstweaks.client.dev.ShrinkCheck.install();
     }
 }

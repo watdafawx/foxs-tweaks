@@ -71,6 +71,11 @@ quality-of-life features sharing a jar, among them:
 17. **Kaleidoscope Grilling skewer cache** — `mixin/GrillingDataManagerMixin`, `mixin/SkewerRecipesMixin`
     (+ `GrillingDataManagerInvoker`) stop Grilling rebuilding its skewer recipe list for every item drawn. See
     [Kaleidoscope Grilling skewer cache](#kaleidoscope-grilling-skewer-cache-mixingrillingdatamanagermixin-mixinskewerrecipesmixin).
+18. **Shrink hotkey** — `shrink/ShrinkNetwork` + `client/ShrinkKeyHandler`: a key toggles shrinking with a Shrink
+    Shrinking Device from anywhere in the inventory. See [Shrink hotkey](#shrink-hotkey-shrinkshrinknetwork-clientshrinkkeyhandler).
+19. **Settings screen** — `client/ConfigScreenKeys`: NeoForge's generated config screen, from the Mods list and a key.
+    **Every new config key needs a `foxstweaks.configuration.<key>` label in `en_us.json`**, or the screen shows the
+    raw key. Tooltips fall back to the value's `.comment(...)`.
 
 **Every parent mod is optional.** The mod must load and behave correctly with either, both, or
 neither installed. This is the single most important invariant in the codebase — see
@@ -554,6 +559,19 @@ which `deserialize` migrates onto the stack) are not cached. The component type 
 `BuiltInRegistries.DATA_COMPONENT_TYPE`, so there's no Sophisticated Core/Backpacks compile dependency.
 Against Sophisticated Backpacks 3.26.3; re-check that `fromPhysicalStack` still has only read-only callers
 on update. Client section. Toggle: `backpackRenderInfoCache`.
+
+### Shrink hotkey (`shrink/ShrinkNetwork`, `client/ShrinkKeyHandler`)
+
+Shrink (gigabit101, 2.0.1.47) shrinks only on sneak-use of the Shrinking Device from the hand. `TOGGLE_SHRINK`
+(unbound) sends the empty `ToggleShrinkPayload` (optional channel; the client checks `hasChannel` first, so a server
+without Fox's Tweaks just ignores the key). The server finds the device by id `shrink:shrinking_device` (main hand,
+offhand, then inventory) and repeats `ItemShrinkDevice#use`'s sneak branch: `hasPower` (creative always true),
+then add `createModifier(getScale(stack))` when the scale attribute has no modifiers at all (Shrink's own
+`isEntityShrunk` test), else remove `SHRINKING_DEVICE_ID`, then `usePower`. Those members are looked up by
+reflection once; if a Shrink update renames them the key logs once and does nothing. Toggle: `shrinkHotkey`.
+Dev check: `build.bat runShrinkCheck` (game dir `run-shrink/`, needs shrink, architectury, polylib in its `mods/`)
+presses the real keys (shrink on, off, survival without power, no device, settings screen) and writes
+`run-shrink/foxstweaks-shrink-check.txt` + a screenshot of the settings screen.
 
 ### Kaleidoscope Grilling skewer cache (`mixin/GrillingDataManagerMixin`, `mixin/SkewerRecipesMixin`)
 
