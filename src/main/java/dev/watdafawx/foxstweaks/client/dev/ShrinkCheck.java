@@ -118,6 +118,44 @@ public final class ShrinkCheck {
             check("looked-at pig unshrunk", entityModifier(mc, near) == null, "pig modifier " + entityModifier(mc, near));
             net.neoforged.neoforge.network.PacketDistributor.sendToServer(dev.watdafawx.foxstweaks.shrink.ShrinkNetwork.ShrinkPayload.toggle(far));
         });
+        // Tiny mob (scale -0.9): shrink, re-aim at where it is now, press again.
+        STEPS.add(mc -> server(mc, p -> top.theillusivec4.curios.api.CuriosApi.getCuriosInventory(p)
+                .flatMap(inv -> inv.getStacksHandler("shrinking_device"))
+                .ifPresent(h -> h.getStacks().setStackInSlot(0, device(-0.9)))));
+        STEPS.add(ShrinkCheck::aimAtNear);
+        STEPS.add(mc -> {
+            log("tiny: hit before shrink " + mc.hitResult.getType());
+            press(FoxsTweaksKeys.TOGGLE_SHRINK);
+        });
+        STEPS.add(mc -> {
+            check("tiny: pig shrunk to -0.9", Double.valueOf(-0.9).equals(entityModifier(mc, near)), "pig modifier " + entityModifier(mc, near));
+            // Hide the tiny pig in tall grass: vanilla's crosshair pick now hits the grass, not the pig.
+            server(mc, p -> {
+                var pig = p.serverLevel().getEntity(near);
+                var pos = pig.blockPosition();
+                p.serverLevel().setBlock(pos, net.minecraft.world.level.block.Blocks.TALL_GRASS.defaultBlockState(), 2);
+                p.serverLevel().setBlock(pos.above(), net.minecraft.world.level.block.Blocks.TALL_GRASS.defaultBlockState()
+                        .setValue(net.minecraft.world.level.block.DoublePlantBlock.HALF, net.minecraft.world.level.block.state.properties.DoubleBlockHalf.UPPER), 2);
+            });
+        });
+        STEPS.add(ShrinkCheck::aimAtNear);
+        STEPS.add(mc -> {
+            check("tiny: crosshair hits the grass, not the pig (the reported case)", mc.hitResult.getType() == net.minecraft.world.phys.HitResult.Type.BLOCK,
+                    "hit " + mc.hitResult.getType());
+            press(FoxsTweaksKeys.TOGGLE_SHRINK);
+        });
+        STEPS.add(mc -> {
+            check("tiny: pig grown back", entityModifier(mc, near) == null, "pig modifier " + entityModifier(mc, near));
+            check("tiny: player not shrunk", modifier(mc) == null, "modifier " + modifier(mc));
+            server(mc, p -> {
+                p.getAttribute(Attributes.SCALE).removeModifier(MODIFIER);
+                var pig = p.serverLevel().getEntity(near);
+                if (pig instanceof net.minecraft.world.entity.LivingEntity l)
+                    l.getAttribute(Attributes.SCALE).removeModifier(MODIFIER);
+                top.theillusivec4.curios.api.CuriosApi.getCuriosInventory(p).flatMap(inv -> inv.getStacksHandler("shrinking_device"))
+                        .ifPresent(h -> h.getStacks().setStackInSlot(0, device(-0.25)));
+            });
+        });
         STEPS.add(mc -> {
             check("pig out of reach ignored", entityModifier(mc, far) == null, "far pig modifier " + entityModifier(mc, far));
             check("out-of-reach target not turned into self", modifier(mc) == null, "modifier " + modifier(mc));
@@ -175,6 +213,12 @@ public final class ShrinkCheck {
 
     private static int near;
     private static int far;
+
+    private static void aimAtNear(Minecraft mc) {
+        var pig = mc.level.getEntity(near);
+        if (pig != null)
+            mc.player.lookAt(net.minecraft.commands.arguments.EntityAnchorArgument.Anchor.EYES, pig.getBoundingBox().getCenter());
+    }
 
     private static int spawnPig(ServerPlayer p, int distance) {
         var pig = net.minecraft.world.entity.EntityType.PIG.create(p.serverLevel());

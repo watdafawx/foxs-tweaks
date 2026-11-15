@@ -565,7 +565,9 @@ on update. Client section. Toggle: `backpackRenderInfoCache`.
 Shrink (gigabit101, 2.0.1.47) shrinks only on use of the Shrinking Device from the hand (sneak-use = self,
 right-click a mob = that mob). `TOGGLE_SHRINK` (unbound) sends `ShrinkPayload` (channel version "2", optional; the
 client checks `hasChannel` first, so a server without Fox's Tweaks just ignores the key). Plain press: target = the
-living entity under the crosshair (`mc.hitResult`), else `SELF` (-1). Shift + press: `OPEN_MENU`; the server opens
+living entity under the crosshair (`mc.hitResult`); if that is a block or miss, `ShrinkKeyHandler.pickLiving` picks again
+along the view, clipping only at blocks with collision (`ClipContext.Block.COLLIDER`), so a shrunk mob inside grass
+or flowers is still found; else `SELF` (-1). Shift + press: `OPEN_MENU`; the server opens
 Shrink's own menu as `use` does (`shrink/ShrinkMenu`, Architectury `MenuRegistry.openExtendedMenu`). That menu reads
 and saves the **main-hand** item in three places, each redirected to `ShrinkNetwork.deviceFor` (main hand if it is
 the device, else `findDevice`) by a `require = 0` `@WrapOperation` on `Player.getItemInHand`:
@@ -574,7 +576,7 @@ scale; it casts the stack to the device, so without the mixin a non-device main 
 `ShrinkDevicePacketMixin` (`PacketShrinkDevice.lambda$handle$0`, the save). If a Shrink update moves those reads,
 check that Shift still works with a non-device main hand before shipping. The server finds the device by id
 `shrink:shrinking_device` (main hand, offhand, any Curios slot via `shrink/ShrinkCurios` when Curios is loaded, then
-inventory). Toggle: a non-self target must be alive and pass `canInteractWithEntity(target, 1.0)` (a far or stale id
+inventory). Toggle: a non-self target must be alive and pass `canInteractWithEntity(target, 3.0)` (vanilla's interact slack) (a far or stale id
 is dropped, never turned into self); then `ItemShrinkDevice#use`'s logic: `hasPower` (creative always true),
 then add `createModifier(getScale(stack))` when the scale attribute has no modifiers at all (Shrink's own
 `isEntityShrunk` test), else remove `SHRINKING_DEVICE_ID`, then `usePower`. Those members are looked up by
@@ -586,7 +588,7 @@ silhouette of Shrink's item texture), name `curios.identifier.shrinking_device`.
 Shrinking Device is a different item with its own `psd` slot; it does not change size.
 Dev check: `build.bat runShrinkCheck` (game dir `run-shrink/`, needs shrink, architectury, polylib, curios in its
 `mods/`) presses the real keys (shrink on, off, survival without power, no device, device in the Curios slot on/off,
-looked-at NoAI pig on/off, out-of-reach pig id ignored, Shift path (`ShrinkKeyHandler.press(mc, true)`) opening
+looked-at NoAI pig on/off, the pig at -0.9 hidden in tall grass grown back, out-of-reach pig id ignored, Shift path (`ShrinkKeyHandler.press(mc, true)`) opening
 Shrink's menu with a stick in the main hand and the device only in the Curios slot, the screen's `SCALE` read from
 that device, Shrink's own `PacketShrinkDevice` saving to it, settings screen) and writes
 `run-shrink/foxstweaks-shrink-check.txt` + screenshots of Shrink's menu and the settings screen.

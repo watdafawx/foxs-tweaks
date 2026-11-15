@@ -6,8 +6,14 @@ import dev.watdafawx.foxstweaks.shrink.ShrinkNetwork;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.screens.Screen;
 import net.minecraft.world.entity.LivingEntity;
+import net.minecraft.world.entity.player.Player;
+import net.minecraft.world.entity.projectile.ProjectileUtil;
+import net.minecraft.world.level.ClipContext;
+import net.minecraft.world.phys.AABB;
+import net.minecraft.world.phys.BlockHitResult;
 import net.minecraft.world.phys.EntityHitResult;
 import net.minecraft.world.phys.HitResult;
+import net.minecraft.world.phys.Vec3;
 import net.neoforged.api.distmarker.Dist;
 import net.neoforged.bus.api.SubscribeEvent;
 import net.neoforged.fml.common.EventBusSubscriber;
@@ -17,7 +23,8 @@ import net.neoforged.neoforge.network.PacketDistributor;
 /**
  * {@link FoxsTweaksKeys#TOGGLE_SHRINK}, with no screen open:
  * <ul>
- *   <li>alone - shrink or unshrink the living entity or player under the crosshair, or yourself when there is none;</li>
+ *   <li>alone - shrink or unshrink the living entity or player under the crosshair (seen through grass and other
+ *       non-solid blocks), or yourself when there is none;</li>
  *   <li>with Shift held - open Shrink's own device menu (scale setting) for the device wherever it is.</li>
  * </ul>
  * The server finds the device, checks reach and power and does the change; it needs Fox's Tweaks too.
@@ -49,12 +56,30 @@ public class ShrinkKeyHandler {
             return;
         }
 
-        int target = ShrinkNetwork.SELF;
+        LivingEntity living = pickLiving(mc);
+        PacketDistributor.sendToServer(ShrinkNetwork.ShrinkPayload.toggle(living == null ? ShrinkNetwork.SELF : living.getId()));
+    }
 
-        if (mc.hitResult != null && mc.hitResult.getType() == HitResult.Type.ENTITY
-                && ((EntityHitResult) mc.hitResult).getEntity() instanceof LivingEntity living)
-            target = living.getId();
+    /**
+     * The living entity under the crosshair. Vanilla's pick stops at a block's outline, so a (shrunk) mob standing in
+     * grass or flowers is hidden behind the plant; when the crosshair isn't on an entity, look again along the view,
+     * stopping only at blocks with collision (walls, not plants), within entity interaction range.
+     */
+    private static LivingEntity pickLiving(Minecraft mc) {
+        if (mc.hitResult instanceof EntityHitResult hit && hit.getEntity() instanceof LivingEntity living)
+            return living;
 
-        PacketDistributor.sendToServer(ShrinkNetwork.ShrinkPayload.toggle(target));
+        Player player = mc.player;
+        Vec3 eye = player.getEyePosition();
+        Vec3 end = eye.add(player.getViewVector(1.0F).scale(player.entityInteractionRange()));
+        BlockHitResult wall = mc.level.clip(new ClipContext(eye, end, ClipContext.Block.COLLIDER, ClipContext.Fluid.NONE, player));
+
+        if (wall.getType() != HitResult.Type.MISS)
+            end = wall.getLocation();
+
+        AABB box = player.getBoundingBox().expandTowards(end.subtract(eye)).inflate(1.0);
+        EntityHitResult hit = ProjectileUtil.getEntityHitResult(player, eye, end, box,
+                e -> e instanceof LivingEntity && !e.isSpectator() && e.isPickable(), eye.distanceToSqr(end));
+        return hit != null && hit.getEntity() instanceof LivingEntity living ? living : null;
     }
 }

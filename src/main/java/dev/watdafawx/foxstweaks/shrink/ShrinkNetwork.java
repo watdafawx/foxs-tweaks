@@ -128,8 +128,9 @@ public final class ShrinkNetwork {
         if (targetId != SELF) {
             Entity entity = player.level().getEntity(targetId);
 
-            // Same reach as a right-click on the entity; a stale or far id is ignored, not turned into self.
-            if (!(entity instanceof LivingEntity living) || !living.isAlive() || !player.canInteractWithEntity(living, 1.0))
+            // Same reach check as vanilla's entity interact packet (3 blocks of slack for lag); a stale or far id is
+            // ignored, not turned into self.
+            if (!(entity instanceof LivingEntity living) || !living.isAlive() || !player.canInteractWithEntity(living, 3.0))
                 return;
 
             target = living;

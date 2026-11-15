@@ -1,5 +1,9 @@
 # Changelog
 
+## 1.25.1
+
+- Shrink: "Toggle Shrink" now finds a mob hidden in grass, flowers or other blocks you can walk through. A shrunk mob standing in grass couldn't be grown back with the key; the key hit the grass and changed your own size instead. Walls still block it.
+
 ## 1.25.0
 
 - Shrink: the Shrinking Device gets its own Curios slot, and the "Toggle Shrink" key now also uses it from there. Not to be confused with Compact Machines' Personal Shrinking Device, which has its own slot and doesn't change your size.
