@@ -9,7 +9,7 @@ quality-of-life features sharing a jar, among them:
 
 1. **Relics integration** — auto-completes the constellation "star puzzle" research, both on pickup
    and via a button on the research screen.
-   Also: right-click / key opens a relic's description screen (`relics/client/RelicQuickOpenHandler`);
+   Also: right-click / key opens a relic's research screen (`relics/client/RelicQuickOpenHandler`);
    auto-level, rank-up, min XP and ability unlock run server-side in `relics/AutoLevelHandler` (chosen ability
    lives in the `auto_level_ability` data component, set by `AutoLevelPayload` from `AutoLevelWidget` on the
    ability screen). Dev check: `build.bat runRelicsShot` (game dir `run-relics/`, needs relics, curios, OctoLib,

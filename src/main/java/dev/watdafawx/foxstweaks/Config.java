@@ -31,10 +31,10 @@ public final class Config {
     public static final ModConfigSpec.BooleanValue RELIC_RIGHT_CLICK_OPEN = BUILDER
             .comment(
                     "Right-click a relic in any inventory screen (with an empty cursor) to open its Relics",
-                    "description screen at once, instead of holding the research key for a second. Right-click",
+                    "research screen at once, instead of holding the research key for a second. Right-click",
                     "no longer picks the relic up while this is on - left-click still does.",
                     "",
-                    "There is also a 'Open Relic Description' key under Controls (unbound by default) that opens",
+                    "There is also a 'Open Relic Research' key under Controls (unbound by default) that opens",
                     "it for whichever relic the cursor is over. Client-side only.")
             .define("relicRightClickOpen", true);
 

@@ -100,6 +100,33 @@ public final class RelicsShot {
             check("B2 floor off: keeps upgrading", s.abilityLevel >= 2, s.toString());
             check("B2 floor off: xp spent below 400", s.xp < 400, s.toString());
         });
+        // C: tooltip hint. Inventory open, cursor on the relic, screenshot.
+        add(20, () -> {
+            Config.RELIC_AUTO_LEVEL_MIN_XP.set(0);
+            onServer(p -> give(p, 0, false));
+        });
+        add(20, () -> {
+            var mc = Minecraft.getInstance();
+            mc.setScreen(new net.minecraft.client.gui.screens.inventory.InventoryScreen(mc.player));
+        });
+        add(10, () -> {
+            var mc = Minecraft.getInstance();
+            var w = mc.getWindow();
+            var slot = mc.player.containerMenu.slots.get(SLOT);
+            double gx = (w.getGuiScaledWidth() - 176) / 2.0 + slot.x + 8;
+            double gy = (w.getGuiScaledHeight() - 166) / 2.0 + slot.y + 8;
+            org.lwjgl.glfw.GLFW.glfwSetCursorPos(w.getWindow(), gx * w.getGuiScale(), gy * w.getGuiScale());
+        });
+        add(20, () -> shot("tooltip-hint.png"));
+        add(20, () -> {
+            var mc = Minecraft.getInstance();
+            var hint = net.minecraft.network.chat.Component.translatable("foxstweaks.relic.right_click_open").getString();
+            var lines = mc.player.containerMenu.slots.get(SLOT).getItem()
+                    .getTooltipLines(net.minecraft.world.item.Item.TooltipContext.of(mc.level), mc.player, net.minecraft.world.item.TooltipFlag.NORMAL)
+                    .stream().map(c -> c.getString()).toList();
+            log("C tooltip lines: " + lines + " (event hook adds hint only via the screen path)");
+            mc.setScreen(null);
+        });
         add(10, () -> {
             log("done: " + (failures == 0 ? "ALL PASS" : failures + " FAILURE(S)"));
             try {

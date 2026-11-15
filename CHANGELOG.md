@@ -1,5 +1,9 @@
 # Changelog
 
+## Unreleased
+
+- Relics: a relic's tooltip now says "Right-click to research" while right-click open is on and works (inventory screens, empty cursor).
+
 ## 1.25.1
 
 - Shrink: "Toggle Shrink" now finds a mob hidden in grass, flowers or other blocks you can walk through. A shrunk mob standing in grass couldn't be grown back with the key; the key hit the grass and changed your own size instead. Walls still block it.
