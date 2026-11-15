@@ -1,8 +1,8 @@
 # Changelog
 
-## Unreleased
+## 1.25.2
 
-- Relics: a relic's tooltip now says "Right-click to research" while right-click open is on and works (inventory screens, empty cursor).
+- Relics: a relic's tooltip now says "Right-click to research" while right-click open is on and works (inventory screens, empty cursor). The matching key is now called "Open Relic Research" in Controls.
 
 ## 1.25.1
 
