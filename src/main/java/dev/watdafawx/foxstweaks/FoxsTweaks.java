@@ -100,7 +100,7 @@ public class FoxsTweaks {
             dev.watdafawx.foxstweaks.client.dev.GrillingCheck.install();
 
         // Dev-only check of the Shrink hotkey and settings key; `build.bat runShrinkCheck` sets the property.
-        if (FMLEnvironment.dist.isClient() && !FMLEnvironment.production && Boolean.getBoolean("foxstweaks.shrinkCheck") && ModList.get().isLoaded("shrink"))
+        if (FMLEnvironment.dist.isClient() && !FMLEnvironment.production && Boolean.getBoolean("foxstweaks.shrinkCheck") && ModList.get().isLoaded("shrink") && ModList.get().isLoaded(CURIOS))
             dev.watdafawx.foxstweaks.client.dev.ShrinkCheck.install();
     }
 }

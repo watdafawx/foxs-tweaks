@@ -1,0 +1,7 @@
+{
+  "neoforge:conditions": [{ "type": "neoforge:mod_loaded", "modid": "shrink" }],
+  "size": 1,
+  "order": 251,
+  "icon": "foxstweaks:slot/shrinking_device",
+  "validators": ["curios:tag"]
+}

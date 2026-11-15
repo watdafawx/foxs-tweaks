@@ -318,9 +318,10 @@ public final class Config {
 
     public static final ModConfigSpec.BooleanValue SHRINK_HOTKEY = BUILDER
             .comment(
-                    "Let the 'Toggle Shrink' key (Controls, unbound by default) shrink or unshrink you with a",
-                    "Shrink 'Shrinking Device' anywhere in your inventory, like sneak-using it from your hand:",
-                    "same power cost, same scale as set on the device.",
+                    "Let the 'Toggle Shrink' key (Controls, unbound by default) use a Shrink 'Shrinking Device' from",
+                    "your hands, its own Curios slot or your inventory. Press it to shrink or unshrink the mob or",
+                    "player you are looking at (within reach), or yourself when you look at nothing; same power",
+                    "cost and scale as using the device. Shift + the key opens Shrink's own device menu (scale).",
                     "",
                     "Needs Fox's Tweaks on the server too. Does nothing without Shrink.")
             .define("shrinkHotkey", true);

@@ -1,5 +1,11 @@
 # Changelog
 
+## 1.25.0
+
+- Shrink: the Shrinking Device gets its own Curios slot, and the "Toggle Shrink" key now also uses it from there. Not to be confused with Compact Machines' Personal Shrinking Device, which has its own slot and doesn't change your size.
+- Shrink: "Toggle Shrink" now shrinks or unshrinks the mob or player you're looking at (within reach), or yourself when you aren't looking at one. Same power cost as using the device on them.
+- Shrink: Shift + "Toggle Shrink" opens Shrink's own device menu to set the scale, wherever the device is (Curios slot or inventory, not just the main hand). Shrink's menu now also reads and saves that device instead of whatever is in your main hand.
+
 ## 1.24.0
 
 - Shrink: new "Toggle Shrink" key (Controls, unbound by default) shrinks or unshrinks you with a Shrinking Device from anywhere in your inventory, same power cost and scale as sneak-using it. Needs Fox's Tweaks on the server. Toggle: `shrinkHotkey`.

@@ -24,6 +24,8 @@
     "PortalForcerMixin",
     "PointBlankInventoryUtilsMixin",
     "PrinterBlockEntityMixin",
+    "ShrinkDeviceContainerMixin",
+    "ShrinkDevicePacketMixin",
     "SimChamberMixin",
     "SkewerRecipesMixin"
   ],
@@ -48,6 +50,7 @@
     "IrisShaderScreenSearchMixin",
     "SbEmiFillButtonMixin",
     "SbEmiFillerMixin",
+    "ShrinkScreenMixin",
     "TaczAttachmentTooltipMixin",
     "TaczBedrockCubeMixin",
     "TransmogInventoryMixin",

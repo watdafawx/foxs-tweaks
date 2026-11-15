@@ -71,8 +71,8 @@ quality-of-life features sharing a jar, among them:
 17. **Kaleidoscope Grilling skewer cache** — `mixin/GrillingDataManagerMixin`, `mixin/SkewerRecipesMixin`
     (+ `GrillingDataManagerInvoker`) stop Grilling rebuilding its skewer recipe list for every item drawn. See
     [Kaleidoscope Grilling skewer cache](#kaleidoscope-grilling-skewer-cache-mixingrillingdatamanagermixin-mixinskewerrecipesmixin).
-18. **Shrink hotkey** — `shrink/ShrinkNetwork` + `client/ShrinkKeyHandler`: a key toggles shrinking with a Shrink
-    Shrinking Device from anywhere in the inventory. See [Shrink hotkey](#shrink-hotkey-shrinkshrinknetwork-clientshrinkkeyhandler).
+18. **Shrink hotkey** — `shrink/ShrinkNetwork` + `client/ShrinkKeyHandler`: a key shrinks the looked-at mob/player or
+    yourself with a Shrink Shrinking Device from anywhere (inventory, Curios); Shift + key sets its scale. See [Shrink hotkey](#shrink-hotkey-shrinkshrinknetwork-clientshrinkkeyhandler).
 19. **Settings screen** — `client/ConfigScreenKeys`: NeoForge's generated config screen, from the Mods list and a key.
     **Every new config key needs a `foxstweaks.configuration.<key>` label in `en_us.json`**, or the screen shows the
     raw key. Tooltips fall back to the value's `.comment(...)`.
@@ -562,16 +562,34 @@ on update. Client section. Toggle: `backpackRenderInfoCache`.
 
 ### Shrink hotkey (`shrink/ShrinkNetwork`, `client/ShrinkKeyHandler`)
 
-Shrink (gigabit101, 2.0.1.47) shrinks only on sneak-use of the Shrinking Device from the hand. `TOGGLE_SHRINK`
-(unbound) sends the empty `ToggleShrinkPayload` (optional channel; the client checks `hasChannel` first, so a server
-without Fox's Tweaks just ignores the key). The server finds the device by id `shrink:shrinking_device` (main hand,
-offhand, then inventory) and repeats `ItemShrinkDevice#use`'s sneak branch: `hasPower` (creative always true),
+Shrink (gigabit101, 2.0.1.47) shrinks only on use of the Shrinking Device from the hand (sneak-use = self,
+right-click a mob = that mob). `TOGGLE_SHRINK` (unbound) sends `ShrinkPayload` (channel version "2", optional; the
+client checks `hasChannel` first, so a server without Fox's Tweaks just ignores the key). Plain press: target = the
+living entity under the crosshair (`mc.hitResult`), else `SELF` (-1). Shift + press: `OPEN_MENU`; the server opens
+Shrink's own menu as `use` does (`shrink/ShrinkMenu`, Architectury `MenuRegistry.openExtendedMenu`). That menu reads
+and saves the **main-hand** item in three places, each redirected to `ShrinkNetwork.deviceFor` (main hand if it is
+the device, else `findDevice`) by a `require = 0` `@WrapOperation` on `Player.getItemInHand`:
+`ShrinkDeviceContainerMixin` (`<init>`, energy bar, both sides), `ShrinkScreenMixin` (client, `buildGui`, starting
+scale; it casts the stack to the device, so without the mixin a non-device main hand crashes the client) and
+`ShrinkDevicePacketMixin` (`PacketShrinkDevice.lambda$handle$0`, the save). If a Shrink update moves those reads,
+check that Shift still works with a non-device main hand before shipping. The server finds the device by id
+`shrink:shrinking_device` (main hand, offhand, any Curios slot via `shrink/ShrinkCurios` when Curios is loaded, then
+inventory). Toggle: a non-self target must be alive and pass `canInteractWithEntity(target, 1.0)` (a far or stale id
+is dropped, never turned into self); then `ItemShrinkDevice#use`'s logic: `hasPower` (creative always true),
 then add `createModifier(getScale(stack))` when the scale attribute has no modifiers at all (Shrink's own
 `isEntityShrunk` test), else remove `SHRINKING_DEVICE_ID`, then `usePower`. Those members are looked up by
 reflection once; if a Shrink update renames them the key logs once and does nothing. Toggle: `shrinkHotkey`.
-Dev check: `build.bat runShrinkCheck` (game dir `run-shrink/`, needs shrink, architectury, polylib in its `mods/`)
-presses the real keys (shrink on, off, survival without power, no device, settings screen) and writes
-`run-shrink/foxstweaks-shrink-check.txt` + a screenshot of the settings screen.
+The device has its own Curios slot, pure data like the Temporal Pouch one: `curios/slots/shrinking_device.json` +
+`curios/entities/shrinking_device.json` (behind `neoforge:mod_loaded` on `shrink`), tag
+`data/curios/tags/item/shrinking_device.json` (`required: false`), icon `textures/slot/shrinking_device.png` (a
+silhouette of Shrink's item texture), name `curios.identifier.shrinking_device`. Compact Machines' Personal
+Shrinking Device is a different item with its own `psd` slot; it does not change size.
+Dev check: `build.bat runShrinkCheck` (game dir `run-shrink/`, needs shrink, architectury, polylib, curios in its
+`mods/`) presses the real keys (shrink on, off, survival without power, no device, device in the Curios slot on/off,
+looked-at NoAI pig on/off, out-of-reach pig id ignored, Shift path (`ShrinkKeyHandler.press(mc, true)`) opening
+Shrink's menu with a stick in the main hand and the device only in the Curios slot, the screen's `SCALE` read from
+that device, Shrink's own `PacketShrinkDevice` saving to it, settings screen) and writes
+`run-shrink/foxstweaks-shrink-check.txt` + screenshots of Shrink's menu and the settings screen.
 
 ### Kaleidoscope Grilling skewer cache (`mixin/GrillingDataManagerMixin`, `mixin/SkewerRecipesMixin`)
 
