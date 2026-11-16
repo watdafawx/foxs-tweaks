@@ -7,7 +7,7 @@ import javax.annotation.Nullable;
 
 import com.mojang.logging.LogUtils;
 
-import dev.watdafawx.foxstweaks.Config;
+import dev.watdafawx.foxstweaks.ServerConfig;
 import net.minecraft.BlockUtil;
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.Direction;
@@ -232,7 +232,7 @@ public final class CopyPortals {
             }
         }
 
-        if (surface && Config.OVERWORLD_COPY_FLAT.get()) {
+        if (surface && ServerConfig.flat()) {
             flatten(level, bestPos, dir);
         }
 

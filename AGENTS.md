@@ -21,6 +21,12 @@ quality-of-life features sharing a jar, among them:
    Dye colours live in `PortalColors` (SavedData) and reach clients through `PortalColorsPayload`; the tint is a
    block colour handler on vanilla's portal block plus our model/texture override. Dev check:
    `build.bat runPortalShot` writes `run-portal/foxstweaks-portal-check.txt`.
+   The frame, instant, flat and dye keys live in `ServerConfig` (SERVER type, `<world>/serverconfig/foxstweaks-server.toml`,
+   synced to clients); `overworldCopy` stays in COMMON `Config` because the datapack condition reads it before any world
+   loads. `OverworldCopyCommand`: `/foxstweaks portal frame [set|add|remove|reset]` writes the server config;
+   `/foxstweaks portal regenerate [cancel]` (op 4, refused while a player is in the copy) drops a marker file, and
+   `ServerAboutToStartEvent` deletes the copy's `dimensions/foxstweaks/overworld_copy` folder on the next start (live
+   deletion is impossible: the region files are open). Untested in game.
 2. **Apotheosis integration** — a second tooltip panel, shown while a key is held, listing an item's
    affixes, attributes and gem sockets without touching the main tooltip.
 3. **Apotheosis affix toggles** — a hotkey opens the held item's own tooltip as a clickable overlay

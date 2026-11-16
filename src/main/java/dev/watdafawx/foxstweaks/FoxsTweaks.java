@@ -40,6 +40,7 @@ public class FoxsTweaks {
 
     public FoxsTweaks(IEventBus modBus, ModContainer container) {
         container.registerConfig(ModConfig.Type.COMMON, Config.SPEC);
+        container.registerConfig(ModConfig.Type.SERVER, ServerConfig.SPEC);
 
         // Registered unconditionally - an unused optional channel costs nothing, and both the
         // Point Blank printer and TACZ's gunsmith table may want to send on it.

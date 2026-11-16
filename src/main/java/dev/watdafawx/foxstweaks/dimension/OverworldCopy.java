@@ -7,6 +7,7 @@ import com.mojang.logging.LogUtils;
 
 import dev.watdafawx.foxstweaks.Config;
 import dev.watdafawx.foxstweaks.FoxsTweaks;
+import dev.watdafawx.foxstweaks.ServerConfig;
 import net.minecraft.core.registries.BuiltInRegistries;
 import net.minecraft.core.registries.Registries;
 import net.minecraft.resources.ResourceKey;
@@ -31,8 +32,28 @@ public final class OverworldCopy {
         return !Config.SPEC.isLoaded() || Config.OVERWORLD_COPY.get();
     }
 
+    /** Why {@code entry} (a block id or {@code #tag}) cannot be a portal frame, or null when it can. */
+    public static String frameProblem(String entry) {
+        boolean tag = entry.startsWith("#");
+        ResourceLocation id = ResourceLocation.tryParse(tag ? entry.substring(1) : entry);
+
+        if (id == null) {
+            return "'" + entry + "' is not a valid id";
+        }
+
+        if (!tag && !BuiltInRegistries.BLOCK.containsKey(id)) {
+            return "unknown block '" + entry + "'";
+        }
+
+        if (!tag && BuiltInRegistries.BLOCK.get(id) == Blocks.OBSIDIAN) {
+            return "minecraft:obsidian would turn every Nether portal into one of these";
+        }
+
+        return null;
+    }
+
     public static boolean isFrame(BlockState state) {
-        if (!Config.SPEC.isLoaded()) {
+        if (!ServerConfig.loaded()) {
             return false;
         }
 
@@ -57,9 +78,9 @@ public final class OverworldCopy {
         return false;
     }
 
-    /** What a generated portal is built from: the first configured block, else crying obsidian. */
+    /** What a generated portal is built from: the first configured block, else stone bricks. */
     public static BlockState frameForGeneration() {
-        if (Config.SPEC.isLoaded()) {
+        if (ServerConfig.loaded()) {
             parse();
 
             if (!frameBlocks.isEmpty()) {
@@ -75,11 +96,11 @@ public final class OverworldCopy {
             }
         }
 
-        return Blocks.CRYING_OBSIDIAN.defaultBlockState();
+        return Blocks.STONE_BRICKS.defaultBlockState();
     }
 
     private static synchronized void parse() {
-        List<? extends String> source = Config.OVERWORLD_COPY_FRAME.get();
+        List<? extends String> source = ServerConfig.OVERWORLD_COPY_FRAME.get();
 
         if (source == parsedFrom) {
             return;

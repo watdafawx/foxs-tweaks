@@ -10,6 +10,7 @@ import java.util.function.Function;
 import com.mojang.logging.LogUtils;
 
 import dev.watdafawx.foxstweaks.Config;
+import dev.watdafawx.foxstweaks.ServerConfig;
 import dev.watdafawx.foxstweaks.dimension.ClientPortalColors;
 import dev.watdafawx.foxstweaks.dimension.CopyPortals;
 import dev.watdafawx.foxstweaks.dimension.OverworldCopy;
@@ -143,6 +144,19 @@ public final class PortalShot {
                 int height = p.serverLevel().getHeight(net.minecraft.world.level.levelgen.Heightmap.Types.MOTION_BLOCKING_NO_LEAVES, portal.getX(), portal.getZ());
                 return height - portal.getY() <= 6;
             }), "");
+            check("5 structures can be located in the copy", onServer(p -> {
+                var lv = p.serverLevel();
+                LOG.info("PortalCheck structure sets in copy: {}, biome here {}", lv.getChunkSource().getGeneratorState().possibleStructureSets().size(),
+                        lv.getBiome(p.blockPosition()).unwrapKey().map(k -> k.location().toString()).orElse("?"));
+                int found = 0;
+                for (var tag : java.util.List.of(net.minecraft.tags.StructureTags.VILLAGE, net.minecraft.tags.StructureTags.MINESHAFT,
+                        net.minecraft.tags.StructureTags.RUINED_PORTAL, net.minecraft.tags.StructureTags.SHIPWRECK, net.minecraft.tags.StructureTags.EYE_OF_ENDER_LOCATED)) {
+                    var hit = lv.findNearestMapStructure(tag, p.blockPosition(), 60, false);
+                    LOG.info("PortalCheck structure {}: {}", tag.location(), hit);
+                    if (hit != null) found++;
+                }
+                return found >= 2;
+            }), "");
             onServer(p -> {
                 ServerLevel lv = p.serverLevel();
                 BlockPos portal = nearestPortal(lv, p.blockPosition());
@@ -240,12 +254,12 @@ public final class PortalShot {
                 p.teleportTo(21.5, Y, 0.5);
                 return portal.getPortalTransitionTime(p.serverLevel(), p) >= 1;
             }), "");
-            Config.OVERWORLD_COPY_INSTANT.set(false);
+            ServerConfig.OVERWORLD_COPY_INSTANT.set(false);
             check("8b instant off: vanilla wait in our portal", onServer(p -> {
                 p.teleportTo(6.5, Y, 0.5);
                 return portal.getPortalTransitionTime(p.serverLevel(), p) >= 1;
             }), "");
-            Config.OVERWORLD_COPY_INSTANT.set(true);
+            ServerConfig.OVERWORLD_COPY_INSTANT.set(true);
         });
 
         // Toggle off.
@@ -261,7 +275,7 @@ public final class PortalShot {
 
         // Flat surface option: a second portal, built with the pad switched on.
         add(10, () -> onServer(p -> {
-            Config.OVERWORLD_COPY_FLAT.set(true);
+            ServerConfig.OVERWORLD_COPY_FLAT.set(true);
             p.setGameMode(GameType.CREATIVE);
             ServerLevel level = p.serverLevel();
             for (int x = 400; x <= 403; x++) {
@@ -319,7 +333,7 @@ public final class PortalShot {
                 return wrong == 0;
             }), "");
             shot("portalshot-3-flat-pad.png");
-            Config.OVERWORLD_COPY_FLAT.set(false);
+            ServerConfig.OVERWORLD_COPY_FLAT.set(false);
         });
 
         add(10, () -> {
@@ -487,7 +501,7 @@ public final class PortalShot {
 
         var settings = new LevelSettings(world, GameType.CREATIVE, false, Difficulty.PEACEFUL, true, new GameRules(), WorldDataConfiguration.DEFAULT);
 
-        mc.createWorldOpenFlows().createFreshLevel(world, settings, new WorldOptions(0L, false, false),
+        mc.createWorldOpenFlows().createFreshLevel(world, settings, new WorldOptions(0L, true, false),
                 access -> access.registryOrThrow(Registries.WORLD_PRESET).getHolderOrThrow(WorldPresets.FLAT).value().createWorldDimensions(),
                 new TitleScreen());
     }

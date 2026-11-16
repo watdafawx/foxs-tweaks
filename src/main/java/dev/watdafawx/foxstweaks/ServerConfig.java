@@ -1,0 +1,73 @@
+package dev.watdafawx.foxstweaks;
+
+import net.neoforged.neoforge.common.ModConfigSpec;
+
+import java.util.List;
+
+/**
+ * Per-world settings, written to {@code <world>/serverconfig/foxstweaks-server.toml} (defaults copied from
+ * {@code defaultconfigs/foxstweaks-server.toml} when the world has none). NeoForge syncs them to connected
+ * clients, so a client sees the server's values and can never change them; edit the file on the server or
+ * use {@code /foxstweaks portal frame ...}.
+ *
+ * <p>Only what the server decides lives here. The {@code overworldCopy} switch stays in {@link Config}: the
+ * datapack condition reads it before any world, and so before this file, is loaded.
+ */
+public final class ServerConfig {
+    private static final ModConfigSpec.Builder BUILDER = new ModConfigSpec.Builder();
+
+    public static final String DEFAULT_FRAME = "minecraft:stone_bricks";
+
+    public static final ModConfigSpec.ConfigValue<List<? extends String>> OVERWORLD_COPY_FRAME = BUILDER
+            .comment(
+                    "Blocks (or #tags) that make a portal frame to the overworld copy. Same rules as a Nether",
+                    "portal: a rectangle of these, 2-21 wide and 3-21 tall inside, corners optional. Light it",
+                    "with flint and steel or a fire charge. The same portal leads back from the copy to the",
+                    "main overworld. Applies at once, also to a running server; portals already built keep",
+                    "working only while their frame still matches this list.",
+                    "",
+                    "minecraft:obsidian is ignored: it would turn every Nether portal into one of these.",
+                    "Change it in game with /foxstweaks portal frame set <block>.")
+            .defineListAllowEmpty("overworldCopyPortalFrame", List.of(DEFAULT_FRAME),
+                    () -> DEFAULT_FRAME, o -> o instanceof String);
+
+    public static final ModConfigSpec.BooleanValue OVERWORLD_COPY_INSTANT = BUILDER
+            .comment(
+                    "Teleport through a portal to the overworld copy the moment you step in, with no wait.",
+                    "Off: the usual portal delay (the Nether portal game rules) applies.")
+            .define("overworldCopyInstantTeleport", true);
+
+    public static final ModConfigSpec.BooleanValue OVERWORLD_COPY_FLAT = BUILDER
+            .comment(
+                    "When a portal to the overworld copy has to be built, level a small pad of surface around it",
+                    "(about 9x9): the ground is raised or cut to the portal's floor with the biome's own surface",
+                    "block, and anything standing on it is cleared. Terrain, caves and everything else are left",
+                    "as generated. Off by default.")
+            .define("overworldCopyFlatSurface", false);
+
+    public static final ModConfigSpec.BooleanValue OVERWORLD_COPY_DYE = BUILDER
+            .comment("Right-click a portal to the overworld copy with a dye to colour it. Needs the mod on the client to be seen.")
+            .define("overworldCopyPortalDye", true);
+
+    public static final ModConfigSpec SPEC = BUILDER.build();
+
+    /** False before a world's server config is read (main menu, datapack loading); callers fall back to the defaults. */
+    public static boolean loaded() {
+        return SPEC.isLoaded();
+    }
+
+    public static boolean instant() {
+        return !loaded() || OVERWORLD_COPY_INSTANT.get();
+    }
+
+    public static boolean flat() {
+        return loaded() && OVERWORLD_COPY_FLAT.get();
+    }
+
+    public static boolean dye() {
+        return !loaded() || OVERWORLD_COPY_DYE.get();
+    }
+
+    private ServerConfig() {
+    }
+}

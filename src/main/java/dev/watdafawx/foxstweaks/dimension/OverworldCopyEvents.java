@@ -5,8 +5,8 @@ import java.util.Optional;
 
 import com.mojang.serialization.MapCodec;
 
-import dev.watdafawx.foxstweaks.Config;
 import dev.watdafawx.foxstweaks.FoxsTweaks;
+import dev.watdafawx.foxstweaks.ServerConfig;
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.Direction;
 import net.minecraft.server.level.ServerLevel;
@@ -58,6 +58,7 @@ public final class OverworldCopyEvents {
         CONDITIONS.register(modBus);
         modBus.addListener(OverworldCopyEvents::registerPayloads);
         NeoForge.EVENT_BUS.register(OverworldCopyEvents.class);
+        NeoForge.EVENT_BUS.register(OverworldCopyCommand.class);
     }
 
     private static void registerPayloads(RegisterPayloadHandlersEvent event) {
@@ -78,7 +79,7 @@ public final class OverworldCopyEvents {
         ItemStack stack = event.getItemStack();
         Level level = event.getLevel();
 
-        if (stack.getItem() instanceof DyeItem dye && Config.OVERWORLD_COPY_DYE.get()) {
+        if (stack.getItem() instanceof DyeItem dye && ServerConfig.dye()) {
             var shape = CopyPortals.shapeAround(level, event.getPos(), level.getBlockState(event.getPos()));
 
             if (shape.isPresent()) {

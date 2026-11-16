@@ -1,5 +1,12 @@
 # Changelog
 
+## 1.26.0
+
+- Overworld copy: the portal frame, instant teleport, flat surface and dye settings are now per-world server settings (`<world>/serverconfig/foxstweaks-server.toml`), so the server's values apply and clients can't diverge. They start at their defaults: set the frame again if you changed it. `overworldCopy` (on/off) stays in `config/foxstweaks-common.toml`.
+- Overworld copy: the default portal frame is now stone bricks (was crying obsidian).
+- New command `/foxstweaks portal frame [set|add|remove|reset] <block>` changes the frame on a running server and saves it (op level 2).
+- New command `/foxstweaks portal regenerate [cancel]` (op level 4) queues a regeneration of the overworld copy for the next server start. Refused while a player is in the copy. Same seed, so the terrain comes back and everything built there is gone.
+
 ## 1.25.2
 
 - Relics: a relic's tooltip now says "Right-click to research" while right-click open is on and works (inventory screens, empty cursor). The matching key is now called "Open Relic Research" in Controls.

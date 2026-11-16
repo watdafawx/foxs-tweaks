@@ -5,7 +5,7 @@ import org.spongepowered.asm.mixin.injection.At;
 import org.spongepowered.asm.mixin.injection.Inject;
 import org.spongepowered.asm.mixin.injection.callback.CallbackInfoReturnable;
 
-import dev.watdafawx.foxstweaks.Config;
+import dev.watdafawx.foxstweaks.ServerConfig;
 import dev.watdafawx.foxstweaks.dimension.CopyPortals;
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.Direction;
@@ -35,7 +35,7 @@ public abstract class NetherPortalBlockMixin {
     /** No wait for our portals when instant teleport is on; the entity is standing in the portal block. */
     @Inject(method = "getPortalTransitionTime", at = @At("HEAD"), cancellable = true)
     private void foxstweaks$instant(ServerLevel level, Entity entity, CallbackInfoReturnable<Integer> cir) {
-        if (!Config.OVERWORLD_COPY_INSTANT.get()) {
+        if (!ServerConfig.instant()) {
             return;
         }
 
