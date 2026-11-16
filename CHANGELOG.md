@@ -1,5 +1,9 @@
 # Changelog
 
+## 1.26.1
+
+- Hats: stops its Fresh Animations compatibility from throwing thousands of `NoSuchFieldException`s per frame while rendering models with a head (chests, mobs, players). It looked up a model part's name by reflection each draw, and a missing field is an exception every time, even without Fresh Animations. Each lookup is now remembered, misses included. In an ATM10 spark profile that exception cost was around 8-13% of the render thread. Client side, needs a restart. Toggle: `hatsFieldLookupCache`.
+
 ## 1.26.0
 
 - Overworld copy: the portal frame, instant teleport, flat surface and dye settings are now per-world server settings (`<world>/serverconfig/foxstweaks-server.toml`), so the server's values apply and clients can't diverge. They start at their defaults: set the frame again if you changed it. `overworldCopy` (on/off) stays in `config/foxstweaks-common.toml`.

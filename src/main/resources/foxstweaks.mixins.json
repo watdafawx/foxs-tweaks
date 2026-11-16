@@ -45,6 +45,7 @@
     "GpuShiftClassifierMixin",
     "GuideMeHotkeyMixin",
     "GunSmithTableScreenMixin",
+    "HatsFreshAnimationsLookupMixin",
     "IconPickerScreenMixin",
     "IrisOptionListSearchMixin",
     "IrisShaderScreenSearchMixin",

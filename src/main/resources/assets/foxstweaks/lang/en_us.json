@@ -75,6 +75,7 @@
   "foxstweaks.configuration.emiInternPatches": "EMI Intern Patches",
   "foxstweaks.configuration.guidemeTooltipFix": "GuideME Tooltip Fix",
   "foxstweaks.configuration.backpackRenderInfoCache": "Backpack Render Info Cache",
+  "foxstweaks.configuration.hatsFieldLookupCache": "Hats Field Lookup Cache",
   "foxstweaks.configuration.shrinkHotkey": "Shrink Hotkey",
   "foxstweaks.configuration.grillingSkewerCache": "Grilling Skewer Cache",
   "foxstweaks.configuration.taczAttachmentTooltipNumbers": "TACZ Attachment Tooltip Numbers",

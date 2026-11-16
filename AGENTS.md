@@ -566,6 +566,18 @@ which `deserialize` migrates onto the stack) are not cached. The component type 
 Against Sophisticated Backpacks 3.26.3; re-check that `fromPhysicalStack` still has only read-only callers
 on update. Client section. Toggle: `backpackRenderInfoCache`.
 
+### Hats field lookup cache (`mixin/HatsFreshAnimationsLookupMixin`)
+
+Hats 3.0.0's `FreshAnimationsHatCompat.readString(Object, String)` walks a model part's class chain with
+`Class.getDeclaredField(name)` and treats `NoSuchFieldException` as "try the superclass". Without Fresh Animations
+it misses on nearly every part, every draw (`ModelPart.translateAndRotate` hook `captureFreshHead`, and
+`HatRenderLayer.attachToHead` > `findVisualHeadChain`), so a spark profile of an ATM10 client showed
+`Throwable.fillInStackTrace` at ~8-13% total and Hats at ~8% inclusive. The mixin `HEAD`-injects `readString`
+(by string, `remap=false`), caches the resolved `Field` per (class, name) in a `ClassValue`, caches misses as a
+sentinel, and reads only the live value. Same result as the original (first String-typed declared field up the
+chain, else null); any unexpected exception falls through to the original. Against Hats 3.0.0; re-check the
+method name/signature on update. Client section. Toggle: `hatsFieldLookupCache`.
+
 ### Shrink hotkey (`shrink/ShrinkNetwork`, `client/ShrinkKeyHandler`)
 
 Shrink (gigabit101, 2.0.1.47) shrinks only on use of the Shrinking Device from the hand (sneak-use = self,

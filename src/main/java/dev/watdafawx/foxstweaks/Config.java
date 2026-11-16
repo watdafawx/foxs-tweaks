@@ -288,6 +288,16 @@ public final class Config {
                     "Client-side only. Does nothing without Sophisticated Backpacks.")
             .define("backpackRenderInfoCache", true);
 
+    public static final ModConfigSpec.BooleanValue HATS_FIELD_LOOKUP_CACHE = BUILDER
+            .comment(
+                    "Stop Hats' Fresh Animations compatibility from throwing thousands of NoSuchFieldExceptions",
+                    "per frame. It looks up a model part's name by reflection and a missing field is an exception",
+                    "each time, even when Fresh Animations is not installed. This remembers each lookup,",
+                    "including the misses, and only reads the live value afterwards.",
+                    "",
+                    "Client-side only. Does nothing without Hats. Needs a restart.")
+            .define("hatsFieldLookupCache", true);
+
     public static final ModConfigSpec.BooleanValue SHRINK_HOTKEY = BUILDER
             .comment(
                     "Let the 'Toggle Shrink' key (Controls, unbound by default) use a Shrink 'Shrinking Device' from",
