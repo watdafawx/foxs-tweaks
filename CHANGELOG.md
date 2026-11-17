@@ -1,5 +1,9 @@
 # Changelog
 
+## 1.27.0
+
+- Relics: auto-level can now watch several abilities on one relic. Left-click the star to mark or unmark an ability; right-click or Shift-click it to switch the mode. "In order" (default) finishes the first marked ability before the next. "Round robin" gives each marked ability one upgrade in turn, so upgrade points and experience are shared evenly. Auto rank-up now waits until every marked ability is done. Relics you had marked before keep their one ability. Both client and server need this version (the auto-level packet changed). Toggles unchanged: `relicAutoLevel`, `relicAutoLevelMinXp`, `relicAutoRankup`.
+
 ## 1.26.1
 
 - Hats: stops its Fresh Animations compatibility from throwing thousands of `NoSuchFieldException`s per frame while rendering models with a head (chests, mobs, players). It looked up a model part's name by reflection each draw, and a missing field is an exception every time, even without Fresh Animations. Each lookup is now remembered, misses included. In an ATM10 spark profile that exception cost was around 8-13% of the render thread. Client side, needs a restart. Toggle: `hatsFieldLookupCache`.

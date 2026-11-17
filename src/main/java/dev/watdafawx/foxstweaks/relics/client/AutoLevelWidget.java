@@ -4,8 +4,8 @@ import com.google.common.collect.Lists;
 import com.mojang.blaze3d.systems.RenderSystem;
 import com.mojang.blaze3d.vertex.PoseStack;
 import dev.watdafawx.foxstweaks.FoxsTweaks;
-import dev.watdafawx.foxstweaks.FoxsTweaksComponents;
 import dev.watdafawx.foxstweaks.relics.AutoLevelPayload;
+import dev.watdafawx.foxstweaks.relics.AutoLevelSetting;
 import it.hurts.sskirillss.relics.api.relics.IRelicItem;
 import it.hurts.sskirillss.relics.client.screen.base.IHoverableWidget;
 import it.hurts.sskirillss.relics.client.screen.description.ability.AbilityDescriptionScreen;
@@ -16,6 +16,7 @@ import it.hurts.sskirillss.relics.utils.data.GUIRenderer;
 import it.hurts.sskirillss.relics.utils.data.SpriteAnchor;
 import net.minecraft.ChatFormatting;
 import net.minecraft.client.gui.GuiGraphics;
+import net.minecraft.client.gui.screens.Screen;
 import net.minecraft.network.chat.Component;
 import net.minecraft.network.chat.MutableComponent;
 import net.minecraft.resources.ResourceLocation;
@@ -48,8 +49,12 @@ public class AutoLevelWidget extends AbstractDescriptionWidget implements IHover
         return screen.getSelectedAbility();
     }
 
-    private String chosen() {
-        return screen.stack == null ? null : screen.stack.get(FoxsTweaksComponents.AUTO_LEVEL_ABILITY.get());
+    private AutoLevelSetting setting() {
+        return screen.stack == null ? AutoLevelSetting.EMPTY : AutoLevelSetting.of(screen.stack);
+    }
+
+    private boolean isOn() {
+        return ability() != null && setting().has(ability());
     }
 
     private boolean upgradable() {
@@ -67,14 +72,43 @@ public class AutoLevelWidget extends AbstractDescriptionWidget implements IHover
         return !upgradable();
     }
 
+    /** Left click: mark or unmark this ability. */
     @Override
     public void onPress() {
         if (isLocked())
             return;
 
-        boolean on = ability().equals(chosen());
+        PacketDistributor.sendToServer(new AutoLevelPayload(screen.getContainer(), screen.getSlot(), ability(), AutoLevelPayload.TOGGLE));
+    }
 
-        PacketDistributor.sendToServer(new AutoLevelPayload(screen.getContainer(), screen.getSlot(), on ? "" : ability()));
+    /** Right click or Shift + left click: switch between finishing in order and round robin. */
+    private void cycleMode() {
+        if (setting().abilities().isEmpty())
+            return;
+
+        PacketDistributor.sendToServer(new AutoLevelPayload(screen.getContainer(), screen.getSlot(), "", AutoLevelPayload.CYCLE_MODE));
+    }
+
+    @Override
+    protected boolean isValidClickButton(int button) {
+        return button == 0 || button == 1;
+    }
+
+    @Override
+    public boolean mouseClicked(double mouseX, double mouseY, int button) {
+        if (!active || !visible || !isValidClickButton(button) || !clicked(mouseX, mouseY))
+            return false;
+
+        if (!isLocked()) {
+            playDownSound(minecraft.getSoundManager());
+
+            if (button == 1 || Screen.hasShiftDown())
+                cycleMode();
+            else
+                onPress();
+        }
+
+        return true;
     }
 
     @Override
@@ -82,7 +116,7 @@ public class AutoLevelWidget extends AbstractDescriptionWidget implements IHover
         if (isLocked())
             return;
 
-        boolean on = ability().equals(chosen());
+        boolean on = isOn();
         PoseStack poseStack = guiGraphics.pose();
 
         int border = isHovered() ? 0xFFF2C14E : on ? 0xFFB8892B : 0xFF5A4A2A;
@@ -113,8 +147,8 @@ public class AutoLevelWidget extends AbstractDescriptionWidget implements IHover
         if (isLocked())
             return;
 
-        boolean on = ability().equals(chosen());
-        String other = chosen();
+        boolean on = isOn();
+        var setting = setting();
 
         List<MutableComponent> entries = Lists.newArrayList(
                 Component.translatable("foxstweaks.autolevel.title")
@@ -124,9 +158,13 @@ public class AutoLevelWidget extends AbstractDescriptionWidget implements IHover
                         .withColor(DescriptionUtils.POSITIVE_COLOR(true)),
                 Component.translatable("foxstweaks.autolevel.detail"));
 
-        if (!on && other != null)
-            entries.add(Component.translatable("foxstweaks.autolevel.other", other)
-                    .withColor(DescriptionUtils.NEGATIVE_COLOR(true)));
+        if (!setting.abilities().isEmpty()) {
+            entries.add(Component.literal(" "));
+            entries.add(Component.translatable(setting.roundRobin()
+                    ? "foxstweaks.autolevel.mode.round_robin" : "foxstweaks.autolevel.mode.in_order")
+                    .withColor(DescriptionUtils.POSITIVE_COLOR(true)));
+            entries.add(Component.translatable("foxstweaks.autolevel.mode.hint"));
+        }
 
         int maxWidth = 150;
         int renderWidth = 0;

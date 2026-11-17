@@ -3,6 +3,8 @@ package dev.watdafawx.foxstweaks.client.dev;
 import com.mojang.logging.LogUtils;
 import dev.watdafawx.foxstweaks.Config;
 import dev.watdafawx.foxstweaks.relics.AutoLevelHandler;
+import dev.watdafawx.foxstweaks.relics.AutoLevelPayload;
+import dev.watdafawx.foxstweaks.relics.AutoLevelSetting;
 import it.hurts.sskirillss.relics.api.relics.IRelicItem;
 import it.hurts.sskirillss.relics.utils.EntityUtils;
 import net.minecraft.client.Minecraft;
@@ -100,6 +102,146 @@ public final class RelicsShot {
             check("B2 floor off: keeps upgrading", s.abilityLevel >= 2, s.toString());
             check("B2 floor off: xp spent below 400", s.xp < 400, s.toString());
         });
+        // D: two marked abilities, in order. Points for 3 upgrades: the first gets all 3, the second none.
+        add(20, () -> {
+            Config.RELIC_AUTO_RANKUP.set(false);
+            Config.RELIC_AUTO_LEVEL_MIN_XP.set(0);
+            log("D: " + onServer(p -> giveMulti(p, 3, false, true)));
+        });
+        add(100, () -> {
+            var m = onServer(RelicsShot::multi);
+            check("D1 in order: first ability took all 3 points", m.la == 3 && m.lb == 0, m.toString());
+            check("D1 in order: all 3 points spent", m.points == 0, m.toString());
+            // Plenty of points now: the first runs to max, then the second gets the rest.
+            onServer(p -> {
+                setPoints(p, req * 200);
+                return null;
+            });
+        });
+        add(100, () -> {
+            var m = onServer(RelicsShot::multi);
+            check("D2 first ability reached max", m.aMax, m.toString());
+            check("D2 second ability only starts after that", m.lb > 0, m.toString());
+        });
+
+        // E: two marked abilities, round robin. Points for 4 upgrades: 2 each.
+        add(20, () -> log("E: " + onServer(p -> giveMulti(p, 4, true, true))));
+        add(100, () -> {
+            var m = onServer(RelicsShot::multi);
+            check("E1 round robin: 2 and 2", m.la == 2 && m.lb == 2, m.toString());
+            check("E1 round robin: all 4 points spent", m.points == 0, m.toString());
+            onServer(p -> {
+                var s = AutoLevelSetting.of(p.getInventory().getItem(SLOT));
+                check("E2 mode saved on the relic", s.roundRobin() && s.abilities().size() == 2, s.toString());
+                // 3 more points: 2/1 split, never 3/0.
+                setPoints(p, req * 3);
+                return null;
+            });
+        });
+        add(100, () -> {
+            var m = onServer(RelicsShot::multi);
+            check("E3 three more upgrades stay even (|a-b| <= 1)", m.la + m.lb == 7 && Math.abs(m.la - m.lb) <= 1, m.toString());
+            // Toggle the first ability off: the second keeps leveling alone.
+            onServer(p -> {
+                AutoLevelHandler.choose(p, p.containerMenu.containerId, SLOT, pairA, AutoLevelPayload.TOGGLE);
+                setPoints(p, req);
+                return null;
+            });
+        });
+        add(100, () -> {
+            var m = onServer(RelicsShot::multi);
+            check("E4 unmarked ability stopped (still 3 or 4)", m.la + m.lb == 8 && m.lb == 4, m.toString());
+        });
+
+        // F: both marked and maxed, rank-up on: the relic ranks up.
+        add(20, () -> {
+            Config.RELIC_AUTO_RANKUP.set(true);
+            log("F: " + onServer(p -> giveMulti(p, 5000, false, true)));
+        });
+        add(200, () -> {
+            var m = onServer(RelicsShot::multi);
+            check("F1 both abilities maxed then relic ranked up", m.rank == 1, m.toString());
+            Config.RELIC_AUTO_RANKUP.set(false);
+        });
+
+        // G: a relic marked before this feature (old single-id component) keeps leveling.
+        add(20, () -> log("G: " + onServer(p -> {
+            giveMulti(p, 3, false, true);
+            var stack = p.getInventory().getItem(SLOT);
+
+            AutoLevelSetting.EMPTY.applyTo(stack);
+            stack.set(dev.watdafawx.foxstweaks.FoxsTweaksComponents.AUTO_LEVEL_ABILITY.get(), pairA);
+            setPoints(p, req * 2);
+            return "legacy id " + pairA + " set, 2 points";
+        })));
+        add(100, () -> {
+            var m = onServer(RelicsShot::multi);
+            check("G1 legacy single id levels up", m.la == 2 && m.lb == 0, m.toString());
+        });
+
+        // H: the real ability screen. Clicks go through Screen#mouseClicked like a mouse press would.
+        add(20, () -> log("H: " + onServer(p -> giveMulti(p, 0, false, false))));
+        add(20, () -> {
+            var mc = Minecraft.getInstance();
+            var screen = new it.hurts.sskirillss.relics.client.screen.description.ability.AbilityDescriptionScreen(
+                    mc.player, mc.player.containerMenu.containerId, SLOT, null);
+
+            mc.setScreen(screen);
+            screen.setSelectedAbility(pairA);
+        });
+        add(20, () -> {
+            var w = starWidget();
+
+            check("H0 star widget is on the ability screen", w != null, "no AutoLevelWidget in screen children");
+            check("H0 star is clickable for an upgradable ability", w != null && !w.isLocked(), "locked");
+            shot("relicsshot-H0-unmarked.png");
+            click(0);
+        });
+        add(15, () -> {
+            var s = setting();
+            check("H1 left click marks the selected ability", s.abilities().equals(List.of(pairA)) && !s.roundRobin(), s.toString());
+            shot("relicsshot-H1-marked.png");
+            ((it.hurts.sskirillss.relics.client.screen.description.ability.AbilityDescriptionScreen) Minecraft.getInstance().screen)
+                    .setSelectedAbility(pairB);
+        });
+        add(5, () -> click(0));
+        add(15, () -> {
+            var s = setting();
+            check("H2 second ability marked too, order kept", s.abilities().equals(List.of(pairA, pairB)), s.toString());
+            click(1);
+        });
+        add(15, () -> {
+            var s = setting();
+            check("H3 right click switches to round robin", s.roundRobin() && s.abilities().size() == 2, s.toString());
+            shot("relicsshot-H3-round-robin.png");
+            hover();
+        });
+        add(20, () -> {
+            shot("relicsshot-H3-tooltip-round-robin.png");
+            click(1);
+        });
+        add(15, () -> {
+            var s = setting();
+            check("H4 right click again switches back", !s.roundRobin() && s.abilities().size() == 2, s.toString());
+            hover();
+        });
+        add(20, () -> {
+            shot("relicsshot-H4-tooltip-in-order.png");
+            click(0);
+        });
+        add(15, () -> {
+            var s = setting();
+            check("H5 left click on a marked ability unmarks it", s.abilities().equals(List.of(pairA)), s.toString());
+            Minecraft.getInstance().setScreen(null);
+            onServer(p -> {
+                AutoLevelHandler.choose(p, p.containerMenu.containerId, SLOT, "", AutoLevelPayload.CLEAR);
+                var c = AutoLevelSetting.of(p.getInventory().getItem(SLOT));
+
+                check("H6 clear empties the setting", c.abilities().isEmpty(), c.toString());
+                return null;
+            });
+        });
+
         // C: tooltip hint. Inventory open, cursor on the relic, screenshot.
         add(20, () -> {
             Config.RELIC_AUTO_LEVEL_MIN_XP.set(0);
@@ -180,12 +322,132 @@ public final class RelicsShot {
             p.getInventory().setItem(SLOT, stack);
 
             // The real packet path: marks the ability, then the normal sweep does the rest.
-            AutoLevelHandler.choose(p, p.containerMenu.containerId, SLOT, chosen);
+            AutoLevelHandler.choose(p, p.containerMenu.containerId, SLOT, chosen, dev.watdafawx.foxstweaks.relics.AutoLevelPayload.TOGGLE);
 
             return BuiltInRegistries.ITEM.getKey(item) + "#" + chosen;
         }
 
         throw new IllegalStateException("no upgradable relic ability found");
+    }
+
+    private static String pairA;
+    private static String pairB;
+    private static int req;
+
+    private record Multi(int rank, int points, int la, int lb, boolean aMax, long xp) {
+    }
+
+    /**
+     * Gives a relic with two upgradable abilities, marks both through the real packet path (no XP yet,
+     * so nothing is bought while marking), sets points for {@code upgrades} upgrades, then adds XP.
+     */
+    private static String giveMulti(ServerPlayer p, int upgrades, boolean roundRobin, boolean mark) {
+        p.getInventory().clearContent();
+        p.giveExperiencePoints(-(int) EntityUtils.getPlayerTotalExperience(p));
+
+        for (var item : BuiltInRegistries.ITEM) {
+            if (!(item instanceof IRelicItem relic))
+                continue;
+
+            var stack = new ItemStack(item);
+            var data = relic.getRelicData(p, stack);
+
+            if (data.getTemplate() == null)
+                continue;
+
+            data.getLevelingData().setLevel(data.calculateMaxLevel());
+            data.getLevelingData().setPoints(5000);
+
+            List<String> ids = new ArrayList<>();
+            int most = 1;
+
+            for (String id : data.getAbilitiesData().getAbilityIDs()) {
+                var a = data.getAbilitiesData().getAbilityData(id);
+
+                if (a == null || a.getTemplate() == null || !a.canBeUpgraded())
+                    continue;
+
+                // Later abilities start locked; unlock like the five card clicks would.
+                a.getLockData().setUnlocks(a.getLockData().getMaxUnlocks());
+
+                if (a.mayUpgrade()) {
+                    ids.add(id);
+                    most = Math.max(most, a.getTemplate().getRequiredPoints());
+                }
+            }
+
+            if (ids.size() < 2)
+                continue;
+
+            pairA = ids.get(0);
+            pairB = ids.get(1);
+            req = most;
+
+            data.getLevelingData().setPoints(req * upgrades);
+            p.getInventory().setItem(SLOT, stack);
+
+            int menu = p.containerMenu.containerId;
+
+            if (mark) {
+                AutoLevelHandler.choose(p, menu, SLOT, pairA, AutoLevelPayload.TOGGLE);
+                AutoLevelHandler.choose(p, menu, SLOT, pairB, AutoLevelPayload.TOGGLE);
+            }
+
+            if (mark && roundRobin)
+                AutoLevelHandler.choose(p, menu, SLOT, "", AutoLevelPayload.CYCLE_MODE);
+
+            p.giveExperiencePoints(1_000_000);
+
+            return BuiltInRegistries.ITEM.getKey(item) + " " + pairA + "+" + pairB + ", " + req + " point(s) per upgrade, "
+                    + upgrades + " upgrade(s), " + (roundRobin ? "round robin" : "in order");
+        }
+
+        throw new IllegalStateException("no relic with two upgradable abilities found");
+    }
+
+    private static void setPoints(ServerPlayer p, int points) {
+        var stack = p.getInventory().getItem(SLOT);
+
+        ((IRelicItem) stack.getItem()).getRelicData(p, stack).getLevelingData().setPoints(points);
+    }
+
+    private static Multi multi(ServerPlayer p) {
+        var stack = p.getInventory().getItem(SLOT);
+        var data = ((IRelicItem) stack.getItem()).getRelicData(p, stack);
+        var a = data.getAbilitiesData().getAbilityData(pairA);
+        var b = data.getAbilitiesData().getAbilityData(pairB);
+
+        return new Multi(data.getLevelingData().getRank(), data.getLevelingData().getPoints(), a.getLevel(), b.getLevel(),
+                a.isMaxLevel(), EntityUtils.getPlayerTotalExperience(p));
+    }
+
+    private static dev.watdafawx.foxstweaks.relics.client.AutoLevelWidget starWidget() {
+        for (var child : Minecraft.getInstance().screen.children())
+            if (child instanceof dev.watdafawx.foxstweaks.relics.client.AutoLevelWidget w)
+                return w;
+
+        return null;
+    }
+
+    /** A mouse press on the star, through the screen like the real thing. */
+    private static void click(int button) {
+        var w = starWidget();
+
+        if (w != null)
+            Minecraft.getInstance().screen.mouseClicked(w.getX() + 7, w.getY() + 7, button);
+    }
+
+    /** Puts the real cursor on the star so the screen draws its hover tooltip. */
+    private static void hover() {
+        var w = starWidget();
+        var window = Minecraft.getInstance().getWindow();
+
+        if (w != null)
+            org.lwjgl.glfw.GLFW.glfwSetCursorPos(window.getWindow(), (w.getX() + 7) * window.getGuiScale(), (w.getY() + 7) * window.getGuiScale());
+    }
+
+    private static AutoLevelSetting setting() {
+        return onServer(p -> AutoLevelSetting.of(p.getInventory().getItem(SLOT)));
     }
 
     private static State state(ServerPlayer p) {

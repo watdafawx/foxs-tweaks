@@ -25,7 +25,14 @@ public final class FoxsTweaksComponents {
                     .networkSynchronized(dev.watdafawx.foxstweaks.enchant.DisabledEnchants.STREAM_CODEC)
                     .build());
 
-    /** Ability id a relic levels up on its own (see {@code relics.AutoLevelHandler}). Absent = auto-level off. */
+    /** Abilities a relic levels up on its own and how points are shared (see {@code relics.AutoLevelHandler}). Absent = off. */
+    public static final DeferredHolder<DataComponentType<?>, DataComponentType<dev.watdafawx.foxstweaks.relics.AutoLevelSetting>> AUTO_LEVEL =
+            COMPONENTS.register("auto_level", () -> DataComponentType.<dev.watdafawx.foxstweaks.relics.AutoLevelSetting>builder()
+                    .persistent(dev.watdafawx.foxstweaks.relics.AutoLevelSetting.CODEC)
+                    .networkSynchronized(dev.watdafawx.foxstweaks.relics.AutoLevelSetting.STREAM_CODEC)
+                    .build());
+
+    /** Legacy single ability id from before {@link #AUTO_LEVEL}; still read, and replaced on the next change. */
     public static final DeferredHolder<DataComponentType<?>, DataComponentType<String>> AUTO_LEVEL_ABILITY =
             COMPONENTS.register("auto_level_ability", () -> DataComponentType.<String>builder()
                     .persistent(com.mojang.serialization.Codec.STRING)

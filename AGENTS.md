@@ -10,8 +10,11 @@ quality-of-life features sharing a jar, among them:
 1. **Relics integration** — auto-completes the constellation "star puzzle" research, both on pickup
    and via a button on the research screen.
    Also: right-click / key opens a relic's research screen (`relics/client/RelicQuickOpenHandler`);
-   auto-level, rank-up, min XP and ability unlock run server-side in `relics/AutoLevelHandler` (chosen ability
-   lives in the `auto_level_ability` data component, set by `AutoLevelPayload` from `AutoLevelWidget` on the
+   auto-level, rank-up, min XP and ability unlock run server-side in `relics/AutoLevelHandler` (marked abilities
+   and mode live in the `auto_level` data component, an `AutoLevelSetting`: id list, round-robin flag, cursor; the old
+   single-id `auto_level_ability` is still read as a one-ability list. Mode "in order" finishes the first ability before
+   the next, "round robin" gives one upgrade each in turn. Rank-up waits until every marked ability is done. Left click
+   on the star marks/unmarks, right or Shift click cycles the mode; payload channel version "2"), set by `AutoLevelPayload` from `AutoLevelWidget` on the
    ability screen). Dev check: `build.bat runRelicsShot` (game dir `run-relics/`, needs relics, curios, OctoLib,
    architectury jars) writes `foxstweaks-relics-check.txt`.
    **Overworld copy** (`dimension/`, `mixin/NetherPortalBlockMixin`): datapack dimension `foxstweaks:overworld_copy`

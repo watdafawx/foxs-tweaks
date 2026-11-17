@@ -10,9 +10,13 @@ import net.neoforged.bus.api.SubscribeEvent;
 import net.neoforged.neoforge.event.tick.PlayerTickEvent;
 import top.theillusivec4.curios.api.CuriosApi;
 
+import java.util.ArrayList;
+import java.util.List;
+
 /**
- * Levels up the ability a relic was marked with ({@link FoxsTweaksComponents#AUTO_LEVEL_ABILITY}),
- * and ranks the relic up once that ability is done. Uses Relics' own {@code upgrade()} and
+ * Levels up the abilities a relic was marked with ({@link AutoLevelSetting}, stored in
+ * {@link FoxsTweaksComponents#AUTO_LEVEL}), one after another or round robin, and ranks the relic
+ * up once all of them are done. Uses Relics' own {@code upgrade()} and
  * {@code rankup()}, so cost and limits are exactly the manual ones: player XP, upgrade points,
  * the ability's max level. Server-side; relics with no mark are never touched.
  */
@@ -23,7 +27,7 @@ public class AutoLevelHandler {
     private static final int MAX_UPGRADES = 64;
 
     /** Menu-slot based, like Relics' own packets, so Curios slots in the open menu work too. */
-    public static void choose(ServerPlayer player, int container, int slot, String ability) {
+    public static void choose(ServerPlayer player, int container, int slot, String ability, int action) {
         var menu = player.containerMenu;
 
         if (menu.containerId != container || !menu.isValidSlotIndex(slot))
@@ -34,24 +38,39 @@ public class AutoLevelHandler {
         if (!(stack.getItem() instanceof IRelicItem relic))
             return;
 
-        var component = FoxsTweaksComponents.AUTO_LEVEL_ABILITY.get();
+        AutoLevelSetting current = AutoLevelSetting.of(stack);
+        AutoLevelSetting next;
 
-        if (ability.isEmpty() || ability.equals(stack.get(component))) {
-            stack.remove(component);
-        } else {
-            var data = relic.getRelicData(player, stack);
+        switch (action) {
+            case AutoLevelPayload.CLEAR -> next = AutoLevelSetting.EMPTY;
+            case AutoLevelPayload.CYCLE_MODE -> {
+                if (current.abilities().isEmpty())
+                    return;
 
-            if (data.getTemplate() == null)
+                next = current.withRoundRobin(!current.roundRobin());
+            }
+            case AutoLevelPayload.TOGGLE -> {
+                // Unmarking needs no checks; marking only accepts an ability that can be upgraded.
+                if (!current.has(ability)) {
+                    var data = relic.getRelicData(player, stack);
+
+                    if (data.getTemplate() == null)
+                        return;
+
+                    var abilityData = data.getAbilitiesData().getAbilityData(ability);
+
+                    if (abilityData == null || abilityData.getTemplate() == null || !abilityData.canBeUpgraded())
+                        return;
+                }
+
+                next = current.toggled(ability);
+            }
+            default -> {
                 return;
-
-            var abilityData = data.getAbilitiesData().getAbilityData(ability);
-
-            if (abilityData == null || abilityData.getTemplate() == null || !abilityData.canBeUpgraded())
-                return;
-
-            stack.set(component, ability);
+            }
         }
 
+        next.applyTo(stack);
         process(player, stack);
         menu.broadcastChanges();
     }
@@ -126,32 +145,73 @@ public class AutoLevelHandler {
 
         boolean changed = Config.RELIC_AUTO_UNLOCK.get() && unlockReady(data);
 
-        String id = stack.get(FoxsTweaksComponents.AUTO_LEVEL_ABILITY.get());
+        var setting = AutoLevelSetting.of(stack);
 
-        if (id == null || !Config.RELIC_AUTO_LEVEL.get())
+        if (setting.abilities().isEmpty() || !Config.RELIC_AUTO_LEVEL.get())
             return changed;
 
-        var ability = data.getAbilitiesData().getAbilityData(id);
+        // Ids the relic no longer has (removed addon, renamed ability) are ignored, not an error.
+        List<String> ids = new ArrayList<>();
 
-        if (ability == null || ability.getTemplate() == null)
+        for (String id : setting.abilities()) {
+            var ability = data.getAbilitiesData().getAbilityData(id);
+
+            if (ability != null && ability.getTemplate() != null)
+                ids.add(id);
+        }
+
+        if (ids.isEmpty())
             return changed;
 
         int minXp = Config.RELIC_AUTO_LEVEL_MIN_XP.get();
 
-        for (int i = 0; i < MAX_UPGRADES && ability.mayPlayerUpgrade(); i++) {
-            // upgrade() spends exactly this much player XP.
-            if (minXp > 0 && EntityUtils.getPlayerTotalExperience(player) - ability.getUpgradePlayerExperienceCost() < minXp)
-                break;
+        if (setting.roundRobin()) {
+            int cursor = setting.cursor() % ids.size();
+            int misses = 0;
 
-            if (!ability.upgrade())
-                break;
+            // One upgrade per ability in turn; stops after a full lap where nobody could upgrade.
+            for (int done = 0; done < MAX_UPGRADES && misses < ids.size(); ) {
+                String id = ids.get(cursor);
 
-            changed = true;
+                cursor = (cursor + 1) % ids.size();
+
+                if (upgradeOnce(player, data, id, minXp)) {
+                    changed = true;
+                    misses = 0;
+                    done++;
+                } else {
+                    misses++;
+                }
+            }
+
+            var moved = setting.withCursor(cursor);
+
+            if (moved != setting) {
+                moved.applyTo(stack);
+                changed = true;
+            }
+        } else {
+            int done = 0;
+
+            // In list order: the first ability gets everything until it is done, then the next.
+            for (String id : ids) {
+                var ability = data.getAbilitiesData().getAbilityData(id);
+
+                while (done < MAX_UPGRADES && upgradeOnce(player, data, id, minXp)) {
+                    changed = true;
+                    done++;
+                }
+
+                // Still wants an upgrade but lacks experience (or the XP floor): wait for it, don't
+                // spend on the abilities behind it.
+                if (ability.mayUpgrade())
+                    break;
+            }
         }
 
-        // Ranking up wipes ability levels and unspent points, so wait until the ability could take
-        // another upgrade if only there were experience for it.
-        if (Config.RELIC_AUTO_RANKUP.get() && !ability.mayUpgrade() && ability.canBeUpgraded()) {
+        // Ranking up wipes ability levels and unspent points, so wait until every marked ability
+        // could take no more upgrades even with all the experience in the world.
+        if (Config.RELIC_AUTO_RANKUP.get() && allDone(data, ids)) {
             var leveling = data.getLevelingData();
 
             if (leveling.mayPlayerRankup() && leveling.rankup())
@@ -159,5 +219,31 @@ public class AutoLevelHandler {
         }
 
         return changed;
+    }
+
+    private static boolean allDone(it.hurts.sskirillss.relics.api.relics.data.RelicData data, List<String> ids) {
+        for (String id : ids) {
+            var ability = data.getAbilitiesData().getAbilityData(id);
+
+            if (ability.mayUpgrade() || !ability.canBeUpgraded())
+                return false;
+        }
+
+        return true;
+    }
+
+    /** One upgrade of the ability, at exactly the manual cost, keeping {@code minXp} experience back. */
+    private static boolean upgradeOnce(ServerPlayer player, it.hurts.sskirillss.relics.api.relics.data.RelicData data,
+                                       String id, int minXp) {
+        var ability = data.getAbilitiesData().getAbilityData(id);
+
+        if (ability == null || !ability.mayPlayerUpgrade())
+            return false;
+
+        // upgrade() spends exactly this much player XP.
+        if (minXp > 0 && EntityUtils.getPlayerTotalExperience(player) - ability.getUpgradePlayerExperienceCost() < minXp)
+            return false;
+
+        return ability.upgrade();
     }
 }

@@ -8,11 +8,16 @@ import net.minecraft.network.protocol.common.custom.CustomPacketPayload;
 import net.minecraft.resources.ResourceLocation;
 
 /**
- * Client -> server: mark {@code ability} as the one the relic in menu slot {@code slot} levels up by
- * itself, or clear the choice when {@code ability} is empty. Holds no Relics type, so it can be
- * registered whether or not Relics is installed; the handler checks.
+ * Client -> server, about the relic in menu slot {@code slot}: {@link #TOGGLE} marks or unmarks
+ * {@code ability}, {@link #CYCLE_MODE} switches between finishing abilities one by one and round
+ * robin ({@code ability} is ignored), {@link #CLEAR} unmarks every ability. Holds no Relics type, so
+ * it can be registered whether or not Relics is installed; the handler checks.
  */
-public record AutoLevelPayload(int container, int slot, String ability) implements CustomPacketPayload {
+public record AutoLevelPayload(int container, int slot, String ability, int action) implements CustomPacketPayload {
+    public static final int TOGGLE = 0;
+    public static final int CYCLE_MODE = 1;
+    public static final int CLEAR = 2;
+
     public static final Type<AutoLevelPayload> TYPE =
             new Type<>(ResourceLocation.fromNamespaceAndPath(FoxsTweaks.MODID, "auto_level"));
 
@@ -20,6 +25,7 @@ public record AutoLevelPayload(int container, int slot, String ability) implemen
             ByteBufCodecs.INT, AutoLevelPayload::container,
             ByteBufCodecs.INT, AutoLevelPayload::slot,
             ByteBufCodecs.STRING_UTF8, AutoLevelPayload::ability,
+            ByteBufCodecs.VAR_INT, AutoLevelPayload::action,
             AutoLevelPayload::new);
 
     @Override

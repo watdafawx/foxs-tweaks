@@ -12,14 +12,14 @@ public final class AutoLevelNetwork {
     }
 
     public static void register(RegisterPayloadHandlersEvent event) {
-        event.registrar("1")
+        event.registrar("2")
                 .optional()
                 .playToServer(AutoLevelPayload.TYPE, AutoLevelPayload.CODEC, (payload, context) -> context.enqueueWork(() -> {
                     if (!Config.RELIC_AUTO_LEVEL.get() || !ModList.get().isLoaded(FoxsTweaks.RELICS)
                             || !(context.player() instanceof ServerPlayer player))
                         return;
 
-                    AutoLevelHandler.choose(player, payload.container(), payload.slot(), payload.ability());
+                    AutoLevelHandler.choose(player, payload.container(), payload.slot(), payload.ability(), payload.action());
                 }));
     }
 }
