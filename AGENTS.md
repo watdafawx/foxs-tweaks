@@ -29,7 +29,10 @@ quality-of-life features sharing a jar, among them:
    loads. `OverworldCopyCommand`: `/foxstweaks portal frame [set|add|remove|reset]` writes the server config;
    `/foxstweaks portal regenerate [cancel]` (op 4, refused while a player is in the copy) drops a marker file, and
    `ServerAboutToStartEvent` deletes the copy's `dimensions/foxstweaks/overworld_copy` folder on the next start (live
-   deletion is impossible: the region files are open). Untested in game.
+   deletion is impossible: the region files are open). The portals themselves are verified by
+   `build.bat runPortalShot` (`run-portal/foxstweaks-portal-check.txt`, all PASS: frame, dye, both ways,
+   vanilla frames untouched, instant teleport, flat pad); `/foxstweaks portal regenerate` has not been
+   exercised in game.
 2. **Apotheosis integration** — a second tooltip panel, shown while a key is held, listing an item's
    affixes, attributes and gem sockets without touching the main tooltip.
 3. **Apotheosis affix toggles** — a hotkey opens the held item's own tooltip as a clickable overlay
@@ -85,6 +88,13 @@ quality-of-life features sharing a jar, among them:
 19. **Settings screen** — `client/ConfigScreenKeys`: NeoForge's generated config screen, from the Mods list and a key.
     **Every new config key needs a `foxstweaks.configuration.<key>` label in `en_us.json`**, or the screen shows the
     raw key. Tooltips fall back to the value's `.comment(...)`.
+20. **Iris shader settings search** — client-side; `client/compat/IrisSettingsSearch` + two Iris mixins put a search
+    box under Iris' shader pack settings. See [Iris settings search](#iris-shader-settings-search-clientcompatirissettingssearch).
+21. **Sophisticated Backpacks recipes in EMI** — client-side; `client/compat/SbEmiFill` + two string-targeted EMI
+    mixins make EMI's "+" fill Sophisticated Core's split crafting recipes. See
+    [Sophisticated recipes in EMI](#sophisticated-recipes-in-emi-clientcompatsbemifill).
+22. **TrashSlot on slotless menus** — client-side; `mixin/TrashSlotGuiHandlerMixin` stops TrashSlot drawing its slot on
+    container screens whose menu has no slots (Waystones' settings screens), which crashed GuiTween's render hook.
 
 **Every parent mod is optional.** The mod must load and behave correctly with either, both, or
 neither installed. This is the single most important invariant in the codebase — see
@@ -96,30 +106,35 @@ neither installed. This is the single most important invariant in the codebase �
 build.bat build
 ```
 
-Do **not** call `gradlew` directly unless you know a JDK is on `PATH`. `build.bat` points
-`JAVA_HOME` at a portable JDK in `toolchain/` and then delegates to `gradlew`.
+Do **not** call `gradlew` directly unless you know a JDK 21 is on `PATH`. `build.bat` points
+`JAVA_HOME` at the portable JDK in `toolchain/` and then delegates to `gradlew`.
 
 Two environment facts that will otherwise waste your time:
 
-- **This machine has no system JDK**, only the JREs bundled with the Minecraft launcher. A JRE has
-  no `javax.tools` compiler, so NeoForm cannot recompile Minecraft and the build dies with a
-  confusing `JavaCompiler is null` NPE. Hence `toolchain/`.
+- **This machine has no system JDK.** The `java` on `PATH` is an Adoptium **JRE 17**, and the launcher
+  ships JREs too - none of them is a JDK. A JRE has no `javax.tools` compiler, so NeoForm cannot
+  recompile Minecraft and the build dies with a confusing `JavaCompiler is null` NPE (and even a 17
+  tools jar is the wrong version for a 21 build). Hence the portable JDK 21 in `toolchain/`, which
+  `build.bat` picks up.
 - **The Maven hosts publish AAAA records but IPv6 does not route here.** `gradle.properties` sets
   `systemProp.java.net.preferIPv4Stack=true`; without it dependency resolution stalls until it
   times out and falls back.
 
-`libs/` and `toolchain/` are gitignored and absent from a fresh clone — see [Local setup](#local-setup).
+`toolchain/` is gitignored and absent from a fresh clone - see [Local setup](#local-setup). `libs/` is
+gone for good: everything it held is now a normal Gradle dependency.
 
 ## Local setup
 
 **Compiling needs nothing manual.** Every `compileOnly` dependency in `build.gradle` (Relics, Curios,
-OctoLib, Apotheosis, Placebo, ApothicAttributes, Architectury) resolves from a real Maven repository:
-Shadows-of-Fire's own maven for the Apotheosis family, TheIllusiveC4's own maven for Curios,
-Architectury's own maven, and Modrinth's Maven mirror (`https://api.modrinth.com/maven`, group
-`maven.modrinth`, artifact = Modrinth slug, version = the Modrinth *version id*, not the version
-number) for Relics and OctoLib, which have no maven of their own. `build.bat build` downloads all of
-it on first run, same as any other Gradle dependency. NeoForge mod jars for 1.21.1 ship in Mojang
-mappings, which is why a production jar works as a compile dependency with no remapping.
+OctoLib, the Apotheosis family, Architectury, Point Blank, AE2, EMI, Iris, Ars Nouveau, Botany Pots,
+HNN, IPN/libIPN, FTB Library) resolves from a real Maven repository: Shadows-of-Fire's own maven for
+the Apotheosis family and HNN, TheIllusiveC4's own maven for Curios, Architectury's own maven, FTB's
+for FTB Library, bawnorton's for MixinSquared, and Modrinth's Maven mirror
+(`https://api.modrinth.com/maven`, group `maven.modrinth`, artifact = Modrinth slug, version = the
+Modrinth *version id*, not the version number) for the rest, which have no maven of their own.
+`build.bat build` downloads all of it on first run, same as any other Gradle dependency. NeoForge mod
+jars for 1.21.1 ship in Mojang mappings, which is why a production jar works as a compile dependency
+with no remapping.
 
 There used to be a `libs/` folder of manually-downloaded jars for this. It is gone: everything it
 held is now a normal Gradle dependency. Do not reintroduce it without a good reason - the whole point
@@ -141,6 +156,10 @@ fails to load with "Missing or unsupported mandatory dependencies". Drop the rea
 The versions in `gradle.properties` (`relics_version`, `curios_version`, etc.) tell you exactly what
 to fetch - the same builds Gradle resolves for compiling.
 
+Every other integration works the same way: TACZ, Shrink, EMI, Iris, Kaleidoscope Grilling and the rest
+are reached only when their mod is loaded, so a general client needs their jars in `run/mods/` and each
+dev check needs them in its own `run-*/mods` - the section for that feature says which.
+
 **Headless check of the data patches:** `build.bat runServer` (game dir `run-server/`, gitignored)
 loads datapacks without a window. Put the mods under test in `run-server/mods/` and read the log for
 `Apothic Ascension: extended N ...` / `Ragnarok x Ancient Reforging: ...` and for any affix that
@@ -152,6 +171,56 @@ and Apotheosis refuses to affix or socket any of them (see the testhotbar diagno
 [known bug](#known-upstream-bugs-not-ours--do-not-fix-them-here) about its load order). It has no
 Modrinth/CurseForge listing - build it from [ianm1647/apothic-compats](https://github.com/ianm1647/apothic-compats)
 (branch `1.21.1`), or pull the `Package` artifact off its latest successful GitHub Actions run.
+
+## Agent harnesses
+
+This file is the single source of truth for every harness used here - Claude Code, Codex, OpenCode and
+T3 Code all read it. `CLAUDE.md` is a stub that imports it (`@AGENTS.md`) and repeats the three traps
+most likely to bite; don't grow a second copy of the rules there, add them here.
+
+Machine-wide rules (disk hygiene, `rig`, delegation to cheaper models, output style) live in
+`~/.claude/CLAUDE.md`; Codex reads a synced copy at `~/.codex/AGENTS.md`. Read it before touching game
+runs, other machines or subagents. Whoever edits it runs
+`pwsh -NoProfile -File X:\Dev\tools\sync-agent-rules.ps1` right after.
+
+### Where a build and a run may happen
+
+- **Headless work stays on FOX**: `build.bat build`, `build.bat runServer`, `git`, reading reports.
+- **Anything that opens the game window runs on rig (192.168.50.3), never on FOX.** A Minecraft client
+  grabs keyboard and mouse even while unfocused, so a local dev client hijacks the machine the user is
+  working on. That covers `runClient`, `runClientLite`, and every `run*Shot` / `run*Check` task.
+
+  ```bat
+  pwsh X:\Dev\tools\run-on-rig.ps1 -Project X:\Dev\Minecraft\foxs-tweaks -Command "build.bat runClientLite"
+  pwsh X:\Dev\tools\run-on-rig.ps1 -Project X:\Dev\Minecraft\foxs-tweaks -Command "build.bat runToggleShot" -Wait
+  pwsh X:\Dev\tools\run-on-rig.ps1 -Project X:\Dev\Minecraft\foxs-tweaks -Stop
+  ```
+
+  `-Wait` is for checks that quit by themselves (the `run*Shot`/`run*Check` tasks); an interactive
+  client needs the rig-windows MCP tools or the tunnel instead.
+
+  The script mirrors this folder to `G:\rig-run\foxs-tweaks\` (FOX is the source of truth; `build`,
+  `.gradle`, `.git` are skipped), runs the command in rig's desktop session and streams
+  `G:\rig-run\foxs-tweaks\_rig-run.log`. Gradle's reports and the `run-*/foxstweaks-*-check.txt` files
+  therefore appear under `G:\rig-run\foxs-tweaks\run-*` - read them from `\\Rig\g\rig-run\foxs-tweaks\`.
+  `run-*/mods` copies with the source, so hand-placed jars travel. `-Stop` kills the game and its
+  tunnels; always call it when the check is done. `-Tunnel 47861:47860` forwards rig's mc-mcp if an
+  agent needs to drive the window (screenshot, click).
+- **Keep dev clients muted**: master volume 0 (`soundCategory_master:0.0` in the run dir's
+  `options.txt`), unmute only when the change under test makes sound.
+- One dev client per game directory at a time - Gradle and the world lock the dir, and two of the same
+  check overwrite each other's report.
+- New in-game checks copy the pattern in `.claude/skills/neoforge-ingame-selftest/SKILL.md` (dev-only
+  class behind a system property, own `run-*/` dir, PASS/FAIL text report, screenshots, quits at the
+  end) and get their own run config + section here.
+
+### Delegation
+
+A child agent sees only its brief, so a brief must be self-contained: the absolute project path, the
+files to read (including this file and any skill by path, since non-Claude harnesses cannot load Claude
+skills), what to change, how to verify, and "build and test in the foreground, never end a turn while a
+build runs, commit on your branch, no push". Review every child's report before merging or reporting the
+work as done. The model/delegation table itself is in `~/.claude/CLAUDE.md`.
 
 ## Architecture
 
@@ -702,6 +771,57 @@ checks. Measured as the standalone mod on TNP Limitless 8 (live heap 60 s after 
 MB, `ItemEmiStack` 12.49 M → 6.35 M, `DataComponentPatch` 2.59 M → 0.16 M. The log line `EMI Slim: tag lists
 built ...` after each EMI bake shows it working in a pack.
 
+### Iris shader settings search (`client/compat/IrisSettingsSearch`)
+
+Iris' shader pack screen nests its settings in sub-menus and offers no search, so finding one option
+means remembering which menu it lives in. `IrisShaderScreenSearchMixin` adds an `EditBox` under the
+settings list (list top +20, height -20, so nothing overlaps) and `IrisOptionListSearchMixin` replaces
+the list's `rebuild` (`@Inject` on the `OptionMenuConstructor.constructAndApplyToScreen` call,
+`cancellable`, `require = 0`) with search results while the query is not blank.
+
+- Results are Iris' **own** option widgets gathered from every `OptionMenuElementScreen` (main screen
+  plus `subScreens`), so a click changes the setting exactly as in its menu and still waits for
+  Apply/Done. Rows are grouped under the menu each one lives in, capped at 80.
+- Matching: every word must hit the option's name, its id (`COLORED_LIGHTING`), its description or its
+  menu name - substring first, else letters in order (`clrlight`). A grey inline completion suggests the
+  best prefix match; Esc clears the query before it closes the screen.
+- One screen is open at a time, so the query lives in a static (`IrisSettingsSearch.query`) and is reset
+  in the screen's constructor `TAIL`. The search box is only added while the settings (not the pack
+  list) are open, i.e. `optionMenuOpen`.
+- Iris types are compile-only (`iris_version`) and appear both in the mixins and in `IrisSettingsSearch`/
+  `IrisSearchList`; both mixins are `remap = false` and `require = 0`, so an Iris update drops the
+  feature instead of crashing. Toggle: `irisSettingsSearch`. Client section.
+
+### Sophisticated recipes in EMI (`client/compat/SbEmiFill`)
+
+EMI's "+" (and its craft keybinds, both of which end in `EmiRecipeFiller`) refused Sophisticated
+Backpacks' tier upgrades and dyeing with *"Current workstation does not support recipe"*:
+Sophisticated Core shows those recipes **split**, one EMI recipe holding only the ingredients, another
+only the results, so EMI's handler never sees a complete 3x3 craft.
+
+`SbEmiFill.forFill` builds a plain `EmiCraftingRecipe` from the split halves and hands it to EMI
+instead: `CraftingSpecEmiRecipe`'s `gridInputs` + `spec.getOutputStacks(variants)`, or
+`GroupedCraftingEmiRecipe`'s `recipeHolder.value().getInputSlots()/getResultStacks()`. The replacement
+is cached per EMI recipe (weak keys, so an EMI reload drops it).
+
+- **Self-disabling:** only recipes from
+  `net.p3pp3rf1y.sophisticatedcore.compat.recipeviewers.emi.` that still return
+  `supportsRecipeTree() == false` are swapped. Once Sophisticated Core ships whole recipes nothing
+  matches. Anything unexpected (renamed fields, a grid that isn't 9 slots, empty ingredients) leaves the
+  recipe alone and warns once.
+- The Sophisticated Core side is reached by reflection and by class-name prefix only; the EMI side is
+  `compileOnly` (`emi_version`) and the two mixins (`SbEmiFillButtonMixin`, `SbEmiFillerMixin`) target
+  `RecipeFillButtonWidget`/`EmiRecipeFiller` by string, `require = 0`. Toggle: `sbEmiFill`. Client.
+
+### TrashSlot on slotless menus (`mixin/TrashSlotGuiHandlerMixin`)
+
+Waystones' settings screens are `AbstractContainerScreen`s over a menu with no slots. TrashSlot still
+draws its slot there, and GuiTween's `renderSlot` hook then calls `menu.getSlot(index)` on the empty
+list and crashes. `TrashSlotGuiHandlerMixin` `@Inject`s `TrashSlotGuiHandler.onScreenDrawn` at `HEAD`
+(cancellable, by string target, `require = 0`) and skips drawing when the open container menu has no
+slots - a screen with no slots has nothing to trash. No config: it is three lines of crash guard, not a
+feature. Client.
+
 ### GAG Temporal Pouch curio (`gag/TemporalPouchCurio`, `gag/TemporalPouchNetwork`, `client/TemporalPouchKeyHandler`)
 
 The slot is pure data: `data/foxstweaks/curios/slots/temporal_pouch.json` and `.../curios/entities/temporal_pouch.json`
@@ -814,9 +934,14 @@ chest. With it off, 167 errors in 10 s and the entry stayed. Against ApotSpawner
 - **Solve-on-pickup requires the mod server-side.** `ResearchData.complete()` writes a
   server-authoritative data attachment and refuses anything that is not a `ServerPlayer`.
   Singleplayer runs an integrated server in-process, so a client-only install still works there.
-- The mod registers **no registries or datapack content** — only a `COMMON` config, and one **optional**
-  payload (`NearbyItemsPayload`, only when Point Blank is loaded). Keep it that way: optional payloads
-  are what let a client without this mod join, and a client-only install join a server without it. (The
+- The mod adds **no blocks, items, entities or recipes**, but it does ship some data: the
+  `foxstweaks:overworld_copy` dimension (datapack, behind the `overworldCopy` load condition), the two
+  Curios slot definitions (behind `neoforge:mod_loaded`), and the stale-mixin guard. Config is `COMMON`
+  plus a `SERVER` file (the portal frame, instant/flat/dye keys). Every network
+  payload is registered `optional()` - `NearbyItemsPayload` (printer/TACZ counts), `ToggleEntryPayload`,
+  `UsePouchPayload`, `AutoLevelPayload`, `ShrinkPayload`, `PortalColorsPayload` - and each network class
+  is only reached behind `isAvailable()`/`hasChannel()` checks. Keep it that way: optional payloads are
+  what let a client without this mod join, and a client-only install join a server without it. (The
   rarity patches rewrite data as it loads; they add no content and need nothing on the client.)
 
 ## Testing
