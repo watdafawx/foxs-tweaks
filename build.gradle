@@ -59,6 +59,35 @@ neoForge {
             systemProperty 'foxstweaks.emiSlimCheck', 'true'
         }
 
+        // Dev-only check of the search box assist (client/dev/SearchAssistCheck): types into real EditBoxes on the
+        // title screen, writes run-search/foxstweaks-search-check.txt and quits. No extra mods needed.
+        searchAssistCheck {
+            client()
+            gameDirectory = file('run-search')
+            systemProperty 'foxstweaks.searchAssistCheck', 'true'
+        }
+
+        // Search assist inside EMI (client/dev/SearchAssistModsCheck): put the jar (AE2: plus guideme) in run-search-emi/mods.
+        runSearchEmiCheck {
+            client()
+            gameDirectory = file('run-search-emi')
+            systemProperty 'foxstweaks.searchModsCheck', 'emi'
+        }
+
+        // Search assist inside JEI (client/dev/SearchAssistModsCheck): put the jar (AE2: plus guideme) in run-search-jei/mods.
+        runSearchJeiCheck {
+            client()
+            gameDirectory = file('run-search-jei')
+            systemProperty 'foxstweaks.searchModsCheck', 'jei'
+        }
+
+        // Search assist inside AE2 (client/dev/SearchAssistModsCheck): put the jar (AE2: plus guideme) in run-search-ae2/mods.
+        runSearchAe2Check {
+            client()
+            gameDirectory = file('run-search-ae2')
+            systemProperty 'foxstweaks.searchModsCheck', 'ae2'
+        }
+
         // Dev-only check of the Kaleidoscope Grilling skewer cache (client/dev/GrillingCheck): flat world, parity +
         // timing, writes run-grilling/foxstweaks-grilling-check.txt and quits. Put kaleidoscope_grilling and
         // kaleidoscope_cookery jars in run-grilling/mods first.

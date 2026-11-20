@@ -1,5 +1,9 @@
 # Changelog
 
+## 1.28.0
+
+- Search boxes: every search box (EMI, JEI, AE2 terminals, Refined Storage, creative inventory and any other whose label or class says search/filter/find) now shows a grey autocomplete of item, mob, effect and mod names (Tab accepts), and a "Did you mean" line for misspelled words (Tab accepts). With autocorrect on, the box's listener also gets the corrected text, so "diamnod" still finds diamonds. Client side. Toggles: `searchAssist`, `searchAssistAutocorrect`; `searchAssistExtraBoxes` / `searchAssistSkipBoxes` add or exclude boxes by class name.
+
 ## 1.27.0
 
 - Relics: auto-level can now watch several abilities on one relic. Left-click the star to mark or unmark an ability; right-click or Shift-click it to switch the mode. "In order" (default) finishes the first marked ability before the next. "Round robin" gives each marked ability one upgrade in turn, so upgrade points and experience are shared evenly. Auto rank-up now waits until every marked ability is done. Relics you had marked before keep their one ability. Both client and server need this version (the auto-level packet changed). Toggles unchanged: `relicAutoLevel`, `relicAutoLevelMinXp`, `relicAutoRankup`.

@@ -98,6 +98,11 @@
   "foxstweaks.configuration.chickensRadiationKeepLoot": "Chickens Radiation Keep Loot",
   "foxstweaks.configuration.sbEmiFill": "Sophisticated Backpacks EMI Fill",
   "foxstweaks.configuration.irisSettingsSearch": "Iris Settings Search",
+  "foxstweaks.configuration.searchAssist": "Search Box Assist",
+  "foxstweaks.configuration.searchAssistAutocorrect": "Search Box Autocorrect",
+  "foxstweaks.configuration.searchAssistExtraBoxes": "Search Box Assist: Extra Boxes",
+  "foxstweaks.configuration.searchAssistSkipBoxes": "Search Box Assist: Skipped Boxes",
+  "foxstweaks.search_assist.did_you_mean": "Did you mean: %s  [Tab]",
   "foxstweaks.configuration.ipnSidebarButtons": "IPN Sidebar Buttons",
   "foxstweaks.configuration.debugLogLootRolls": "Debug Log Loot Rolls"
 }

@@ -179,6 +179,27 @@ icons), drawn in FTB's style and moved or hidden in FTB's sidebar edit mode like
 Turn IPN's own buttons off in its GUI settings (*Enable Overlay Editor Button*, *Enable Settings Button
 in Inventory*). Toggle: `ipnSidebarButtons`. Client-side only.
 
+## Search boxes — typo-forgiving, autocomplete, "did you mean"
+
+Every search box (EMI, JEI, AE2 terminals, creative tab search, most others) gets three things:
+
+- **Typo fix:** a misspelled word still finds things. `diamnod` searches `diamond`; the box keeps what
+  you typed. Toggle: `searchAssistAutocorrect`.
+- **Autocomplete:** grey text finishes item, mob, effect and mod names. **Tab** takes it.
+- **Did you mean:** a gold "Did you mean: diamond [Tab]" line appears under the box; **Tab** takes it.
+
+Search syntax (`@mod`, `#tag`, quotes, `-`) is never touched. Boxes are found by their label or class
+name; add misses to `searchAssistExtraBoxes`, exclude with `searchAssistSkipBoxes` (matched against the
+box class or the screen's class chain). Master toggle: `searchAssist`. Client-side only.
+
+| | Typed `diamnod` | Typed `iron ing` |
+|---|---|---|
+| EMI | ![EMI](docs/search-assist/emi-1-misspelled.png) | ![EMI](docs/search-assist/emi-2-autocomplete.png) |
+| JEI | ![JEI](docs/search-assist/jei-1-misspelled.png) | ![JEI](docs/search-assist/jei-2-autocomplete.png) |
+| AE2 | ![AE2](docs/search-assist/ae2-1-misspelled.png) | ![AE2](docs/search-assist/ae2-2-autocomplete.png) |
+
+(EMI and JEI show the corrected results on the right; the AE2 terminal here has no network, so no items.)
+
 ## Which side needs what
 
 | Feature | Needs | Side |

@@ -95,6 +95,8 @@ quality-of-life features sharing a jar, among them:
     [Sophisticated recipes in EMI](#sophisticated-recipes-in-emi-clientcompatsbemifill).
 22. **TrashSlot on slotless menus** — client-side; `mixin/TrashSlotGuiHandlerMixin` stops TrashSlot drawing its slot on
     container screens whose menu has no slots (Waystones' settings screens), which crashed GuiTween's render hook.
+23. **Search box assist** — client-side; `mixin/EditBoxSearchAssistMixin` + `client/search/*` give every search box
+    grey autocomplete and a "Did you mean" line. See [Search box assist](#search-box-assist-clientsearch-mixineditboxsearchassistmixin).
 
 **Every parent mod is optional.** The mod must load and behave correctly with either, both, or
 neither installed. This is the single most important invariant in the codebase — see
@@ -791,6 +793,44 @@ the list's `rebuild` (`@Inject` on the `OptionMenuConstructor.constructAndApplyT
 - Iris types are compile-only (`iris_version`) and appear both in the mixins and in `IrisSettingsSearch`/
   `IrisSearchList`; both mixins are `remap = false` and `require = 0`, so an Iris update drops the
   feature instead of crashing. Toggle: `irisSettingsSearch`. Client section.
+
+### Search box assist (`client/search/*`, `mixin/EditBoxSearchAssistMixin`)
+
+One mixin on vanilla `EditBox` (every mod's search field is one, or a subclass) instead of a patch per mod.
+`SearchAssist.isSearchBox` decides: the box's message, hint or their translation keys, or its class name,
+contain "search"/"filter"/"find" (`searchAssistExtraBoxes` adds names, `searchAssistSkipBoxes` removes them;
+default skip: `ShaderPackScreen`, which has its own). Found by scanning ATM10 and TNP Limitless 8 jars: ~150
+mods use `EditBox` near a "search" string (EMI, JEI, AE2/RS terminals, Create, Patchouli, Modonomicon, creative...).
+
+- **Autocomplete**: after each change `SearchVocab.complete` sets `EditBox#setSuggestion` (grey text; vanilla
+  only draws it with the cursor at the end). Tab takes it. A suggestion another mod set is never replaced
+  (`foxstweaks$ours` remembers ours).
+- **Did you mean**: `SearchVocab.correct` fixes each plain word of 4+ letters that is not a known word (and
+  is not a still-growing prefix on the last word): same first letter, optimal-string-alignment distance 1
+  (2 from 8 letters), most common candidate wins. Any search syntax (`@ # $ / " - |` ...) skips the whole
+  query. Shown under the focused box; Tab takes it.
+- **Autocorrect** (`searchAssistAutocorrect`): `@ModifyArg` on the `responder.accept` call inside
+  `onValueChange` hands the listener the corrected text; the box keeps what was typed. Boxes that read
+  `getValue()` themselves only get the suggestion. `getValue` is deliberately not hooked: mods write it back.
+- **Vocabulary** (`SearchVocab`): item, entity, mob effect and mod display names in the current language,
+  rebuilt when `Language.getInstance()` changes. It does not know mod-specific words (setting names, quest
+  titles), so those boxes get fewer suggestions; a word absent from it is never "corrected" unless a known
+  word is within the distance above.
+- Targets the private `EditBox#onValueChange(String)`, `keyPressed`, `renderWidget` (Mojang names, checked
+  with `javap`); `require = 0`, so an upstream rename drops the feature silently. Client section, toggle
+  `searchAssist`.
+- **Dev check**: `build.bat runSearchAssistCheck` (game dir `run-search/`, no extra mods, run it on rig). Needs no
+  world: `client/dev/SearchAssistCheck` types into real `EditBox`es on the title screen and checks the listener text,
+  suggestion, did-you-mean, Tab, search syntax, prefix words and a non-search box. Report
+  `run-search/foxstweaks-search-check.txt` (14 checks, all PASS).
+- **Real-mod checks**: `runSearchEmiCheck`, `runSearchJeiCheck`, `runSearchAe2Check` (`client/dev/SearchAssistModsCheck`, reflection
+  only; game dirs `run-search-emi|jei|ae2`, drop the mod jars in each `mods/` first: EMI; JEI; AE2 + GuideME). They build a
+  flat creative world, open the viewer (AE2: place an `ae2:terminal` part, open it), type `diamnod`, then `iron ing`, check
+  the corrected text reaches the mod (EMI/JEI results, AE2 repo search string) and that Tab completes, and write
+  screenshots + `foxstweaks-search-<mode>.txt`. All PASS (EMI, JEI, AE2). Screenshots in README come from these (`docs/search-assist/`).
+- **Gotchas**: EMI sets its own suggestion to `""`, so empty counts as unset. AE2's box has no "search" label: the default
+  `searchAssistExtraBoxes` is `["MEStorageScreen"]`, matched against the screen's class chain (parents too). JEI's box shows the corrected
+  filter text. An AE2 terminal with no network has zero results, so that check uses the repo search string instead.
 
 ### Sophisticated recipes in EMI (`client/compat/SbEmiFill`)
 

@@ -33,6 +33,7 @@
     "Ae2EmiQuickFillMixin",
     "BackpackRenderInfoMixin",
     "CuriosCacheHandlerMixin",
+    "EditBoxSearchAssistMixin",
     "EmiCraftablesScanMixin",
     "EmiSlimItemStackMixin",
     "EmiSlimListIngredientMixin",

@@ -496,6 +496,42 @@ public final class Config {
                     "Client-side only. Does nothing without Iris.")
             .define("irisSettingsSearch", true);
 
+    public static final ModConfigSpec.BooleanValue SEARCH_ASSIST = BUILDER
+            .comment(
+                    "Autocomplete and \"did you mean\" for search boxes in every screen. Typing in a search box shows",
+                    "the rest of an item, mob, effect or mod name in grey (Tab accepts it), and a misspelled word",
+                    "(\"ingto\", \"diamnod\") shows \"Did you mean: ingot\" under the box (Tab accepts it).",
+                    "A box counts as a search box when its label or hint says search/filter/find, or its class name",
+                    "does (EMI, JEI, AE2, Refined Storage, creative inventory and more).",
+                    "",
+                    "Client-side only.")
+            .define("searchAssist", true);
+
+    public static final ModConfigSpec.BooleanValue SEARCH_ASSIST_AUTOCORRECT = BUILDER
+            .comment(
+                    "Also give the search box's listener the corrected text, so a misspelled word still finds the",
+                    "item. What you typed stays in the box; the \"Did you mean\" line shows what was searched.",
+                    "Only works for boxes that react to typing (most do); boxes that read their text on their own",
+                    "just show the suggestion. Needs searchAssist.",
+                    "",
+                    "Client-side only.")
+            .define("searchAssistAutocorrect", true);
+
+    public static final ModConfigSpec.ConfigValue<java.util.List<? extends String>> SEARCH_ASSIST_EXTRA_BOXES = BUILDER
+            .comment(
+                    "Text boxes searchAssist should treat as search boxes although nothing in them says so. Each",
+                    "entry is a piece of the box's class name or its screen's class name or a parent of it (case-insensitive).",
+                    "Default: AE2's terminal screens (MEStorageScreen), whose search field is not labelled.")
+            .defineListAllowEmpty("searchAssistExtraBoxes", java.util.List.of("MEStorageScreen"),
+                    () -> "SomeSearchField", o -> o instanceof String);
+
+    public static final ModConfigSpec.ConfigValue<java.util.List<? extends String>> SEARCH_ASSIST_SKIP_BOXES = BUILDER
+            .comment(
+                    "Search boxes searchAssist must leave alone (same matching as searchAssistExtraBoxes), e.g.",
+                    "a box whose search syntax the suggestions get wrong.")
+            .defineListAllowEmpty("searchAssistSkipBoxes", java.util.List.of("ShaderPackScreen"),
+                    () -> "SomeSearchField", o -> o instanceof String);
+
     public static final ModConfigSpec.BooleanValue IPN_SIDEBAR_BUTTONS = BUILDER
             .comment(
                     "Inventory Profiles Next editor + settings buttons in FTB Library's sidebar (top-left, next to",

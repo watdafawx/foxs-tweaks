@@ -96,6 +96,14 @@ public class FoxsTweaks {
         if (FMLEnvironment.dist.isClient() && !FMLEnvironment.production && Boolean.getBoolean("foxstweaks.emiSlimCheck") && ModList.get().isLoaded("emi"))
             dev.watdafawx.foxstweaks.client.dev.EmiSlimCheck.install();
 
+        // Dev-only check for the search box assist; `build.bat runSearchAssistCheck` sets the property.
+        if (FMLEnvironment.dist.isClient() && !FMLEnvironment.production && Boolean.getBoolean("foxstweaks.searchAssistCheck"))
+            dev.watdafawx.foxstweaks.client.dev.SearchAssistCheck.install();
+
+        // Dev-only check of the search assist inside EMI / JEI / AE2; `build.bat runSearch{Emi,Jei,Ae2}Check` sets the mode.
+        if (FMLEnvironment.dist.isClient() && !FMLEnvironment.production && System.getProperty("foxstweaks.searchModsCheck") != null)
+            dev.watdafawx.foxstweaks.client.dev.SearchAssistModsCheck.install(System.getProperty("foxstweaks.searchModsCheck"));
+
         // Dev-only check for the Kaleidoscope Grilling skewer cache; `build.bat runGrillingCheck` sets the property.
         if (FMLEnvironment.dist.isClient() && !FMLEnvironment.production && Boolean.getBoolean("foxstweaks.grillingCheck") && ModList.get().isLoaded("kaleidoscope_grilling"))
             dev.watdafawx.foxstweaks.client.dev.GrillingCheck.install();
