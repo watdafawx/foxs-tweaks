@@ -78,6 +78,17 @@ public final class SearchAssistCheck {
         check("search syntax untouched", "@create ingto".equals(last(heard)), "listener got " + last(heard));
         search.setValue("dia");
         check("word being typed untouched", "dia".equals(last(heard)), "listener got " + last(heard));
+
+        search.setValue("iron @foxst");
+        check("@mod completes to the mod id", "weaks".equals(field(search, "suggestion")), "suggestion " + field(search, "suggestion"));
+        tab = search.keyPressed(258, 0, 0);
+        check("Tab takes @mod completion", tab && "iron @foxstweaks".equals(search.getValue()), "value=" + search.getValue());
+        search.setValue("@foxstweks");
+        check("misspelled @mod corrected", "@foxstweaks".equals(last(heard)), "listener got " + last(heard));
+        search.setValue("@foxstweaks");
+        check("known @mod left alone", "@foxstweaks".equals(last(heard)) && field(search, "foxstweaks$didYouMean") == null, "listener got " + last(heard));
+        search.setValue("$loot");
+        check("$ tooltip search untouched", "$loot".equals(last(heard)) && field(search, "suggestion") == null, "listener got " + last(heard));
         search.setValue("");
         check("empty clears hints", field(search, "foxstweaks$didYouMean") == null && field(search, "suggestion") == null, "");
 

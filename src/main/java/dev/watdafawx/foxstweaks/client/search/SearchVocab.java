@@ -27,6 +27,11 @@ public final class SearchVocab {
     private static String[] words = new String[0];
     private static int[] counts = new int[0];
     private static Language builtFor;
+    /** Sorted mod ids, for {@code @mod} searches. */
+    private static String[] modIds = new String[0];
+    /** Sorted item tag paths (namespace dropped), for {@code #tag} searches. Rebuilt when the tag count changes. */
+    private static String[] tagPaths = new String[0];
+    private static int tagsBuiltFor = -1;
 
     private static final Map<String, String> CORRECTIONS = new LinkedHashMap<>(64, 0.75f, true) {
         @Override
@@ -53,6 +58,8 @@ public final class SearchVocab {
             BuiltInRegistries.MOB_EFFECT.forEach(effect -> add(names, tally, effect.getDisplayName().getString()));
             if (ModList.get() != null) {
                 ModList.get().getMods().forEach(mod -> add(names, tally, mod.getDisplayName()));
+                modIds = ModList.get().getMods().stream().map(mod -> mod.getModId().toLowerCase(Locale.ROOT))
+                        .distinct().sorted().toArray(String[]::new);
             }
         } catch (RuntimeException e) {
             // A broken name from one mod must not take the search box down: keep what was read.
@@ -99,9 +106,63 @@ public final class SearchVocab {
         return i >= 0 ? i : -i - 1;
     }
 
+    private static void ensureTags() {
+        try {
+            int size = (int) BuiltInRegistries.ITEM.getTagNames().count();
+            if (size == tagsBuiltFor) {
+                return;
+            }
+            tagsBuiltFor = size;
+            tagPaths = BuiltInRegistries.ITEM.getTagNames().map(t -> t.location().getPath().toLowerCase(Locale.ROOT))
+                    .distinct().sorted().toArray(String[]::new);
+        } catch (RuntimeException e) {
+            tagPaths = new String[0]; // tags not synced yet (title screen): try again later
+            tagsBuiltFor = -1;
+        }
+    }
+
+    private static String lastToken(String s) {
+        return s.substring(s.lastIndexOf(' ') + 1);
+    }
+
+    /** Finishes the {@code @mod} or {@code #tag} word being typed: the shortest id or tag path it starts. */
+    private static String completePrefixed(String token) {
+        boolean mod = token.charAt(0) == '@';
+        String key = token.substring(1);
+        if (key.isEmpty()) {
+            return null;
+        }
+        for (int i = 0; i < key.length(); i++) {
+            char c = key.charAt(i);
+            if (!Character.isLetterOrDigit(c) && c != '_' && c != '-' && c != '/' && c != '.') {
+                return null;
+            }
+        }
+        String[] list;
+        if (mod) {
+            list = modIds;
+        } else {
+            ensureTags();
+            list = tagPaths;
+        }
+        String best = null;
+        int from = lowerBound(list, key);
+        for (int i = from; i < list.length && i < from + SCAN_CAP && list[i].startsWith(key); i++) {
+            if (list[i].length() > key.length() && (best == null || list[i].length() < best.length())) {
+                best = list[i];
+            }
+        }
+        return best == null ? null : best.substring(key.length());
+    }
+
     /** The text to add after {@code value} to finish a name, or null. */
     public static String complete(String value) {
         String lower = value.toLowerCase(Locale.ROOT);
+        String last = lastToken(lower);
+        if (!last.isEmpty() && (last.charAt(0) == '@' || last.charAt(0) == '#')) {
+            ensureBuilt();
+            return completePrefixed(last);
+        }
         if (lower.length() < 2 || lower.endsWith(" ") || !plainText(lower)) {
             return null;
         }
@@ -138,6 +199,9 @@ public final class SearchVocab {
      * numbers, and a last word that is still a prefix of something are left alone.
      */
     public static String correct(String value) {
+        if (value.indexOf('@') >= 0) {
+            return correctMods(value);
+        }
         if (value.length() < 4 || !plainText(value)) {
             return null;
         }
@@ -148,6 +212,43 @@ public final class SearchVocab {
             String fixed = fixWord(tokens[i], i == tokens.length - 1);
             if (fixed != null) {
                 tokens[i] = fixed;
+                changed = true;
+            }
+        }
+        return changed ? String.join(" ", tokens) : null;
+    }
+
+    /** Fixes a misspelled mod id in each {@code @mod} word; every other word is left alone. */
+    private static String correctMods(String value) {
+        ensureBuilt();
+        String[] tokens = value.split(" ", -1);
+        boolean changed = false;
+        for (int i = 0; i < tokens.length; i++) {
+            String t = tokens[i];
+            if (t.length() < 5 || t.charAt(0) != '@') {
+                continue;
+            }
+            String key = t.substring(1).toLowerCase(Locale.ROOT);
+            if (Arrays.binarySearch(modIds, key) >= 0) {
+                continue;
+            }
+            int at = lowerBound(modIds, key);
+            if (at < modIds.length && modIds[at].startsWith(key)) {
+                continue; // still being typed
+            }
+            String best = null;
+            int bestDist = 2;
+            for (String id : modIds) {
+                if (id.charAt(0) == key.charAt(0) && Math.abs(id.length() - key.length()) <= 1) {
+                    int d = distance(key, id, 1);
+                    if (d < bestDist) {
+                        best = id;
+                        bestDist = d;
+                    }
+                }
+            }
+            if (best != null) {
+                tokens[i] = "@" + best;
                 changed = true;
             }
         }

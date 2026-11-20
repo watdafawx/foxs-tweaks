@@ -1,5 +1,9 @@
 # Changelog
 
+## 1.29.0
+
+- Search boxes: `@mod` and `#tag` words now autocomplete too (Tab accepts): `@ae` finishes to the mod id, `#ingo` to a tag path, and a misspelled mod id gets a "Did you mean" fix. EMI, JEI and AE2 all use `@` for mod, `#` for tag and `$` for tooltip text; `$` words are left as typed. Client side.
+
 ## 1.28.0
 
 - Search boxes: every search box (EMI, JEI, AE2 terminals, Refined Storage, creative inventory and any other whose label or class says search/filter/find) now shows a grey autocomplete of item, mob, effect and mod names (Tab accepts), and a "Did you mean" line for misspelled words (Tab accepts). With autocorrect on, the box's listener also gets the corrected text, so "diamnod" still finds diamonds. Client side. Toggles: `searchAssist`, `searchAssistAutocorrect`; `searchAssistExtraBoxes` / `searchAssistSkipBoxes` add or exclude boxes by class name.

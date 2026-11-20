@@ -822,12 +822,13 @@ mods use `EditBox` near a "search" string (EMI, JEI, AE2/RS terminals, Create, P
 - **Dev check**: `build.bat runSearchAssistCheck` (game dir `run-search/`, no extra mods, run it on rig). Needs no
   world: `client/dev/SearchAssistCheck` types into real `EditBox`es on the title screen and checks the listener text,
   suggestion, did-you-mean, Tab, search syntax, prefix words and a non-search box. Report
-  `run-search/foxstweaks-search-check.txt` (14 checks, all PASS).
+  `run-search/foxstweaks-search-check.txt` (19 checks, all PASS; includes @mod completion and correction, `$` untouched).
 - **Real-mod checks**: `runSearchEmiCheck`, `runSearchJeiCheck`, `runSearchAe2Check` (`client/dev/SearchAssistModsCheck`, reflection
   only; game dirs `run-search-emi|jei|ae2`, drop the mod jars in each `mods/` first: EMI; JEI; AE2 + GuideME). They build a
   flat creative world, open the viewer (AE2: place an `ae2:terminal` part, open it), type `diamnod`, then `iron ing`, check
   the corrected text reaches the mod (EMI/JEI results, AE2 repo search string) and that Tab completes, and write
   screenshots + `foxstweaks-search-<mode>.txt`. All PASS (EMI, JEI, AE2). Screenshots in README come from these (`docs/search-assist/`).
+- **Prefixes**: EMI, JEI (default prefix mode) and AE2 agree: `@` mod, `#` tag, `$` tooltip (JEI adds `%` tab, `^` colour, `&` id; AE2 `^` id). `SearchVocab.completePrefixed` completes `@` against mod ids and `#` against item tag paths (rebuilt when the tag count changes; empty on the title screen). `correctMods` fixes `@` ids only. Tag completion is not exercised by a check (needs a world with tags).
 - **Gotchas**: EMI sets its own suggestion to `""`, so empty counts as unset. AE2's box has no "search" label: the default
   `searchAssistExtraBoxes` is `["MEStorageScreen"]`, matched against the screen's class chain (parents too). JEI's box shows the corrected
   filter text. An AE2 terminal with no network has zero results, so that check uses the repo search string instead.

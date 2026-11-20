@@ -188,7 +188,7 @@ Every search box (EMI, JEI, AE2 terminals, creative tab search, most others) get
 - **Autocomplete:** grey text finishes item, mob, effect and mod names. **Tab** takes it.
 - **Did you mean:** a gold "Did you mean: diamond [Tab]" line appears under the box; **Tab** takes it.
 
-Search syntax (`@mod`, `#tag`, quotes, `-`) is never touched. Boxes are found by their label or class
+`@mod` and `#tag` words autocomplete too (`@ae` → `@ae2`; EMI, JEI and AE2 all use `@` mod, `#` tag, `$` tooltip text). A misspelled `@mod` id gets the same "Did you mean". Other syntax (`$`, quotes, `-`) is left as typed. Boxes are found by their label or class
 name; add misses to `searchAssistExtraBoxes`, exclude with `searchAssistSkipBoxes` (matched against the
 box class or the screen's class chain). Master toggle: `searchAssist`. Client-side only.
 
