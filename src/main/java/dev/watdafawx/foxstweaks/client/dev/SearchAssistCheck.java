@@ -87,8 +87,10 @@ public final class SearchAssistCheck {
         check("misspelled @mod corrected", "@foxstweaks".equals(last(heard)), "listener got " + last(heard));
         search.setValue("@foxstweaks");
         check("known @mod left alone", "@foxstweaks".equals(last(heard)) && field(search, "foxstweaks$didYouMean") == null, "listener got " + last(heard));
-        search.setValue("$loot");
-        check("$ tooltip search untouched", "$loot".equals(last(heard)) && field(search, "suggestion") == null, "listener got " + last(heard));
+        search.setValue("$dia");
+        check("$ completes a tooltip word", field(search, "suggestion") != null && "$dia".equals(last(heard)), "suggestion " + field(search, "suggestion") + " listener " + last(heard));
+        search.setValue("#ingo");
+        check("# search not corrected", "#ingo".equals(last(heard)) && field(search, "foxstweaks$didYouMean") == null, "listener got " + last(heard));
         search.setValue("");
         check("empty clears hints", field(search, "foxstweaks$didYouMean") == null && field(search, "suggestion") == null, "");
 

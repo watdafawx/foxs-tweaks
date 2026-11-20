@@ -27,11 +27,11 @@ public final class SearchVocab {
     private static String[] words = new String[0];
     private static int[] counts = new int[0];
     private static Language builtFor;
-    /** Sorted mod ids, for {@code @mod} searches. */
-    private static String[] modIds = new String[0];
     /** Sorted item tag paths (namespace dropped), for {@code #tag} searches. Rebuilt when the tag count changes. */
     private static String[] tagPaths = new String[0];
     private static int tagsBuiltFor = -1;
+    /** Sorted mod ids, for {@code @mod} searches. */
+    private static String[] modIds = new String[0];
 
     private static final Map<String, String> CORRECTIONS = new LinkedHashMap<>(64, 0.75f, true) {
         @Override
@@ -125,25 +125,31 @@ public final class SearchVocab {
         return s.substring(s.lastIndexOf(' ') + 1);
     }
 
-    /** Finishes the {@code @mod} or {@code #tag} word being typed: the shortest id or tag path it starts. */
+    /**
+     * Finishes the word after a search prefix with the kind of thing that prefix searches: {@code @} a mod id,
+     * {@code #} an item tag path, {@code $} a tooltip word (the most common name word that starts with it).
+     */
     private static String completePrefixed(String token) {
-        boolean mod = token.charAt(0) == '@';
+        char prefix = token.charAt(0);
         String key = token.substring(1);
         if (key.isEmpty()) {
             return null;
         }
         for (int i = 0; i < key.length(); i++) {
             char c = key.charAt(i);
-            if (!Character.isLetterOrDigit(c) && c != '_' && c != '-' && c != '/' && c != '.') {
+            boolean ok = Character.isLetterOrDigit(c) || (prefix != '$' && (c == '_' || c == '-' || c == '/' || c == '.'));
+            if (!ok) {
                 return null;
             }
         }
         String[] list;
-        if (mod) {
+        if (prefix == '@') {
             list = modIds;
-        } else {
+        } else if (prefix == '#') {
             ensureTags();
             list = tagPaths;
+        } else {
+            return completeWord(key);
         }
         String best = null;
         int from = lowerBound(list, key);
@@ -155,11 +161,28 @@ public final class SearchVocab {
         return best == null ? null : best.substring(key.length());
     }
 
+    /** The most common known word that {@code token} starts, minus {@code token}; null when none. */
+    private static String completeWord(String token) {
+        if (token.length() < 2) {
+            return null;
+        }
+        int bestCount = 0;
+        String bestWord = null;
+        int from = lowerBound(words, token);
+        for (int i = from; i < words.length && i < from + SCAN_CAP && words[i].startsWith(token); i++) {
+            if (words[i].length() > token.length() && counts[i] > bestCount) {
+                bestCount = counts[i];
+                bestWord = words[i];
+            }
+        }
+        return bestWord == null ? null : bestWord.substring(token.length());
+    }
+
     /** The text to add after {@code value} to finish a name, or null. */
     public static String complete(String value) {
         String lower = value.toLowerCase(Locale.ROOT);
         String last = lastToken(lower);
-        if (!last.isEmpty() && (last.charAt(0) == '@' || last.charAt(0) == '#')) {
+        if (!last.isEmpty() && (last.charAt(0) == '@' || last.charAt(0) == '#' || last.charAt(0) == '$')) {
             ensureBuilt();
             return completePrefixed(last);
         }
@@ -181,16 +204,7 @@ public final class SearchVocab {
         if (token.length() < 2) {
             return null;
         }
-        int bestCount = 0;
-        String bestWord = null;
-        from = lowerBound(words, token);
-        for (int i = from; i < words.length && i < from + SCAN_CAP && words[i].startsWith(token); i++) {
-            if (words[i].length() > token.length() && counts[i] > bestCount) {
-                bestCount = counts[i];
-                bestWord = words[i];
-            }
-        }
-        return bestWord == null ? null : bestWord.substring(token.length());
+        return completeWord(token);
     }
 
     /**

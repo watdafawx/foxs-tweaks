@@ -1,5 +1,9 @@
 # Changelog
 
+## 1.29.1
+
+- Search boxes: after a search prefix, only that kind of thing completes: `@` mod ids, `#` tag paths, `$` a tooltip word (Tab accepts). A misspelled `@mod` id still gets a "Did you mean". Other prefixes (`%`, `^`, `&`) are left as typed. Client side.
+
 ## 1.29.0
 
 - Search boxes: `@mod` and `#tag` words now autocomplete too (Tab accepts): `@ae` finishes to the mod id, `#ingo` to a tag path, and a misspelled mod id gets a "Did you mean" fix. EMI, JEI and AE2 all use `@` for mod, `#` for tag and `$` for tooltip text; `$` words are left as typed. Client side.

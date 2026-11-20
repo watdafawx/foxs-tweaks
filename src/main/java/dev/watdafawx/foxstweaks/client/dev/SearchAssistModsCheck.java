@@ -157,6 +157,15 @@ public final class SearchAssistModsCheck {
             REPORT.add("Tab -> handled=" + handled + " value='" + box.getValue() + "'");
             check("Tab accepts completion", box.getValue().equals("iron ingot"), box.getValue());
         }));
+        for (String[] p : new String[][] {{"@minec", "mod id"}, {"#ingo", "tag path"}, {"$diam", "tooltip word"}}) {
+            STEPS.add(new Step(10, () -> box(mc).setValue(p[0])));
+            STEPS.add(new Step(10, () -> {
+                EditBox box = box(mc);
+                String sug = String.valueOf(field(box, "suggestion"));
+                REPORT.add("typed '" + p[0] + "' -> suggestion=" + sug);
+                check(p[0] + " completes a " + p[1], !sug.equals("null") && !sug.isEmpty(), sug);
+            }));
+        }
         STEPS.add(new Step(5, () -> {
             REPORT.add(failures == 0 ? "ALL PASS" : failures + " FAILED");
             try {
