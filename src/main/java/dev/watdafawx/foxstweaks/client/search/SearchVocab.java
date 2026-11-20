@@ -190,6 +190,11 @@ public final class SearchVocab {
             return null;
         }
         ensureBuilt();
+        SearchContext.refresh();
+        String inContext = SearchContext.complete(lower);
+        if (inContext != null) {
+            return inContext.substring(lower.length());
+        }
         String best = null;
         int from = lowerBound(phrases, lower);
         for (int i = from; i < phrases.length && i < from + SCAN_CAP && phrases[i].startsWith(lower); i++) {
@@ -204,7 +209,8 @@ public final class SearchVocab {
         if (token.length() < 2) {
             return null;
         }
-        return completeWord(token);
+        String contextWord = SearchContext.completeWord(token);
+        return contextWord != null ? contextWord : completeWord(token);
     }
 
     /**
@@ -220,6 +226,7 @@ public final class SearchVocab {
             return null;
         }
         ensureBuilt();
+        SearchContext.refresh();
         String[] tokens = value.split(" ", -1);
         boolean changed = false;
         for (int i = 0; i < tokens.length; i++) {
@@ -299,10 +306,22 @@ public final class SearchVocab {
                 return null; // still being typed
             }
         }
+        if (SearchContext.active()) {
+            if (SearchContext.knows(lower)) {
+                return null;
+            }
+            String near = SearchContext.closest(lower, lower.length() >= 8 ? 2 : 1); // what the terminal holds beats the whole game
+            if (near != null) {
+                return Character.isUpperCase(token.charAt(0)) ? Character.toUpperCase(near.charAt(0)) + near.substring(1) : near;
+            }
+        }
         String cached = CORRECTIONS.get(lower);
         if (cached == null) {
             cached = closest(lower);
-            CORRECTIONS.put(lower, cached == null ? "" : cached);
+            if (cached == null) {
+                cached = ""; // remember "no match" so closest() isn't rerun, and keep the local non-null
+            }
+            CORRECTIONS.put(lower, cached);
         }
         if (cached.isEmpty()) {
             return null;

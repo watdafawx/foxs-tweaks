@@ -1,5 +1,10 @@
 # Changelog
 
+## 1.30.0
+
+- Search boxes in AE2 terminals now suggest from what the network holds: items in stock first, then items it can auto-craft, then every name in the game. "Did you mean" also corrects to network items first. Toggle: `searchAssistContext`. Client side.
+- Fixed a crash (`NullPointerException ... "cached" is null`) when typing a 4+ letter word with no close match in a search box.
+
 ## 1.29.1
 
 - Search boxes: after a search prefix, only that kind of thing completes: `@` mod ids, `#` tag paths, `$` a tooltip word (Tab accepts). A misspelled `@mod` id still gets a "Did you mean". Other prefixes (`%`, `^`, `&`) are left as typed. Client side.

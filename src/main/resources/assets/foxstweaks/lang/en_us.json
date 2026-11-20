@@ -100,6 +100,7 @@
   "foxstweaks.configuration.irisSettingsSearch": "Iris Settings Search",
   "foxstweaks.configuration.searchAssist": "Search Box Assist",
   "foxstweaks.configuration.searchAssistAutocorrect": "Search Box Autocorrect",
+  "foxstweaks.configuration.searchAssistContext": "Search Box: Suggest From AE2 Network",
   "foxstweaks.configuration.searchAssistExtraBoxes": "Search Box Assist: Extra Boxes",
   "foxstweaks.configuration.searchAssistSkipBoxes": "Search Box Assist: Skipped Boxes",
   "foxstweaks.search_assist.did_you_mean": "Did you mean: %s  [Tab]",

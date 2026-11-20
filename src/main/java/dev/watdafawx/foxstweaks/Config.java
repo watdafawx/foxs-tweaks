@@ -517,6 +517,14 @@ public final class Config {
                     "Client-side only.")
             .define("searchAssistAutocorrect", true);
 
+    public static final ModConfigSpec.BooleanValue SEARCH_ASSIST_CONTEXT = BUILDER
+            .comment(
+                    "In an AE2 terminal, suggest and correct to what the network holds first (items in stock, then",
+                    "items it can auto-craft) before the whole game's names. Needs searchAssist and AE2.",
+                    "",
+                    "Client-side only.")
+            .define("searchAssistContext", true);
+
     public static final ModConfigSpec.ConfigValue<java.util.List<? extends String>> SEARCH_ASSIST_EXTRA_BOXES = BUILDER
             .comment(
                     "Text boxes searchAssist should treat as search boxes although nothing in them says so. Each",
