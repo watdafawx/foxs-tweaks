@@ -98,8 +98,6 @@ quality-of-life features sharing a jar, among them:
 23. **Search box assist** — client-side; `mixin/EditBoxSearchAssistMixin` + `client/search/*` give every search box
     grey autocomplete and a "Did you mean" line. See [Search box assist](#search-box-assist-clientsearch-mixineditboxsearchassistmixin).
 
-24. **Drag move** — client-side; `dragmove/DragMover` + `dragmove/DragMoveHandler`. See [Drag move](#drag-move-dragmove).
-
 **Every parent mod is optional.** The mod must load and behave correctly with either, both, or
 neither installed. This is the single most important invariant in the codebase — see
 [Optional dependencies](#optional-dependencies).
@@ -834,40 +832,6 @@ mods use `EditBox` near a "search" string (EMI, JEI, AE2/RS terminals, Create, P
 - **Gotchas**: EMI sets its own suggestion to `""`, so empty counts as unset. AE2's box has no "search" label: the default
   `searchAssistExtraBoxes` is `["MEStorageScreen"]`, matched against the screen's class chain (parents too). JEI's box shows the corrected
   filter text. An AE2 terminal with no network has zero results, so that check uses the repo search string instead.
-
-### Drag move (`dragmove/`)
-
-Hold `key.foxstweaks.drag_hold` (Left Alt) and drag the left mouse button over slots of any container screen (chest,
-barrel, AE2 pattern terminal...) to select real stacks (blue tint); release moves them to the other side. Sides: the
-player's main inventory + hotbar (container slots 0-35) vs every other takeable slot (not `ResultSlot`, not equipment).
-Screens whose menu is `InventoryMenu` or the creative screen are skipped (their "other side" is a crafting grid / fake).
-Client-only, no payload: a move is two `PICKUP` clicks through `handleInventoryMouseClick`, so any server accepts it.
-`Config.DRAG_MOVE_CLICKS_PER_TICK` (default 4 stacks) spreads a big selection over ticks.
-
-- **Position kept**: the target is the slot whose offset from its own side's top-left slot (GUI pixels) equals the
-  source's, so a barrel's 3x9 maps onto the inventory's 3x9 main rows. Taken, or can't hold the stack
-  (`Slot#getMaxStackSize`): first free slot of that side. No room: the stack stays put, the message says "N had no room".
-- **Stash ("virtual hand")**: a cursor can't carry across a screen close and a client can't create items, so stacks
-  taken *from a container* land in the inventory and are remembered (`DragMover.STASH`: inventory index, stack, source
-  offset). They stay tinted green and are drawn small by the cursor. Close, open another container, hold the drag key
-  and press `key.foxstweaks.drag_paste` (V; ignored while a text box has focus): each goes to the same offset there. A
-  stashed stack that was moved or used since is dropped from the stash; cleared on logout.
-- Toggle `dragMove`. Handler cancels the press/drag/release events only while it applies (key held), so normal clicks
-  are untouched.
-
-**Dev check**: `build.bat runDragMoveCheck` (game dir `run-dragmove/`, no extra mods, run on rig). Flat survival world,
-real barrel and chest menus, posts the real `ScreenEvent`s at slot pixel centres, reads results from the **server**
-inventory/containers and diffs the client menu. Scenarios: sparse barrel keeps positions, taken position falls back to
-first free, full inventory moves nothing, inventory -> container, 27-stack drag across ticks, stash + paste in another
-container, key not held = event untouched; each also checks no item created or lost. 52 checks, all PASS; mutation-proven
-(disabling the position match fails 9). Report `run-dragmove/foxstweaks-dragmove-check.txt` + 4 screenshots.
-When no slot fits (or the other side has none, e.g. an ME terminal) the stack is shift-clicked (`QUICK_MOVE`) instead;
-on `appeng.` menus the client slot isn't judged because the server moves it. `build.bat runDragMoveAe2Check` proves it
-against a real powered AE2 network (cable + creative energy cell + drive with a 1k cell + ME terminal; needs
-appliedenergistics2 + guideme jars in `run-dragmove-ae2/mods`): dragged diamonds/iron end up in the cell, undragged gold
-stays. Test-network traps: place the drive with `useItemOn` and turn its `facing` away from the cable (a drive's front
-doesn't join a cable; a server `setBlock` left it on its own grid); `insertItem`, not `setItemDirect`, to notify the grid.
-Not covered: Pattern Access Terminal slots (plain menu slots, untested); real mouse/Alt on a focused window.
 
 ### Sophisticated recipes in EMI (`client/compat/SbEmiFill`)
 

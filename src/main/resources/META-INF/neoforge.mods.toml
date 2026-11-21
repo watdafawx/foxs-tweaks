@@ -12,10 +12,6 @@ description = '''
 A set of quality-of-life tweaks for gear mods. Every feature is an optional integration - install
 whichever parent mods you use and the rest stays dormant.
 
-Drag Move (client side only, needs nothing on the server): hold Left Alt and drag over slots to
-move stacks between a container and your inventory, keeping their positions. V pastes stacks you
-are holding into the next container. Works with AE2 terminals.
-
 Relics: constellation research is completed automatically as you pick relics up, and an auto-solve
 button sits next to the hint button on the research screen for when that is switched off. The
 correct pattern is read from the relic's own ability template, so relics added by other addons work

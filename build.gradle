@@ -97,23 +97,6 @@ neoForge {
             systemProperty 'foxstweaks.grillingCheck', 'true'
         }
 
-        // Dev-only check of Drag Move (client/dev/DragMoveCheck): flat survival world, real barrel/chest menus, posts the
-        // real ScreenEvents, reads results from the server, writes run-dragmove/foxstweaks-dragmove-check.txt and quits.
-        // No extra mods needed.
-        dragMoveCheck {
-            client()
-            gameDirectory = file('run-dragmove')
-            systemProperty 'foxstweaks.dragMoveCheck', 'true'
-        }
-
-        // Drag Move into a real AE2 network (client/dev/DragMoveCheck, mode ae2): put appliedenergistics2 + guideme jars in
-        // run-dragmove-ae2/mods. Report: run-dragmove-ae2/foxstweaks-dragmove-check.txt.
-        dragMoveAe2Check {
-            client()
-            gameDirectory = file('run-dragmove-ae2')
-            systemProperty 'foxstweaks.dragMoveCheck', 'ae2'
-        }
-
         // Dev-only check of the Shrink hotkey + settings key (client/dev/ShrinkCheck): flat world, presses the real
         // keys (inventory + Curios slot), screenshots the settings screen, writes run-shrink/foxstweaks-shrink-check.txt
         // and quits. Put shrink, architectury, polylib and curios jars in run-shrink/mods first.
