@@ -859,7 +859,7 @@ Client-only, no payload: a move is two `PICKUP` clicks through `handleInventoryM
 real barrel and chest menus, posts the real `ScreenEvent`s at slot pixel centres, reads results from the **server**
 inventory/containers and diffs the client menu. Scenarios: sparse barrel keeps positions, taken position falls back to
 first free, full inventory moves nothing, inventory -> container, 27-stack drag across ticks, stash + paste in another
-container, key not held = event untouched; each also checks no item created or lost. 52 checks, all PASS; mutation-proven
+container, key not held = event untouched; each also checks no item created or lost. checks all PASS (incl. J: stale stash pruned); mutation-proven
 (disabling the position match fails 9). Report `run-dragmove/foxstweaks-dragmove-check.txt` + 4 screenshots.
 When no slot fits (or the other side has none, e.g. an ME terminal) the stack is shift-clicked (`QUICK_MOVE`) instead;
 on `appeng.` menus the client slot isn't judged because the server moves it. `build.bat runDragMoveAe2Check` proves it

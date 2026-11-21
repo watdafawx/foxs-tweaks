@@ -210,6 +210,14 @@ public final class DragMover {
         return fallback;
     }
 
+    /** Forgets stashed stacks that are no longer in the inventory (put back, used, dropped, moved by hand). */
+    public static void pruneStash(AbstractContainerMenu menu) {
+        if (!QUEUE.isEmpty())
+            return;
+
+        STASH.removeIf(e -> inventorySlot(menu, e) == null);
+    }
+
     public static boolean busy() {
         return !QUEUE.isEmpty();
     }

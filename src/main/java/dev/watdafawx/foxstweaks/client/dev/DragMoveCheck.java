@@ -426,6 +426,41 @@ public final class DragMoveCheck {
         });
         add(4, () -> shot("dragmove-3-pasted.png"));
 
+        // ---- J: take out, then put the same stacks straight back by dragging: the stash must not keep green ghosts
+        add(5, () -> {
+            Minecraft.getInstance().player.closeContainer();
+            DragMover.clearStash();
+            onServer(p -> {
+                p.getInventory().clearContent();
+                Container b = container(p, barrel);
+                b.clearContent();
+                b.setItem(3, new ItemStack(Items.DIAMOND, 3));
+                b.setItem(4, new ItemStack(Items.IRON_INGOT, 10));
+                p.openMenu((MenuProvider) b);
+                return null;
+            });
+        });
+        add(15, () -> {
+            press(3);
+            dragTo(4);
+            release(4);
+        });
+        add(30, () -> check("J: 2 stacks stashed after taking out", DragMover.STASH.size() == 2, "stash " + DragMover.STASH.size()));
+        add(5, () -> {
+            press(30); // inventory 12 and 13 in a 27-slot container menu
+            dragTo(31);
+            release(31);
+        });
+        add(40, () -> {
+            onServer(p -> {
+                Container b = container(p, barrel);
+
+                check("J: stacks are back in the barrel", is(b.getItem(3), Items.DIAMOND, 3) && is(b.getItem(4), Items.IRON_INGOT, 10), b.getItem(3) + " " + b.getItem(4));
+                return null;
+            });
+            check("J: stash forgets stacks that left the inventory", DragMover.STASH.isEmpty(), "stash " + DragMover.STASH.size());
+        });
+
         // ---- B: the position is taken -> first free slot
         add(5, () -> {
             Minecraft.getInstance().player.closeContainer();
