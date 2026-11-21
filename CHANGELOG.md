@@ -1,9 +1,5 @@
 # Changelog
 
-## 1.31.1
-
-- Drag Move: fixed green "stashed" slots and the cursor icons staying on after you put the stacks back (by dragging or by hand). The stash now forgets stacks that are no longer in your inventory. Client side.
-
 ## 1.31.0
 
 - Drag Move: hold Left Alt and drag the left mouse button over slots in any container screen to select stacks (blue tint); release moves them to the other side, keeping their positions and falling back to the first free slot. Stacks taken into your inventory turn green; open another container and press V to paste them at the same positions. Works in AE2 terminals (stacks that fit no slot are shift-clicked into the network). Client side only, needs nothing on the server. Toggle: `dragMove`; speed: `dragMoveStacksPerTick`. Keys: `key.foxstweaks.drag_hold`, `key.foxstweaks.drag_paste`.

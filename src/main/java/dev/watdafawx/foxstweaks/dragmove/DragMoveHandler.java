@@ -110,8 +110,6 @@ public final class DragMoveHandler {
 
         GuiGraphics g = e.getGuiGraphics();
 
-        DragMover.pruneStash(screen.getMenu());
-
         for (int index : DragMover.selected()) {
             if (index < screen.getMenu().slots.size())
                 tint(g, screen, screen.getMenu().slots.get(index), SELECT);
