@@ -1,5 +1,9 @@
 # Changelog
 
+## 1.31.2
+
+- Removed Drag Move (added in 1.31.0, fixed in 1.31.1). It is gone entirely: no keys, no settings, no client code. Everything else is as in 1.30.0. Update to drop it.
+
 ## 1.30.0
 
 - Search boxes in AE2 terminals now suggest from what the network holds: items in stock first, then items it can auto-craft, then every name in the game. "Did you mean" also corrects to network items first. Toggle: `searchAssistContext`. Client side.
