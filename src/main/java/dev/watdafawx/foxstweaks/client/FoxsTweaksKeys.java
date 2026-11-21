@@ -63,6 +63,20 @@ public class FoxsTweaksKeys {
             InputConstants.UNKNOWN.getValue(),
             CATEGORY);
 
+    /** Hold while dragging the left mouse button over container slots to move them (see {@code dragmove.DragMoveHandler}). Left Alt by default. */
+    public static final KeyMapping DRAG_HOLD = new KeyMapping(
+            "key." + FoxsTweaks.MODID + ".drag_hold",
+            InputConstants.Type.KEYSYM,
+            GLFW.GLFW_KEY_LEFT_ALT,
+            CATEGORY);
+
+    /** With the drag key held, drops the stack stash into the open container. V by default. */
+    public static final KeyMapping DRAG_PASTE = new KeyMapping(
+            "key." + FoxsTweaks.MODID + ".drag_paste",
+            InputConstants.Type.KEYSYM,
+            GLFW.GLFW_KEY_V,
+            CATEGORY);
+
     @SubscribeEvent
     public static void onRegisterKeyMappings(RegisterKeyMappingsEvent event) {
         event.register(OPEN_RELIC);
@@ -71,6 +85,8 @@ public class FoxsTweaksKeys {
         event.register(USE_TEMPORAL_POUCH);
         event.register(TOGGLE_SHRINK);
         event.register(OPEN_CONFIG);
+        event.register(DRAG_HOLD);
+        event.register(DRAG_PASTE);
     }
 
     /**

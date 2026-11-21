@@ -108,6 +108,10 @@ public class FoxsTweaks {
         if (FMLEnvironment.dist.isClient() && !FMLEnvironment.production && Boolean.getBoolean("foxstweaks.grillingCheck") && ModList.get().isLoaded("kaleidoscope_grilling"))
             dev.watdafawx.foxstweaks.client.dev.GrillingCheck.install();
 
+        // Dev-only check of Drag Move; `build.bat runDragMoveCheck` sets the property.
+        if (FMLEnvironment.dist.isClient() && !FMLEnvironment.production && System.getProperty("foxstweaks.dragMoveCheck") != null)
+            dev.watdafawx.foxstweaks.client.dev.DragMoveCheck.install(System.getProperty("foxstweaks.dragMoveCheck"));
+
         // Dev-only check of the Shrink hotkey and settings key; `build.bat runShrinkCheck` sets the property.
         if (FMLEnvironment.dist.isClient() && !FMLEnvironment.production && Boolean.getBoolean("foxstweaks.shrinkCheck") && ModList.get().isLoaded("shrink") && ModList.get().isLoaded(CURIOS))
             dev.watdafawx.foxstweaks.client.dev.ShrinkCheck.install();

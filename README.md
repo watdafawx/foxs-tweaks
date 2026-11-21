@@ -1,3 +1,5 @@
+<p align="center"><img src="docs/banner.svg" alt="Fox's Tweaks: Drag Move, hold Alt and drag over slots" width="100%"></p>
+
 # Fox's Tweaks
 
 Quality-of-life tweaks for gear mods on NeoForge 1.21.1, built as **independent optional
@@ -200,6 +202,24 @@ box class or the screen's class chain). Master toggle: `searchAssist`. Client-si
 
 (EMI and JEI show the corrected results on the right; the AE2 terminal here has no network, so no items.)
 
+## Drag Move — drag over slots to move stacks between containers
+
+**Client-side only.** Needs nothing installed on the server and no other mod. Hold **Left Alt**
+(`key.foxstweaks.drag_hold`), press the left mouse button and drag over slots: they tint blue. Release to
+move those stacks to the other side (container to inventory, or inventory to container).
+
+- Stacks keep their position (same offset from the top-left slot of the other side); a taken spot falls
+  back to the first free slot that fits. Stacks with no room stay put and the action bar says so.
+- **Hold across screens:** stacks taken from a container into your inventory turn green. Open another
+  container and press **V** (`key.foxstweaks.drag_paste`) to drop them at the same relative positions.
+- Moves are normal `PICKUP` clicks, throttled per tick (`dragMoveStacksPerTick`, default 4), so any server
+  validates them like hand clicks.
+- **AE2:** works on ME terminals. Stacks that fit no slot are shift-clicked, which is how items enter the
+  network (checked against a real powered network: dragged stacks land in the drive's cell).
+- Chests, barrels, shulker boxes, AE2 pattern terminals and other plain container screens. The survival
+  inventory screen and the creative inventory are not supported.
+- Toggle: `dragMove`. Both keys can be rebound in Controls.
+
 ## Which side needs what
 
 | Feature | Needs | Side |
@@ -216,6 +236,7 @@ box class or the screen's class chain). Master toggle: `searchAssist`. Client-si
 | Icon picker cache | EZActions | Client |
 | EMI memory savings (EMI Slim) | EMI | Client |
 | Bedrock Ores thread fix | Bedrock Ores | Server |
+| Drag Move | Nothing (AE2 optional) | Client |
 
 Research is kept in a server-authoritative data attachment keyed by `<item id>#<ability id>`, and
 `ResearchData` refuses to write unless handed a `ServerPlayer` — so solving on pickup needs this

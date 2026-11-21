@@ -1,5 +1,9 @@
 # Changelog
 
+## 1.31.0
+
+- Drag Move: hold Left Alt and drag the left mouse button over slots in any container screen to select stacks (blue tint); release moves them to the other side, keeping their positions and falling back to the first free slot. Stacks taken into your inventory turn green; open another container and press V to paste them at the same positions. Works in AE2 terminals (stacks that fit no slot are shift-clicked into the network). Client side only, needs nothing on the server. Toggle: `dragMove`; speed: `dragMoveStacksPerTick`. Keys: `key.foxstweaks.drag_hold`, `key.foxstweaks.drag_paste`.
+
 ## 1.30.0
 
 - Search boxes in AE2 terminals now suggest from what the network holds: items in stock first, then items it can auto-craft, then every name in the game. "Did you mean" also corrects to network items first. Toggle: `searchAssistContext`. Client side.

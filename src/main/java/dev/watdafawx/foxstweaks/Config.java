@@ -308,6 +308,24 @@ public final class Config {
                     "Needs Fox's Tweaks on the server too. Does nothing without Shrink.")
             .define("shrinkHotkey", true);
 
+    public static final ModConfigSpec.BooleanValue DRAG_MOVE = BUILDER
+            .comment(
+                    "Hold the 'Drag Move' key (Controls, Left Alt by default) and drag the left mouse button over slots in a",
+                    "chest, barrel, terminal or any container to select them; release to move them to the other side",
+                    "(container -> inventory, inventory -> container). Stacks keep their position (same row and column",
+                    "from the side's top-left); when that slot is taken the first free slot is used. Moved-out stacks are",
+                    "remembered: close the container, open another and press the 'Drag Paste' key (V) with Drag Move held",
+                    "to drop them at the same positions.",
+                    "",
+                    "Client-side only, works on any server: it sends ordinary inventory clicks.")
+            .define("dragMove", true);
+
+    public static final ModConfigSpec.IntValue DRAG_MOVE_CLICKS_PER_TICK = BUILDER
+            .comment(
+                    "How many stacks Drag Move moves per game tick (two clicks each). Lower it if a server's",
+                    "anti-cheat objects to bursts of inventory clicks.")
+            .defineInRange("dragMoveStacksPerTick", 4, 1, 27);
+
     public static final ModConfigSpec.BooleanValue GRILLING_SKEWER_CACHE = BUILDER
             .comment(
                     "Stop Kaleidoscope Grilling rebuilding its skewer recipe list for every item drawn. It",
