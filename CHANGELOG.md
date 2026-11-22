@@ -1,5 +1,9 @@
 # Changelog
 
+## 1.31.3
+
+- Fixed a client crash (`IllegalStateException: Pose stack not empty`) when breaking Farmer's Delight Canvas Rugs (or any block whose breaking overlay is cancelled early by a mixin) alongside Block Manipulator. Client side.
+
 ## 1.31.2
 
 - Removed Drag Move (added in 1.31.0, fixed in 1.31.1). It is gone entirely: no keys, no settings, no client code. Everything else is as in 1.30.0. Update to drop it.

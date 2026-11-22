@@ -32,6 +32,7 @@
   "client": [
     "Ae2EmiQuickFillMixin",
     "BackpackRenderInfoMixin",
+    "BreakingRenderPoseGuardMixin",
     "CuriosCacheHandlerMixin",
     "EditBoxSearchAssistMixin",
     "EmiCraftablesScanMixin",
