@@ -551,6 +551,25 @@ public final class Config {
                     "Client-side only. Needs both Inventory Profiles Next and FTB Library.")
             .define("ipnSidebarButtons", true);
 
+    public static final ModConfigSpec.BooleanValue PERF_TAB_OVERLAY = BUILDER
+            .comment(
+                    "Show two live performance cards (Server Performance & Client Performance) directly below",
+                    "the Tab player list: TPS (5s/10s/1m/5m/15m), tick durations (min/med/p95/max ms), CPU,",
+                    "heap & GC, loaded chunks/entities, per-dimension tick times, client FPS (with 1% low),",
+                    "frame times, client CPU/GPU/heap and ping. Zero network traffic while Tab is closed.",
+                    "",
+                    "Client-side display toggle. Needs Fox's Tweaks on the server for the Server card; on a",
+                    "vanilla server only the Client card is shown.")
+            .define("perfTabOverlay", true);
+
+    public static final ModConfigSpec.BooleanValue PERF_MINI_HUD = BUILDER
+            .comment(
+                    "Start with the compact pinned performance mini-HUD visible at top-left (can also be",
+                    "toggled live at any time with the 'Toggle Performance Mini-HUD' key under Controls).",
+                    "",
+                    "Client-side only.")
+            .define("perfMiniHud", false);
+
     public static final ModConfigSpec.IntValue DEBUG_LOG_LOOT_ROLLS = BUILDER
             .comment(
                     "Debugging aid, off by default. When above 0, logs a stack trace for each of the first N",

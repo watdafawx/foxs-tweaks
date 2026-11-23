@@ -51,6 +51,7 @@
     "IconPickerScreenMixin",
     "IrisOptionListSearchMixin",
     "IrisShaderScreenSearchMixin",
+    "PlayerTabOverlayMixin",
     "SbEmiFillButtonMixin",
     "SbEmiFillerMixin",
     "ShrinkScreenMixin",

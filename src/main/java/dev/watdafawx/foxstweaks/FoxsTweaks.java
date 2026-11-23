@@ -49,6 +49,7 @@ public class FoxsTweaks {
         modBus.addListener(TemporalPouchNetwork::register);
         modBus.addListener(dev.watdafawx.foxstweaks.relics.AutoLevelNetwork::register);
         modBus.addListener(dev.watdafawx.foxstweaks.shrink.ShrinkNetwork::register);
+        modBus.addListener(dev.watdafawx.foxstweaks.perf.PerfNetwork::register);
 
         FoxsTweaksComponents.COMPONENTS.register(modBus);
 
@@ -111,5 +112,9 @@ public class FoxsTweaks {
         // Dev-only check of the Shrink hotkey and settings key; `build.bat runShrinkCheck` sets the property.
         if (FMLEnvironment.dist.isClient() && !FMLEnvironment.production && Boolean.getBoolean("foxstweaks.shrinkCheck") && ModList.get().isLoaded("shrink") && ModList.get().isLoaded(CURIOS))
             dev.watdafawx.foxstweaks.client.dev.ShrinkCheck.install();
+
+        // Dev-only check + screenshots of the Tab performance overlay and mini-HUD; `build.bat runPerfShot` sets the property.
+        if (FMLEnvironment.dist.isClient() && !FMLEnvironment.production && Boolean.getBoolean("foxstweaks.perfShot"))
+            dev.watdafawx.foxstweaks.client.dev.PerfShot.install();
     }
 }

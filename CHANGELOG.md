@@ -1,5 +1,12 @@
 # Changelog
 
+## 1.32.0
+
+- Tab performance overlay: holding Tab shows two live performance cards flanking the player list — **Server** on the left (TPS for 5s/10s/1m/5m/15m, tick duration sparkline + min/med/p95/max ms, CPU, heap & 1m GC pauses, loaded chunks/entities, and top 4 active dimensions with proportional bars) and **Client** on the right (FPS + 1% low, live frame-time sparkline + percentiles, CPU/GPU, heap & 1m GC, ping, view distance & client entities). Automatically falls back below the Tab list when the screen is too narrow to flank, and shows only the Client card on servers without Fox's Tweaks. Zero network traffic while Tab is closed (optional channel).
+- Optional compact pinned mini-HUD toggled via the new "Toggle Performance Mini-HUD" key (Controls, unbound by default).
+- Client/common toggles: `perfTabOverlay` (default on), `perfMiniHud` (default off). Server toggles (`serverconfig/foxstweaks-server.toml`): `perfOverlayEnabled` (default on), `perfOverlayOpOnly` (default off).
+- Dev check: `build.bat runPerfShot` (game dir `run-perf/`).
+
 ## 1.31.3
 
 - Fixed a client crash (`IllegalStateException: Pose stack not empty`) when breaking Farmer's Delight Canvas Rugs (or any block whose breaking overlay is cancelled early by a mixin) alongside Block Manipulator. Client side.

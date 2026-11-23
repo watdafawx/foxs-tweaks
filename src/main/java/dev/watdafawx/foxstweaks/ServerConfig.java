@@ -49,6 +49,14 @@ public final class ServerConfig {
             .comment("Right-click a portal to the overworld copy with a dye to colour it. Needs the mod on the client to be seen.")
             .define("overworldCopyPortalDye", true);
 
+    public static final ModConfigSpec.BooleanValue PERF_OVERLAY_ENABLED = BUILDER
+            .comment("Allow the server to send live performance snapshots (TPS, MSPT, CPU, heap, world counts) to clients holding Tab or using the mini-HUD.")
+            .define("perfOverlayEnabled", true);
+
+    public static final ModConfigSpec.BooleanValue PERF_OVERLAY_OP_ONLY = BUILDER
+            .comment("Restrict server performance snapshots to operators (permission level 2+). Off by default so every player can check server TPS/MSPT.")
+            .define("perfOverlayOpOnly", false);
+
     public static final ModConfigSpec SPEC = BUILDER.build();
 
     /** False before a world's server config is read (main menu, datapack loading); callers fall back to the defaults. */
@@ -66,6 +74,14 @@ public final class ServerConfig {
 
     public static boolean dye() {
         return !loaded() || OVERWORLD_COPY_DYE.get();
+    }
+
+    public static boolean perfOverlayEnabled() {
+        return !loaded() || PERF_OVERLAY_ENABLED.get();
+    }
+
+    public static boolean perfOverlayOpOnly() {
+        return loaded() && PERF_OVERLAY_OP_ONLY.get();
     }
 
     private ServerConfig() {

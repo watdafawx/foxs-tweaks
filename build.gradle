@@ -130,6 +130,14 @@ neoForge {
             systemProperty 'foxstweaks.toggleShot', 'true'
         }
 
+        // Dev-only check + screenshots of the Tab performance overlay and mini-HUD (client/dev/PerfShot):
+        // report + screenshots land in run-perf/. No extra mods needed.
+        perfShot {
+            client()
+            gameDirectory = file('run-perf')
+            systemProperty 'foxstweaks.perfShot', 'true'
+        }
+
         // Headless: enough to load datapacks and read the log, e.g. to check what the affix patcher did.
         // Needs the same hand-placed jars as the client, in run-server/mods.
         server {

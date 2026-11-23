@@ -63,6 +63,13 @@ public class FoxsTweaksKeys {
             InputConstants.UNKNOWN.getValue(),
             CATEGORY);
 
+    /** Toggles the compact pinned performance mini-HUD (see {@code perf.ClientPerfTracker}). Unbound by default. */
+    public static final KeyMapping TOGGLE_PERF_HUD = new KeyMapping(
+            "key." + FoxsTweaks.MODID + ".toggle_perf_hud",
+            InputConstants.Type.KEYSYM,
+            InputConstants.UNKNOWN.getValue(),
+            CATEGORY);
+
     @SubscribeEvent
     public static void onRegisterKeyMappings(RegisterKeyMappingsEvent event) {
         event.register(OPEN_RELIC);
@@ -71,6 +78,7 @@ public class FoxsTweaksKeys {
         event.register(USE_TEMPORAL_POUCH);
         event.register(TOGGLE_SHRINK);
         event.register(OPEN_CONFIG);
+        event.register(TOGGLE_PERF_HUD);
     }
 
     /**
