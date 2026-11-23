@@ -487,6 +487,14 @@ public final class Config {
                     "Server-side. Does nothing without Scroll Shelf.")
             .define("scrollShelfCache", true);
 
+    public static final ModConfigSpec.BooleanValue DISABLE_FLORA_LUCK_PARTICLES = BUILDER
+            .comment(
+                    "Stop Kaleidoscope Flora from spawning orbiting yellow dust particles around any player",
+                    "or mob that has the vanilla Luck effect (from relics, potions, gear, etc.).",
+                    "",
+                    "Server-side. Does nothing without Kaleidoscope Flora.")
+            .define("disableFloraLuckParticles", true);
+
     public static final ModConfigSpec.BooleanValue CHICKENS_RADIATION_KEEP_LOOT = BUILDER
             .comment(
                     "Stop Modern Chickens' Mekanism radiation check from filling structure chests. It reads every",

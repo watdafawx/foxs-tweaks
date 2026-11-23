@@ -16,6 +16,7 @@
     "DynamicRegistryMixin",
     "ExtraHnnModelingMixin",
     "ExtraHnnSimMixin",
+    "FloraLuckParticlesMixin",
     "GrillingDataManagerInvoker",
     "GrillingDataManagerMixin",
     "GunSmithTableBlockEntityMixin",
