@@ -836,11 +836,20 @@ hands Apotheosis a stand-in player at the spawn that carries the anchor's tier:
 
 **Config**: `spawnAnchorsApotheosisTier` (default on) and `spawnAnchorsTierPlayerRange` (128, 0 = the anchor
 always wins). **Commands**: `/foxstweaks anchor tier <name> <haven|frontier|ascent|summit|pinnacle|owner|off>`
-(`owner` follows the placer again), and `anchor list` shows each anchor's tier and mode. Anchors that existed
+(`owner` follows the placer again), and `anchor list` shows each anchor's tier and mode. **GUI**: the loader screen
+has a `Tier:` button that cycles off → haven → … → pinnacle → follows owner (disabled and labelled
+`needs Apotheosis` without it) and a `Name: shown/hidden` toggle for the floating nametag
+(`SpawnDummyEvents.applyState` sets `setCustomNameVisible`; the tag is `foxstweaks_anchor_hide_name`). Both controls
+send `UpdateAnchorPayload`, whose registrar is version **"2"** since the payloads grew those fields; a v1 client
+simply cannot open the screen and nothing breaks. An unscoreable tier string in an update is *ignored* (the anchor
+keeps its own) rather than rejecting the whole update, so radius/name/status still apply - that distinction cost a
+round: rejecting the update made the name toggle look broken on a pack without Apotheosis. Anchors that existed
 before 1.36.0 carry no tier until one is set; a player-placed dummy captures the placer and their tier on
 placement (`SpawnDummyEvents.initDummy`, tags `foxstweaks_anchor_owner|owner_name|tier|follow_owner`).
 `SpawnDummyEvents.applyState` rebuilds the anchor record on every GUI click, so it must carry those tags over or
-a radius change silently clears the owner.
+a radius change silently clears the owner. Screen code must stay on the **client thread**: opening it from a
+`onServer(...)` block makes the render thread draw a screen whose `minecraft` field is still null (that crashed
+the tier check once).
 
 **Not carried**: luck, game stages, and the owner's invader cooldown only when they are online. That last one is
 deliberate — the stand-in shares the owner's cooldown instead of handing each anchor a fresh one, so an offline
@@ -868,9 +877,12 @@ Placebo in its `mods/`). `client/dev/AnchorTierCheck` builds a roofed farm, pins
 only player 600 blocks away and runs the exact call Dreadful Dirt makes
 (`EventHooks.finalizeMobSpawn(..., MobSpawnType.NATURAL, null)`), then asserts the `apotheosis:pinnacle/armor`
 modifier appears (300/300), that an invader spawns (`apoth.boss`), that turning the tier off stops it, and that it
-still works with the player in the Nether. `-PtierOff` (`-Dfoxstweaks.anchorTier.off=true`) runs the same check
-with the path disabled and must fail all three tier assertions — it does. Report:
-`run-anchor-tier/foxstweaks-anchortier-check.txt`.
+still works with the player in the Nether. It also clicks the GUI's `Tier:` button and asserts the anchor data
+changed, which is the only coverage of that payload with Apotheosis present. `-PtierOff`
+(`-Dfoxstweaks.anchorTier.off=true`) runs the same check with the path disabled and must fail all three tier
+assertions - it does. Report: `run-anchor-tier/foxstweaks-anchortier-check.txt`. `runAnchorCheck` (game dir
+`run-anchor/`, no mods) covers the rest of the screen: it clicks the name toggle and asserts the tier button is
+disabled without Apotheosis.
 
 Two things that cost time and are easy to trip over again: **spawn the test mobs across a floor, not stacked in
 one block** — Apotheosis' boss placement runs `checkSpawnObstruction`, which is false when a mob already occupies

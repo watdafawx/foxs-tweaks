@@ -140,7 +140,7 @@ public final class AnchorCheck {
             mc.resizeDisplay();
             dev.watdafawx.foxstweaks.client.SpawnAnchorScreen.open(
                     new dev.watdafawx.foxstweaks.anchor.OpenAnchorGuiPayload(
-                            dummyId, true, 2, 4, 10, -60, 10, "minecraft:overworld"));
+                            dummyId, true, 2, 4, 10, -60, 10, "minecraft:overworld", "pinnacle", true, "Dev", false));
         });
 
         add(10, () -> {
@@ -148,6 +148,23 @@ public final class AnchorCheck {
             net.minecraft.client.Screenshot.grab(mc.gameDirectory, "anchor-gui-5x5.png", mc.getMainRenderTarget(), msg -> {
             });
             check("SpawnAnchorScreen opened", mc.screen instanceof dev.watdafawx.foxstweaks.client.SpawnAnchorScreen, String.valueOf(mc.screen));
+
+            // Click the real widgets through the screen's own mouse handling. This run has no Apotheosis,
+            // so the tier button is disabled on purpose here (the tier check covers it with Apotheosis).
+            boolean apotheosis = net.neoforged.fml.ModList.get().isLoaded("apotheosis");
+            int tierClicks = clickButton(3);
+            check("gui tier button is " + (apotheosis ? "clickable" : "disabled without Apotheosis"),
+                    apotheosis == (tierClicks == 1), "tierClicks=" + tierClicks);
+
+            int nameClicks = clickButton(4);
+            check("gui name button clicked", nameClicks == 1, "nameClicks=" + nameClicks);
+        });
+
+        add(10, () -> {
+            boolean hidden = onServer(p -> dev.watdafawx.foxstweaks.anchor.SpawnDummyEvents.hidesName(findDummy(p.serverLevel())));
+            boolean nameInvisible = onServer(p -> !findDummy(p.serverLevel()).isCustomNameVisible());
+            check("gui name toggle reached the anchor", hidden && nameInvisible,
+                    "hidden=" + hidden + " invisible=" + nameInvisible);
         });
 
         add(6, () -> {
@@ -174,6 +191,33 @@ public final class AnchorCheck {
     private static void log(String line) {
         LOG.info("AnchorCheck {}", line);
         REPORT.add(line);
+    }
+
+    /** Clicks the {@code index}-th button of the open screen through the screen's own mouse handling. */
+    private static int clickButton(int index) {
+        var mc = Minecraft.getInstance();
+        if (!(mc.screen instanceof net.minecraft.client.gui.screens.Screen screen))
+            return 0;
+
+        var buttons = new ArrayList<net.minecraft.client.gui.components.Button>();
+        for (var child : screen.children()) {
+            if (child instanceof net.minecraft.client.gui.components.Button button)
+                buttons.add(button);
+        }
+        if (index >= buttons.size())
+            return 0;
+
+        var button = buttons.get(index);
+        return screen.mouseClicked(button.getX() + button.getWidth() / 2.0,
+                button.getY() + button.getHeight() / 2.0, 0) ? 1 : 0;
+    }
+
+    private static net.minecraft.world.entity.decoration.ArmorStand findDummy(ServerLevel level) {
+        return level.getEntitiesOfClass(net.minecraft.world.entity.decoration.ArmorStand.class,
+                        new AABB(4, -65, 4, 17, -54, 17)).stream()
+                .filter(e -> "dummy_test".equals(dev.watdafawx.foxstweaks.anchor.SpawnDummyEvents.getId(e)))
+                .findFirst()
+                .orElseThrow(() -> new IllegalStateException("anchor dummy not found"));
     }
 
     private static void check(String name, boolean ok, String detail) {

@@ -7,20 +7,27 @@ import net.minecraft.client.gui.GuiGraphics;
 import net.minecraft.client.gui.components.Button;
 import net.minecraft.client.gui.screens.Screen;
 import net.minecraft.network.chat.Component;
+import net.neoforged.fml.ModList;
 
 /**
  * Clean configuration GUI for a placed Spawn Anchor dummy: toggle ON/OFF, adjust loaded chunk
- * radius with a live visual chunk-grid preview, or pick the anchor back up.
+ * radius with a live visual chunk-grid preview, set the Apotheosis world tier it carries, hide its
+ * floating name, or pick the anchor back up.
  */
 public class SpawnAnchorScreen extends Screen {
     private static final int PANEL_W = 240;
-    private static final int PANEL_H = 228;
+    private static final int PANEL_H = 274;
     private static final int BG_COLOR = 0xD80B0D12;
     private static final int BORDER_COLOR = 0x66FFFFFF;
     private static final int ACCENT_ON = 0xFF55FF55;
     private static final int ACCENT_OFF = 0xFFFF5555;
     private static final int GOLD = 0xFFFFAA00;
     private static final int MUTED = 0xFF9AA5B4;
+    private static final int TEXT = 0xFFE8EDF5;
+
+    /** Cycle order for the tier button. {@code ""} is "off"; {@code OWNER} follows the placer. */
+    private static final String[] TIERS = { "haven", "frontier", "ascent", "summit", "pinnacle" };
+    private static final String OWNER = "owner";
 
     private final int entityId;
     private final int maxRadius;
@@ -28,13 +35,19 @@ public class SpawnAnchorScreen extends Screen {
     private final int blockY;
     private final int blockZ;
     private final String dimension;
+    private final String ownerName;
 
     private boolean enabled;
     private int radius;
+    private String tier;
+    private boolean followOwner;
+    private boolean hideName;
 
     private Button toggleBtn;
     private Button minusBtn;
     private Button plusBtn;
+    private Button tierBtn;
+    private Button nameBtn;
 
     private int left;
     private int top;
@@ -49,6 +62,10 @@ public class SpawnAnchorScreen extends Screen {
         this.blockY = p.blockY();
         this.blockZ = p.blockZ();
         this.dimension = p.dimension();
+        this.tier = p.tier();
+        this.followOwner = p.followOwner();
+        this.ownerName = p.ownerName();
+        this.hideName = p.hideName();
     }
 
     public static void open(OpenAnchorGuiPayload payload) {
@@ -64,14 +81,14 @@ public class SpawnAnchorScreen extends Screen {
         toggleBtn = addRenderableWidget(Button.builder(toggleLabel(), b -> {
             enabled = !enabled;
             refreshButtons();
-            AnchorNetwork.sendUpdate(entityId, enabled, radius, false);
+            send();
         }).bounds(left + 14, btnY, 94, 20).build());
 
         minusBtn = addRenderableWidget(Button.builder(Component.literal("-"), b -> {
             if (radius > 1) {
                 radius--;
                 refreshButtons();
-                AnchorNetwork.sendUpdate(entityId, enabled, radius, false);
+                send();
             }
         }).bounds(left + 116, btnY, 24, 20).build());
 
@@ -79,19 +96,63 @@ public class SpawnAnchorScreen extends Screen {
             if (radius < maxRadius) {
                 radius++;
                 refreshButtons();
-                AnchorNetwork.sendUpdate(entityId, enabled, radius, false);
+                send();
             }
         }).bounds(left + PANEL_W - 14 - 24, btnY, 24, 20).build());
 
+        tierBtn = addRenderableWidget(Button.builder(tierLabel(), b -> {
+            nextTier();
+            refreshButtons();
+            send();
+        }).bounds(left + 14, top + 180, PANEL_W - 28, 20).build());
+
+        nameBtn = addRenderableWidget(Button.builder(nameLabel(), b -> {
+            hideName = !hideName;
+            refreshButtons();
+            send();
+        }).bounds(left + 14, top + 204, PANEL_W - 28, 20).build());
+
         addRenderableWidget(Button.builder(Component.translatable("screen.foxstweaks.spawn_anchor.pickup"), b -> {
-            AnchorNetwork.sendUpdate(entityId, false, radius, true);
+            AnchorNetwork.sendUpdate(entityId, false, radius, tier, followOwner, hideName, true);
             onClose();
-        }).bounds(left + 14, top + 186, 114, 20).build());
+        }).bounds(left + 14, top + 230, 114, 20).build());
 
         addRenderableWidget(Button.builder(Component.translatable("gui.done"), b -> onClose())
-                .bounds(left + PANEL_W - 14 - 80, top + 186, 80, 20).build());
+                .bounds(left + PANEL_W - 14 - 80, top + 230, 80, 20).build());
 
         refreshButtons();
+    }
+
+    private void send() {
+        AnchorNetwork.sendUpdate(entityId, enabled, radius, tier, followOwner, hideName, false);
+    }
+
+    /** off -> haven -> ... -> pinnacle -> follows owner -> off. */
+    private void nextTier() {
+        if (followOwner) {
+            followOwner = false;
+            tier = "";
+            return;
+        }
+        if (tier.isEmpty()) {
+            tier = TIERS[0];
+            return;
+        }
+        for (int i = 0; i < TIERS.length; i++) {
+            if (TIERS[i].equals(tier)) {
+                if (i + 1 < TIERS.length)
+                    tier = TIERS[i + 1];
+                else if (!ownerName.isEmpty()) {
+                    // Only offer "follows owner" when there is an owner to follow.
+                    tier = "";
+                    followOwner = true;
+                } else {
+                    tier = "";
+                }
+                return;
+            }
+        }
+        tier = "";
     }
 
     private void refreshButtons() {
@@ -101,11 +162,40 @@ public class SpawnAnchorScreen extends Screen {
             minusBtn.active = radius > 1;
         if (plusBtn != null)
             plusBtn.active = radius < maxRadius;
+        if (tierBtn != null) {
+            tierBtn.setMessage(tierLabel());
+            tierBtn.active = apotheosisLoaded();
+        }
+        if (nameBtn != null)
+            nameBtn.setMessage(nameLabel());
     }
 
     private Component toggleLabel() {
         return Component.literal(enabled ? "Status: ON" : "Status: OFF")
                 .withStyle(st -> st.withColor((enabled ? ACCENT_ON : ACCENT_OFF) & 0xFFFFFF));
+    }
+
+    private Component tierLabel() {
+        if (!apotheosisLoaded())
+            return Component.literal("Tier: needs Apotheosis").withStyle(st -> st.withColor(MUTED & 0xFFFFFF));
+        if (followOwner)
+            return Component.literal("Tier: follows " + ownerName).withStyle(st -> st.withColor(GOLD & 0xFFFFFF));
+        if (tier.isEmpty())
+            return Component.literal("Tier: off").withStyle(st -> st.withColor(MUTED & 0xFFFFFF));
+        return Component.literal("Tier: " + capitalise(tier)).withStyle(st -> st.withColor(GOLD & 0xFFFFFF));
+    }
+
+    private Component nameLabel() {
+        return Component.literal(hideName ? "Name: hidden" : "Name: shown")
+                .withStyle(st -> st.withColor((hideName ? MUTED : TEXT) & 0xFFFFFF));
+    }
+
+    private static boolean apotheosisLoaded() {
+        return ModList.get().isLoaded("apotheosis");
+    }
+
+    private static String capitalise(String s) {
+        return s.isEmpty() ? s : Character.toUpperCase(s.charAt(0)) + s.substring(1);
     }
 
     @Override
@@ -160,15 +250,15 @@ public class SpawnAnchorScreen extends Screen {
         String summary = enabled
                 ? "Loading " + side + "x" + side + " (" + totalChunks + " chunks)"
                 : "Paused (" + side + "x" + side + " / " + totalChunks + " chunks)";
-        gg.drawCenteredString(font, summary, left + PANEL_W / 2, infoY, enabled ? 0xFFE8EDF5 : MUTED);
+        gg.drawCenteredString(font, summary, left + PANEL_W / 2, infoY, TEXT);
 
         // Radius label centered between - and + buttons
         String radStr = "R=" + radius;
         int midX = left + 116 + 24 + ((PANEL_W - 14 - 24) - (116 + 24)) / 2;
-        gg.drawCenteredString(font, radStr, midX, top + 162, 0xFFE8EDF5);
+        gg.drawCenteredString(font, radStr, midX, top + 162, TEXT);
 
         // Footer hint
-        gg.drawCenteredString(font, "Sneak + Left-click dummy to pick up anytime", left + PANEL_W / 2, top + 212, 0xFF778090);
+        gg.drawCenteredString(font, "Sneak + Left-click dummy to pick up anytime", left + PANEL_W / 2, top + 258, 0xFF778090);
     }
 
     @Override

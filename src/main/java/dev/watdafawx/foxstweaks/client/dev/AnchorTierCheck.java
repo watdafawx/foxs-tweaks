@@ -74,6 +74,7 @@ public final class AnchorTierCheck {
     private static int nextAt;
     private static int index;
     private static boolean apotheosisPresent;
+    private static int guiDummyId;
 
     public static void install() {
         NeoForge.EVENT_BUS.addListener(AnchorTierCheck::onTick);
@@ -94,7 +95,7 @@ public final class AnchorTierCheck {
                     + dev.watdafawx.foxstweaks.anchor.AnchorTier.apotheosisVersion(),
                     problems.isEmpty(), String.join("; ", problems));
 
-            onServer(p -> {
+            guiDummyId = onServer(p -> {
                 ServerLevel level = p.serverLevel();
                 level.setDayTime(18000);
                 p.server.setDifficulty(Difficulty.NORMAL, true);
@@ -114,11 +115,52 @@ public final class AnchorTierCheck {
                         p.createCommandSourceStack().withPermission(4),
                         "foxstweaks anchor tier tierfarm pinnacle");
 
-                // The only real player is 600 blocks away and at Haven, so anything tier-like that
-                // shows up on a mob came from the anchor.
+                // An anchor dummy next to the player, for the GUI tier button (its packet is refused when
+                // the player is out of range, so this runs before the move below).
+                var dummy = EntityType.ARMOR_STAND.create(level);
+                dummy.moveTo(2.5, -59.0, 2.5, 0f, 0f);
+                dummy.setInvulnerable(true);
+                dev.watdafawx.foxstweaks.anchor.SpawnDummyEvents.initDummy(level, dummy, "tier_gui", true, 1, null);
+                level.addFreshEntity(dummy);
+                return dummy.getId();
+            });
+
+            // Client side must stay on the client thread: setScreen from the server thread races the
+            // render thread, which then draws a screen whose "minecraft" field is not set yet.
+            var mc = Minecraft.getInstance();
+            mc.options.guiScale().set(3);
+            mc.resizeDisplay();
+            dev.watdafawx.foxstweaks.client.SpawnAnchorScreen.open(
+                    new dev.watdafawx.foxstweaks.anchor.OpenAnchorGuiPayload(
+                            guiDummyId, true, 1, 4, 2, -59, 2, "minecraft:overworld", "", false, "", false));
+        });
+
+        // Tier button: off -> Haven, through the real widget and the real C2S payload.
+        add(10, () -> {
+            if (!apotheosisPresent)
+                return;
+            check("gui tier button clicked", clickButton(3) == 1, "tier button not found");
+        });
+
+        add(10, () -> {
+            if (!apotheosisPresent)
+                return;
+            String tier = onServer(p -> {
+                var anchor = dev.watdafawx.foxstweaks.anchor.SpawnAnchorData.get(p.serverLevel()).get("tier_gui");
+                return anchor == null ? "no anchor" : anchor.tier();
+            });
+            check("gui tier reached the anchor data", "haven".equals(tier), "tier=" + tier);
+
+            onServer(p -> {
+                ServerLevel level = p.serverLevel();
+                dev.watdafawx.foxstweaks.anchor.SpawnAnchors.remove(level, "tier_gui");
+                level.getEntitiesOfClass(net.minecraft.world.entity.decoration.ArmorStand.class,
+                        new AABB(0, -64, 0, 5, -55, 5)).forEach(net.minecraft.world.entity.Entity::discard);
+                // Now move the only player away from the farm for the rest of the run.
                 p.teleportTo(level, 600.5, -59.0, 600.5, 0f, 0f);
                 return null;
             });
+            Minecraft.getInstance().setScreen(null);
         });
 
         // Tier augments: Pinnacle gives monsters +16 armour under apotheosis:pinnacle/armor.
@@ -300,6 +342,25 @@ public final class AnchorTierCheck {
         if (!ok)
             failures++;
         log((ok ? "PASS " : "FAIL ") + name + (ok ? "" : "  -> " + detail));
+    }
+
+    /** Clicks the {@code index}-th button of the open screen through the screen's own mouse handling. */
+    private static int clickButton(int index) {
+        var mc = Minecraft.getInstance();
+        if (!(mc.screen instanceof net.minecraft.client.gui.screens.Screen screen))
+            return 0;
+
+        var buttons = new ArrayList<net.minecraft.client.gui.components.Button>();
+        for (var child : screen.children()) {
+            if (child instanceof net.minecraft.client.gui.components.Button button)
+                buttons.add(button);
+        }
+        if (index >= buttons.size())
+            return 0;
+
+        var button = buttons.get(index);
+        return screen.mouseClicked(button.getX() + button.getWidth() / 2.0,
+                button.getY() + button.getHeight() / 2.0, 0) ? 1 : 0;
     }
 
     private static void onTick(ClientTickEvent.Post e) {

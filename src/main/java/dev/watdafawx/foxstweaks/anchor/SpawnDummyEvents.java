@@ -39,6 +39,7 @@ public final class SpawnDummyEvents {
     private static final String TAG_OWNER_NAME = "foxstweaks_anchor_owner_name";
     private static final String TAG_TIER = "foxstweaks_anchor_tier";
     private static final String TAG_FOLLOW_OWNER = "foxstweaks_anchor_follow_owner";
+    private static final String TAG_HIDE_NAME = "foxstweaks_anchor_hide_name";
 
     private SpawnDummyEvents() {
     }
@@ -58,6 +59,31 @@ public final class SpawnDummyEvents {
     public static int getRadius(Entity entity) {
         int r = entity.getPersistentData().getInt(TAG_RADIUS);
         return Math.max(1, Math.min(8, r == 0 ? 2 : r));
+    }
+
+    public static String getTier(Entity entity) {
+        return entity.getPersistentData().getString(TAG_TIER);
+    }
+
+    public static boolean followsOwner(Entity entity) {
+        return entity.getPersistentData().getBoolean(TAG_FOLLOW_OWNER);
+    }
+
+    public static String getOwnerName(Entity entity) {
+        return entity.getPersistentData().getString(TAG_OWNER_NAME);
+    }
+
+    public static boolean hidesName(Entity entity) {
+        return entity.getPersistentData().getBoolean(TAG_HIDE_NAME);
+    }
+
+    public static boolean hasOwner(Entity entity) {
+        return entity.getPersistentData().hasUUID(TAG_OWNER);
+    }
+
+    @Nullable
+    public static UUID ownerOf(Entity entity) {
+        return entity.getPersistentData().hasUUID(TAG_OWNER) ? entity.getPersistentData().getUUID(TAG_OWNER) : null;
     }
 
     public static void initDummy(ServerLevel level, ArmorStand dummy, String id, boolean enabled, int radius,
@@ -82,16 +108,30 @@ public final class SpawnDummyEvents {
     }
 
     public static void applyState(ServerLevel level, ArmorStand dummy, boolean enabled, int radius) {
+        CompoundTag tag = dummy.getPersistentData();
+        applyState(level, dummy, enabled, radius, tag.getString(TAG_TIER), tag.getBoolean(TAG_FOLLOW_OWNER),
+                tag.getBoolean(TAG_HIDE_NAME));
+    }
+
+    public static void applyState(ServerLevel level, ArmorStand dummy, boolean enabled, int radius, String tier,
+                                  boolean followOwner, boolean hideName) {
         int clampedRadius = Math.max(1, Math.min(ServerConfig.spawnAnchorsMaxRadius(), radius));
         CompoundTag tag = dummy.getPersistentData();
         String id = tag.getString(TAG_ID);
         tag.putBoolean(TAG_ENABLED, enabled);
         tag.putInt(TAG_RADIUS, clampedRadius);
+        tag.putBoolean(TAG_HIDE_NAME, hideName);
+        tag.putBoolean(TAG_FOLLOW_OWNER, followOwner && tag.hasUUID(TAG_OWNER));
+        if (tier.isEmpty())
+            tag.remove(TAG_TIER);
+        else
+            tag.putString(TAG_TIER, tier);
 
         int side = clampedRadius * 2 + 1;
         if (enabled && ServerConfig.spawnAnchorsEnabled()) {
             SpawnAnchors.add(level, new SpawnAnchorData.Anchor(id, dummy.getX(), dummy.getY(), dummy.getZ(),
-                    clampedRadius, ownerOf(tag), tag.getString(TAG_OWNER_NAME), tag.getString(TAG_TIER),
+                    clampedRadius, tag.hasUUID(TAG_OWNER) ? tag.getUUID(TAG_OWNER) : null,
+                    tag.getString(TAG_OWNER_NAME), tag.getString(TAG_TIER),
                     tag.getBoolean(TAG_FOLLOW_OWNER)));
             dummy.setCustomName(Component.literal("Mob & Chunk Loader ")
                     .withStyle(ChatFormatting.GOLD)
@@ -102,12 +142,7 @@ public final class SpawnDummyEvents {
                     .withStyle(ChatFormatting.GRAY)
                     .append(Component.literal("[OFF]").withStyle(ChatFormatting.RED)));
         }
-        dummy.setCustomNameVisible(true);
-    }
-
-    @Nullable
-    private static UUID ownerOf(CompoundTag tag) {
-        return tag.hasUUID(TAG_OWNER) ? tag.getUUID(TAG_OWNER) : null;
+        dummy.setCustomNameVisible(!hideName);
     }
 
     public static void pickUpDummy(ServerPlayer player, ArmorStand dummy) {
@@ -149,7 +184,11 @@ public final class SpawnDummyEvents {
                     dummy.blockPosition().getX(),
                     dummy.blockPosition().getY(),
                     dummy.blockPosition().getZ(),
-                    dummy.level().dimension().location().toString()));
+                    dummy.level().dimension().location().toString(),
+                    getTier(dummy),
+                    followsOwner(dummy),
+                    getOwnerName(dummy),
+                    hidesName(dummy)));
         } else {
             // Fallback for a client without Fox's Tweaks: toggle ON/OFF directly on right-click
             boolean next = !isEnabled(dummy);

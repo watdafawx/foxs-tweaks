@@ -1,5 +1,12 @@
 # Changelog
 
+## 1.36.1
+
+- The **Mob & Chunk Loader GUI** now does the Apotheosis tier too: a `Tier:` button cycles `off` → `haven` → … → `pinnacle` → `follows <owner>`, and the line under it shows what it is on. It reads `Tier: needs Apotheosis` and stays disabled when Apotheosis isn't installed. The tier button writes the same anchor data `/foxstweaks anchor tier` does.
+- Added `Name: shown/hidden` to the loader GUI: hides the floating `Mob & Chunk Loader [NxN]` label without touching the anchor itself. Persists on the dummy.
+- The GUI payloads grew those fields, so the channel went to version "2"; a client still on v1 keeps working, it just can't open this GUI (payloads stay optional).
+- Fixed an update from the GUI being dropped entirely when its tier string could not be validated (no Apotheosis installed, or a tier this build doesn't know): the anchor now keeps its existing tier and still applies the status/radius/name changes.
+
 ## 1.36.0
 
 - Added **Apotheosis world tier for the Mob & Chunk Loader** (`spawnAnchorsApotheosisTier`, default on):
