@@ -39,6 +39,13 @@ public final class FoxsTweaksComponents {
                     .networkSynchronized(net.minecraft.network.codec.ByteBufCodecs.STRING_UTF8)
                     .build());
 
+    /** When true, suppresses particles spawned by this relic while equipped (see {@code relics.RelicParticles}). Absent = show particles. */
+    public static final DeferredHolder<DataComponentType<?>, DataComponentType<Boolean>> HIDE_RELIC_PARTICLES =
+            COMPONENTS.register("hide_relic_particles", () -> DataComponentType.<Boolean>builder()
+                    .persistent(com.mojang.serialization.Codec.BOOL)
+                    .networkSynchronized(net.minecraft.network.codec.ByteBufCodecs.BOOL)
+                    .build());
+
     private FoxsTweaksComponents() {
     }
 }

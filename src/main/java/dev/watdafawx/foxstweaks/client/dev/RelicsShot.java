@@ -269,6 +269,62 @@ public final class RelicsShot {
             log("C tooltip lines: " + lines + " (event hook adds hint only via the screen path)");
             mc.setScreen(null);
         });
+
+        // P: Relic Options "Show relic particles" toggle + suppression check.
+        add(10, () -> {
+            var mc = Minecraft.getInstance();
+            mc.setScreen(new it.hurts.sskirillss.relics.client.screen.description.relic.RelicDescriptionScreen(
+                    mc.player, mc.player.containerMenu.containerId, SLOT, null));
+        });
+        add(10, () -> {
+            var mc = Minecraft.getInstance();
+            if (mc.screen instanceof it.hurts.sskirillss.relics.client.screen.description.relic.RelicDescriptionScreen rds) {
+                var optTab = rds.children().stream()
+                        .filter(w -> w instanceof it.hurts.sskirillss.relics.client.screen.description.relic.widgets.BookmarkWidget)
+                        .map(w -> (it.hurts.sskirillss.relics.client.screen.description.relic.widgets.BookmarkWidget) w)
+                        .filter(w -> w.getId() != null && w.getId().toLowerCase().contains("option"))
+                        .findFirst().orElse(null);
+                if (optTab != null) {
+                    optTab.onPress();
+                } else {
+                    var ids = rds.children().stream()
+                            .filter(w -> w instanceof it.hurts.sskirillss.relics.client.screen.description.relic.widgets.BookmarkWidget)
+                            .map(w -> ((it.hurts.sskirillss.relics.client.screen.description.relic.widgets.BookmarkWidget) w).getId())
+                            .toList();
+                    log("P bookmarks found: " + ids);
+                }
+            }
+        });
+        add(10, () -> {
+            var mc = Minecraft.getInstance();
+            shot("relicsshot-P-options-on.png");
+            var optWidget = mc.screen == null ? null : mc.screen.children().stream()
+                    .filter(w -> w instanceof it.hurts.sskirillss.relics.client.screen.description.relic.widgets.RelicOptionsContainerWidget)
+                    .map(w -> (it.hurts.sskirillss.relics.client.screen.description.relic.widgets.RelicOptionsContainerWidget) w)
+                    .findFirst().orElse(null);
+            check("P1 RelicOptionsContainerWidget present", optWidget != null, "widget missing");
+            if (optWidget != null) {
+                // Row 1 (index 1) is "Show relic particles" at x + 5, y + 10
+                optWidget.mouseClicked(optWidget.getX() + 7, optWidget.getY() + 12, 0);
+            }
+        });
+        add(15, () -> {
+            shot("relicsshot-P-options-off.png");
+            boolean serverHidden = onServer(p -> dev.watdafawx.foxstweaks.relics.RelicParticles.isHidden(p.getInventory().getItem(SLOT)));
+            check("P2 hide_relic_particles synced to server", serverHidden, "still false on server");
+            int suppressedCount = onServer(p -> {
+                dev.watdafawx.foxstweaks.relics.RelicParticles.push();
+                try {
+                    return p.serverLevel().sendParticles(net.minecraft.core.particles.ParticleTypes.FLAME,
+                            p.getX(), p.getY(), p.getZ(), 5, 0, 0, 0, 0);
+                } finally {
+                    dev.watdafawx.foxstweaks.relics.RelicParticles.pop();
+                }
+            });
+            check("P3 server sendParticles suppressed inside push/pop", suppressedCount == 0, "count=" + suppressedCount);
+            Minecraft.getInstance().setScreen(null);
+        });
+
         add(10, () -> {
             log("done: " + (failures == 0 ? "ALL PASS" : failures + " FAILURE(S)"));
             try {

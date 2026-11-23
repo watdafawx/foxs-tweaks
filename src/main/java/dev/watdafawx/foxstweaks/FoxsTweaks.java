@@ -48,6 +48,7 @@ public class FoxsTweaks {
         modBus.addListener(dev.watdafawx.foxstweaks.enchant.ToggleNetwork::register);
         modBus.addListener(TemporalPouchNetwork::register);
         modBus.addListener(dev.watdafawx.foxstweaks.relics.AutoLevelNetwork::register);
+        modBus.addListener(dev.watdafawx.foxstweaks.relics.RelicParticlesNetwork::register);
         modBus.addListener(dev.watdafawx.foxstweaks.shrink.ShrinkNetwork::register);
         modBus.addListener(dev.watdafawx.foxstweaks.perf.PerfNetwork::register);
 

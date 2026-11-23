@@ -73,6 +73,17 @@ public final class Config {
                     "to zero - that is how Relics' ranks work - after which auto-level starts again.")
             .define("relicAutoRankup", true);
 
+    public static final ModConfigSpec.BooleanValue RELIC_PARTICLE_TOGGLE = BUILDER
+            .comment(
+                    "Add a 'Show relic particles' checkbox to Relics' Relic Options tab (right below",
+                    "'Show visual effects for flawless relics'). Turning it off suppresses particles spawned",
+                    "by that relic while worn (Relics, Reliquified Artifacts, MoreRelics, etc.) without",
+                    "changing any of its abilities or stats.",
+                    "",
+                    "Both sides need this mod for server-spawned particles; client-spawned particles stop",
+                    "with the client alone.")
+            .define("relicParticleToggle", true);
+
     public static final ModConfigSpec.BooleanValue OVERWORLD_COPY = BUILDER
             .comment(
                     "Adds a second, default overworld (foxstweaks:overworld_copy): vanilla noise settings, the",
