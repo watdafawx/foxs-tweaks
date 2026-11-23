@@ -116,9 +116,12 @@
   "foxstweaks.configuration.spawnAnchorsEnabled": "Spawn Anchors Enabled",
   "foxstweaks.configuration.spawnAnchorsMaxRadius": "Spawn Anchors Max Chunk Radius",
   "foxstweaks.configuration.debugLogLootRolls": "Debug Log Loot Rolls",
-  "item.foxstweaks.spawn_anchor": "Spawn Anchor",
-  "item.foxstweaks.spawn_anchor.desc1": "Places a dummy that loads chunks, activates spawners & Dreadful Dirt, and keeps mobs from despawning.",
-  "item.foxstweaks.spawn_anchor.desc2": "Right-click to toggle or adjust chunk radius. Sneak + Left-click to pick up.",
-  "screen.foxstweaks.spawn_anchor.title": "Spawn Anchor",
-  "screen.foxstweaks.spawn_anchor.pickup": "Pick Up Anchor"
+  "item.foxstweaks.spawn_anchor": "Mob & Chunk Loader",
+  "item.foxstweaks.spawn_anchor.desc1": "Places a dummy that acts like a player for mob farms:",
+  "item.foxstweaks.spawn_anchor.desc2": "• Force-loads chunks & random ticks (Dreadful Dirt, crops)",
+  "item.foxstweaks.spawn_anchor.desc3": "• Activates spawners & prevents mob despawning",
+  "item.foxstweaks.spawn_anchor.desc4": "Right-click to toggle or change radius. Sneak + Left-click to pick up.",
+  "screen.foxstweaks.spawn_anchor.title": "Mob & Chunk Loader",
+  "screen.foxstweaks.spawn_anchor.subtitle": "Ticks spawners, Dreadful Dirt & keeps mobs",
+  "screen.foxstweaks.spawn_anchor.pickup": "Pick Up Loader"
 }

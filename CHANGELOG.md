@@ -1,5 +1,10 @@
 # Changelog
 
+## 1.34.2
+
+- Renamed the Spawn Anchor item/GUI/nametag to **Mob & Chunk Loader** with clearer multi-line item tooltips and GUI subtitle explaining what it does (force-loads chunks, random ticks Dreadful Dirt/crops, activates spawners, prevents mob despawning).
+- Added client-only `/foxstweaks debug particles [seconds]` command: logs the exact particle ID, calling class/method, and visible active MobEffects for particles spawned within 3 blocks of the player (printed to chat + `latest.log`).
+
 ## 1.34.1
 
 - Scroll Shelf performance fix: caches `ScrollShelfBlockEntity`'s available-scrolls list until the shelf mutates. Previously `getStackInSlot(i)` rebuilt the full list on every slot lookup, making Logistics Networks / pipe stacked insertions O(N²) (300ms–1.25s server stalls, ~70% of server tick in a spark profile). Toggle: `scrollShelfCache` (default on). Server side.

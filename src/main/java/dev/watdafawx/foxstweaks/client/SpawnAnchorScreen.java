@@ -13,8 +13,8 @@ import net.minecraft.network.chat.Component;
  * radius with a live visual chunk-grid preview, or pick the anchor back up.
  */
 public class SpawnAnchorScreen extends Screen {
-    private static final int PANEL_W = 224;
-    private static final int PANEL_H = 216;
+    private static final int PANEL_W = 240;
+    private static final int PANEL_H = 228;
     private static final int BG_COLOR = 0xD80B0D12;
     private static final int BORDER_COLOR = 0x66FFFFFF;
     private static final int ACCENT_ON = 0xFF55FF55;
@@ -60,7 +60,7 @@ public class SpawnAnchorScreen extends Screen {
         left = (width - PANEL_W) / 2;
         top = (height - PANEL_H) / 2;
 
-        int btnY = top + 144;
+        int btnY = top + 156;
         toggleBtn = addRenderableWidget(Button.builder(toggleLabel(), b -> {
             enabled = !enabled;
             refreshButtons();
@@ -86,10 +86,10 @@ public class SpawnAnchorScreen extends Screen {
         addRenderableWidget(Button.builder(Component.translatable("screen.foxstweaks.spawn_anchor.pickup"), b -> {
             AnchorNetwork.sendUpdate(entityId, false, radius, true);
             onClose();
-        }).bounds(left + 14, top + 174, 108, 20).build());
+        }).bounds(left + 14, top + 186, 114, 20).build());
 
         addRenderableWidget(Button.builder(Component.translatable("gui.done"), b -> onClose())
-                .bounds(left + PANEL_W - 14 - 80, top + 174, 80, 20).build());
+                .bounds(left + PANEL_W - 14 - 80, top + 186, 80, 20).build());
 
         refreshButtons();
     }
@@ -121,6 +121,8 @@ public class SpawnAnchorScreen extends Screen {
         gg.drawCenteredString(font, title, left + PANEL_W / 2, top + 10, GOLD);
         String loc = blockX + ", " + blockY + ", " + blockZ + "  (" + shortDim(dimension) + ")";
         gg.drawCenteredString(font, loc, left + PANEL_W / 2, top + 22, MUTED);
+        gg.drawCenteredString(font, Component.translatable("screen.foxstweaks.spawn_anchor.subtitle"),
+                left + PANEL_W / 2, top + 34, 0xFFB8C4D4);
 
         // Visual chunk grid (shows (2*gridR+1)^2 cells; active cells in green, center in gold)
         int gridR = Math.max(4, maxRadius);
@@ -129,7 +131,7 @@ public class SpawnAnchorScreen extends Screen {
         int gap = 1;
         int gridPx = gridSide * (cellSize + gap) - gap;
         int gx = left + (PANEL_W - gridPx) / 2;
-        int gy = top + 36;
+        int gy = top + 48;
 
         gg.fill(gx - 3, gy - 3, gx + gridPx + 3, gy + gridPx + 3, 0x66000000);
         gg.renderOutline(gx - 3, gy - 3, gridPx + 6, gridPx + 6, 0x33FFFFFF);
@@ -163,10 +165,10 @@ public class SpawnAnchorScreen extends Screen {
         // Radius label centered between - and + buttons
         String radStr = "R=" + radius;
         int midX = left + 116 + 24 + ((PANEL_W - 14 - 24) - (116 + 24)) / 2;
-        gg.drawCenteredString(font, radStr, midX, top + 150, 0xFFE8EDF5);
+        gg.drawCenteredString(font, radStr, midX, top + 162, 0xFFE8EDF5);
 
         // Footer hint
-        gg.drawCenteredString(font, "Sneak + Left-click dummy to pick up anytime", left + PANEL_W / 2, top + 200, 0xFF778090);
+        gg.drawCenteredString(font, "Sneak + Left-click dummy to pick up anytime", left + PANEL_W / 2, top + 212, 0xFF778090);
     }
 
     @Override

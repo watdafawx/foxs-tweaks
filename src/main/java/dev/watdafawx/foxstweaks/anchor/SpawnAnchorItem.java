@@ -38,8 +38,10 @@ public class SpawnAnchorItem extends Item {
 
     @Override
     public void appendHoverText(ItemStack stack, TooltipContext context, List<Component> tooltip, TooltipFlag flag) {
-        tooltip.add(Component.translatable("item.foxstweaks.spawn_anchor.desc1").withStyle(ChatFormatting.GRAY));
-        tooltip.add(Component.translatable("item.foxstweaks.spawn_anchor.desc2").withStyle(ChatFormatting.DARK_GRAY));
+        tooltip.add(Component.translatable("item.foxstweaks.spawn_anchor.desc1").withStyle(ChatFormatting.GOLD));
+        tooltip.add(Component.translatable("item.foxstweaks.spawn_anchor.desc2").withStyle(ChatFormatting.GRAY));
+        tooltip.add(Component.translatable("item.foxstweaks.spawn_anchor.desc3").withStyle(ChatFormatting.GRAY));
+        tooltip.add(Component.translatable("item.foxstweaks.spawn_anchor.desc4").withStyle(ChatFormatting.DARK_GRAY));
     }
 
     @Override

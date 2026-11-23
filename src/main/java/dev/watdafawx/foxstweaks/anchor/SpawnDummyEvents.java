@@ -70,12 +70,12 @@ public final class SpawnDummyEvents {
         int side = clampedRadius * 2 + 1;
         if (enabled && ServerConfig.spawnAnchorsEnabled()) {
             SpawnAnchors.add(level, new SpawnAnchorData.Anchor(id, dummy.getX(), dummy.getY(), dummy.getZ(), clampedRadius));
-            dummy.setCustomName(Component.literal("Spawn Anchor ")
+            dummy.setCustomName(Component.literal("Mob & Chunk Loader ")
                     .withStyle(ChatFormatting.GOLD)
                     .append(Component.literal("[" + side + "x" + side + "]").withStyle(ChatFormatting.GREEN)));
         } else {
             SpawnAnchors.remove(level, id);
-            dummy.setCustomName(Component.literal("Spawn Anchor ")
+            dummy.setCustomName(Component.literal("Mob & Chunk Loader ")
                     .withStyle(ChatFormatting.GRAY)
                     .append(Component.literal("[OFF]").withStyle(ChatFormatting.RED)));
         }
@@ -126,7 +126,7 @@ public final class SpawnDummyEvents {
             // Fallback for a client without Fox's Tweaks: toggle ON/OFF directly on right-click
             boolean next = !isEnabled(dummy);
             applyState((ServerLevel) dummy.level(), dummy, next, getRadius(dummy));
-            player.displayClientMessage(Component.literal("Spawn Anchor " + (next ? "ON" : "OFF")), true);
+            player.displayClientMessage(Component.literal("Mob & Chunk Loader " + (next ? "ON" : "OFF")), true);
         }
     }
 
