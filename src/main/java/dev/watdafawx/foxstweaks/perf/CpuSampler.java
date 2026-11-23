@@ -5,32 +5,68 @@ import javax.management.ObjectName;
 import java.lang.management.ManagementFactory;
 
 /**
- * Reads system and process CPU load (0..100%) via JMX {@code java.lang:type=OperatingSystem},
- * avoiding direct {@code com.sun.management} module visibility issues under ModLauncher and
- * falling back to {@code ProcessCpuTime} deltas when Windows PDH counters return {@code -1}.
+ * Reads system and process CPU load (0..100%) on a single low-priority background daemon thread
+ * once per second, so {@link #sample()} never blocks the server or client tick thread on Windows
+ * JMX/PDH queries.
  */
 public final class CpuSampler {
     private static final MBeanServer MBEAN = ManagementFactory.getPlatformMBeanServer();
     private static final ObjectName OS_NAME = initName();
     private static final int CPUS = Math.max(1, Runtime.getRuntime().availableProcessors());
 
-    private long lastWallNs;
-    private long lastProcCpuNs = -1L;
+    private static volatile float latestSys = -1f;
+    private static volatile float latestProc = -1f;
+    private static volatile boolean started;
+
+    private static long lastWallNs;
+    private static long lastProcCpuNs = -1L;
 
     public CpuSampler() {
-        warmup();
+        ensureStarted();
     }
 
     public void warmup() {
-        lastWallNs = System.nanoTime();
-        lastProcCpuNs = readLong("ProcessCpuTime");
-        // Prime PDH counters on Windows so subsequent reads are non-negative.
-        readDouble("CpuLoad");
-        readDouble("ProcessCpuLoad");
+        ensureStarted();
     }
 
-    /** Returns {@code [systemPct, processPct]}; each entry is {@code -1f} if unavailable. */
+    /** Non-blocking: returns the latest background-sampled {@code [systemPct, processPct]}. */
     public float[] sample() {
+        ensureStarted();
+        return new float[] { latestSys, latestProc };
+    }
+
+    private static void ensureStarted() {
+        if (started)
+            return;
+        synchronized (CpuSampler.class) {
+            if (started)
+                return;
+            started = true;
+            Thread t = new Thread(CpuSampler::loop, "foxstweaks-cpu-sampler");
+            t.setDaemon(true);
+            t.setPriority(Thread.MIN_PRIORITY);
+            t.start();
+        }
+    }
+
+    private static void loop() {
+        lastWallNs = System.nanoTime();
+        lastProcCpuNs = readLong("ProcessCpuTime");
+        // Prime Windows PDH counters once off-thread.
+        readDouble("CpuLoad");
+        readDouble("ProcessCpuLoad");
+
+        while (true) {
+            try {
+                Thread.sleep(1000L);
+            } catch (InterruptedException e) {
+                return;
+            }
+            pollOnce();
+        }
+    }
+
+    private static void pollOnce() {
         double sys = readDouble("CpuLoad");
         if (sys < 0.0)
             sys = readDouble("SystemCpuLoad");
@@ -49,9 +85,8 @@ public final class CpuSampler {
         if (procCpuNs >= 0L)
             lastProcCpuNs = procCpuNs;
 
-        float sysPct = sys >= 0.0 ? (float) Math.min(100.0, sys * 100.0) : -1f;
-        float procPct = proc >= 0.0 ? (float) Math.min(100.0, proc * 100.0) : -1f;
-        return new float[] { sysPct, procPct };
+        latestSys = sys >= 0.0 ? (float) Math.min(100.0, sys * 100.0) : -1f;
+        latestProc = proc >= 0.0 ? (float) Math.min(100.0, proc * 100.0) : -1f;
     }
 
     private static ObjectName initName() {

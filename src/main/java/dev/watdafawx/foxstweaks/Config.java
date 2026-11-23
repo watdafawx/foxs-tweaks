@@ -478,6 +478,15 @@ public final class Config {
                     "Client-side only. Does nothing without GPUShift.")
             .define("gpushiftClassifierCache", true);
 
+    public static final ModConfigSpec.BooleanValue SCROLL_SHELF_CACHE = BUILDER
+            .comment(
+                    "Cache Iron's Spellbooks Scroll Shelf's available-scrolls list until the shelf changes.",
+                    "Without this, every getStackInSlot() call rebuilds the entire scroll list from scratch,",
+                    "making pipe/Logistics Networks stacked insertions O(N^2) and causing 300ms-1.25s stalls.",
+                    "",
+                    "Server-side. Does nothing without Scroll Shelf.")
+            .define("scrollShelfCache", true);
+
     public static final ModConfigSpec.BooleanValue CHICKENS_RADIATION_KEEP_LOOT = BUILDER
             .comment(
                     "Stop Modern Chickens' Mekanism radiation check from filling structure chests. It reads every",

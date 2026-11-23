@@ -29,6 +29,8 @@
     "PointBlankInventoryUtilsMixin",
     "PrinterBlockEntityMixin",
     "RelicsNetworkParticleSuppressMixin",
+    "ScrollShelfBlockEntityMixin",
+    "ScrollShelfHandlerMixin",
     "ServerLevelAnchorMixin",
     "ServerLevelParticleSuppressMixin",
     "ShrinkDeviceContainerMixin",

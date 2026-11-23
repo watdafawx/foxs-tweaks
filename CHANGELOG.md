@@ -1,5 +1,10 @@
 # Changelog
 
+## 1.34.1
+
+- Scroll Shelf performance fix: caches `ScrollShelfBlockEntity`'s available-scrolls list until the shelf mutates. Previously `getStackInSlot(i)` rebuilt the full list on every slot lookup, making Logistics Networks / pipe stacked insertions O(N²) (300ms–1.25s server stalls, ~70% of server tick in a spark profile). Toggle: `scrollShelfCache` (default on). Server side.
+- Performance overlay: moved JMX CPU sampling (`CpuSampler`) onto a 1 Hz background daemon thread so Windows PDH queries never stall the server or client tick thread (dropped from ~4.75% to 0%).
+
 ## 1.34.0
 
 - Spawn Anchor: craftable armor-stand dummy (`foxstweaks:spawn_anchor` — Eye of Ender, 2 Gold Ingots, Armor Stand, 3 Obsidian) that force-loads chunks around it, runs random ticks (Dreadful/Delightful Dirt, crops), activates vanilla & Apotheosis spawners, allows natural mob spawns, and prevents mob despawning — with no fake-player side effects (doesn't block sleeping, quests, or Tab list).
