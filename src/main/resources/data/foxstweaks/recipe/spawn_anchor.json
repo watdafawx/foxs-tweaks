@@ -1,0 +1,27 @@
+{
+  "type": "minecraft:crafting_shaped",
+  "category": "misc",
+  "pattern": [
+    " G ",
+    "EAE",
+    "OOO"
+  ],
+  "key": {
+    "G": {
+      "item": "minecraft:ender_eye"
+    },
+    "E": {
+      "item": "minecraft:gold_ingot"
+    },
+    "A": {
+      "item": "minecraft:armor_stand"
+    },
+    "O": {
+      "item": "minecraft:obsidian"
+    }
+  },
+  "result": {
+    "id": "foxstweaks:spawn_anchor",
+    "count": 1
+  }
+}

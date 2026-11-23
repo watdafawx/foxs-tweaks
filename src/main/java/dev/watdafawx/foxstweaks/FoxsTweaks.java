@@ -51,8 +51,10 @@ public class FoxsTweaks {
         modBus.addListener(dev.watdafawx.foxstweaks.relics.RelicParticlesNetwork::register);
         modBus.addListener(dev.watdafawx.foxstweaks.shrink.ShrinkNetwork::register);
         modBus.addListener(dev.watdafawx.foxstweaks.perf.PerfNetwork::register);
+        modBus.addListener(dev.watdafawx.foxstweaks.anchor.AnchorNetwork::register);
 
         FoxsTweaksComponents.COMPONENTS.register(modBus);
+        FoxsTweaksItems.init(modBus);
 
         // Overworld copy: datapack dimension + portals made of a vanilla frame block and vanilla portal blocks.
         dev.watdafawx.foxstweaks.dimension.OverworldCopyEvents.init(modBus);
@@ -117,5 +119,9 @@ public class FoxsTweaks {
         // Dev-only check + screenshots of the Tab performance overlay and mini-HUD; `build.bat runPerfShot` sets the property.
         if (FMLEnvironment.dist.isClient() && !FMLEnvironment.production && Boolean.getBoolean("foxstweaks.perfShot"))
             dev.watdafawx.foxstweaks.client.dev.PerfShot.install();
+
+        // Dev-only end-to-end check of virtual spawn anchors; `build.bat runAnchorCheck` sets the property.
+        if (FMLEnvironment.dist.isClient() && !FMLEnvironment.production && Boolean.getBoolean("foxstweaks.anchorCheck"))
+            dev.watdafawx.foxstweaks.client.dev.AnchorCheck.install();
     }
 }

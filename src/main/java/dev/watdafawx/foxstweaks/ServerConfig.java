@@ -57,6 +57,14 @@ public final class ServerConfig {
             .comment("Restrict server performance snapshots to operators (permission level 2+). Off by default so every player can check server TPS/MSPT.")
             .define("perfOverlayOpOnly", false);
 
+    public static final ModConfigSpec.BooleanValue SPAWN_ANCHORS_ENABLED = BUILDER
+            .comment("Allow virtual spawn anchors (/foxstweaks anchor add|remove|list|tp) that force-load chunks, run random ticks (Dreadful Dirt, crops), activate spawners, and prevent mob despawning.")
+            .define("spawnAnchorsEnabled", true);
+
+    public static final ModConfigSpec.IntValue SPAWN_ANCHORS_MAX_RADIUS = BUILDER
+            .comment("Maximum chunk radius allowed for a virtual spawn anchor (1 = 3x3 chunks, 2 = 5x5, 4 = 9x9).")
+            .defineInRange("spawnAnchorsMaxRadius", 4, 1, 8);
+
     public static final ModConfigSpec SPEC = BUILDER.build();
 
     /** False before a world's server config is read (main menu, datapack loading); callers fall back to the defaults. */
@@ -82,6 +90,14 @@ public final class ServerConfig {
 
     public static boolean perfOverlayOpOnly() {
         return loaded() && PERF_OVERLAY_OP_ONLY.get();
+    }
+
+    public static boolean spawnAnchorsEnabled() {
+        return !loaded() || SPAWN_ANCHORS_ENABLED.get();
+    }
+
+    public static int spawnAnchorsMaxRadius() {
+        return loaded() ? SPAWN_ANCHORS_MAX_RADIUS.get() : 4;
     }
 
     private ServerConfig() {

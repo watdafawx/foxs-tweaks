@@ -1,5 +1,12 @@
 # Changelog
 
+## 1.34.0
+
+- Spawn Anchor: craftable armor-stand dummy (`foxstweaks:spawn_anchor` — Eye of Ender, 2 Gold Ingots, Armor Stand, 3 Obsidian) that force-loads chunks around it, runs random ticks (Dreadful/Delightful Dirt, crops), activates vanilla & Apotheosis spawners, allows natural mob spawns, and prevents mob despawning — with no fake-player side effects (doesn't block sleeping, quests, or Tab list).
+- Right-click a placed Spawn Anchor dummy to open its GUI: live chunk-grid preview, ON/OFF toggle, `-`/`+` chunk radius (`1..spawnAnchorsMaxRadius`), and Pick Up button (or Sneak + Left-click anytime).
+- Op commands (`/foxstweaks anchor add <name> [radius] | remove <name> | list | tp <name>`) and server config (`spawnAnchorsEnabled`, `spawnAnchorsMaxRadius`). Persists across restarts.
+- Dev check: `build.bat runAnchorCheck` (game dir `run-anchor/`).
+
 ## 1.33.0
 
 - Relics: added a native **Show relic particles** toggle to the **Relic Options** tab (right under *Show visual effects for flawless relics*). Turning it off suppresses particles spawned by that relic while worn (`curioTick`, client and server, across Relics, Reliquified Artifacts, MoreRelics, and any Curios relic addon) without affecting its abilities or stats. Stored on the relic item; optional network channel. Toggle: `relicParticleToggle` (default on).

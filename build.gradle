@@ -138,6 +138,14 @@ neoForge {
             systemProperty 'foxstweaks.perfShot', 'true'
         }
 
+        // Dev-only end-to-end check of virtual spawn anchors (client/dev/AnchorCheck):
+        // report lands in run-anchor/. No extra mods needed.
+        anchorCheck {
+            client()
+            gameDirectory = file('run-anchor')
+            systemProperty 'foxstweaks.anchorCheck', 'true'
+        }
+
         // Headless: enough to load datapacks and read the log, e.g. to check what the affix patcher did.
         // Needs the same hand-placed jars as the client, in run-server/mods.
         server {
