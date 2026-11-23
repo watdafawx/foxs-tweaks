@@ -109,6 +109,35 @@ public final class ConfigScreenCheck {
             log("server sections: " + serverSections);
         });
 
+        add(4, () -> {
+            // Placement screen: drag the block into the top-left and require the config to follow.
+            Minecraft.getInstance().setScreen(new dev.watdafawx.foxstweaks.client.PerfOverlayScreen(null));
+            var screen = Minecraft.getInstance().screen;
+            check("performance placement screen opens", screen instanceof dev.watdafawx.foxstweaks.client.PerfOverlayScreen,
+                    String.valueOf(screen));
+        });
+
+        add(4, () -> {
+            var screen = Minecraft.getInstance().screen;
+
+            // Grab the block in the middle of the screen, drag it into a corner, drop it, close to save.
+            int cx = screen.width / 2;
+            int cy = screen.height / 2;
+            screen.mouseClicked(cx, cy, 0);
+            screen.mouseDragged(30, 30, 0, 0, 0);
+            screen.mouseReleased(30, 30, 0);
+            screen.onClose();
+
+            String after = Config.perfOverlayPlacement();
+            log("dragged to placement=" + after
+                    + " offsets=" + Config.perfOverlayOffsetX() + "," + Config.perfOverlayOffsetY());
+            check("dragging the block pins it to a corner instead of flank", !"flank".equals(after), "after=" + after);
+            check("the placement survives the save", "flank".equals(Config.perfOverlayPlacement()) == false,
+                    "config=" + Config.perfOverlayPlacement());
+
+            Config.setPerfOverlayPosition("flank", 0, 0);
+        });
+
         add(6, () -> {
             log("done: " + (failures == 0 ? "ALL PASS" : failures + " FAILURE(S)"));
             try {

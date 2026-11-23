@@ -70,6 +70,17 @@ public class FoxsTweaksKeys {
             InputConstants.UNKNOWN.getValue(),
             CATEGORY);
 
+    /**
+     * Moves the Tab performance cards (see {@code client.PerfOverlayMover}): pressed while the Tab overlay is
+     * up it cycles the placement presets, pressed otherwise it opens the drag-to-place screen. Unbound by
+     * default - there is no free vanilla key that would not surprise someone.
+     */
+    public static final KeyMapping MOVE_PERF_OVERLAY = new KeyMapping(
+            "key." + FoxsTweaks.MODID + ".move_perf_overlay",
+            InputConstants.Type.KEYSYM,
+            InputConstants.UNKNOWN.getValue(),
+            CATEGORY);
+
     @SubscribeEvent
     public static void onRegisterKeyMappings(RegisterKeyMappingsEvent event) {
         event.register(OPEN_RELIC);
@@ -79,6 +90,7 @@ public class FoxsTweaksKeys {
         event.register(TOGGLE_SHRINK);
         event.register(OPEN_CONFIG);
         event.register(TOGGLE_PERF_HUD);
+        event.register(MOVE_PERF_OVERLAY);
     }
 
     /**

@@ -44,8 +44,7 @@ public final class PerfOverlayRenderer {
     private static final int COL_YELLOW = 0xFFFFFF55;
     private static final int COL_RED = 0xFFFF5555;
 
-    private static final int CARD_W = 194;
-    private static final int PAD_X = 7;
+    private static final int CARD_W = 194;    private static final int PAD_X = 7;
     private static final int CARD_GAP = 6;
     private static final int SPARK_W = 76;
     private static final int SPARK_H = 26;
@@ -187,20 +186,8 @@ public final class PerfOverlayRenderer {
         int offX = Config.perfOverlayOffsetX();
         int offY = Config.perfOverlayOffsetY();
 
-        int x;
-        if (placement.endsWith("Left"))
-            x = 4 + offX;
-        else if (placement.endsWith("Right"))
-            x = screenW - CARD_W - 4 + offX;
-        else
-            x = (screenW - CARD_W) / 2 + offX;
-
-        int y = placement.startsWith("bottom")
-                ? screenH - totalH - 4 + offY
-                : 4 + offY;
-
-        x = Math.max(2, Math.min(x, screenW - CARD_W - 2));
-        y = clampY(y, totalH, screenH);
+        int x = clampX(anchorX(placement, screenW) + offX, screenW);
+        int y = clampY(anchorY(placement, screenH, totalH) + offY, totalH, screenH);
 
         if (showServer) {
             drawServerCard(gg, font, x, y, CARD_W, srvH, srv);
@@ -208,6 +195,50 @@ public final class PerfOverlayRenderer {
         }
         if (showClient)
             drawClientCard(gg, font, x, y, CARD_W, cliH, cli, cliFrames);
+
+        // A pinned placement is the only one the player can have moved, so only that one says how.
+        drawMoveHint(gg, font, x, clampY(anchorY(placement, screenH, totalH) + offY, totalH, screenH) + totalH, screenW);
+    }
+
+    /** Screen X of a placement's block, before the player's offset. */
+    public static int anchorX(String placement, int screenW) {
+        if (placement.endsWith("Left"))
+            return 4;
+        if (placement.endsWith("Right"))
+            return screenW - CARD_W - 4;
+        return (screenW - CARD_W) / 2;
+    }
+
+    /** Screen Y of a placement's block, before the player's offset. */
+    public static int anchorY(String placement, int screenH, int totalH) {
+        return placement.startsWith("bottom") ? screenH - totalH - 4 : 4;
+    }
+
+    public static int clampX(int x, int screenW) {
+        return Math.max(2, Math.min(x, screenW - CARD_W - 2));
+    }
+
+    public static int cardWidth() {
+        return CARD_W;
+    }
+
+    public static int cardGap() {
+        return CARD_GAP;
+    }
+
+    /** Height of the client card; the server card is taller when it lists dimensions. */
+    public static int clientCardHeight() {
+        return 122;
+    }
+
+    /** "Move: <key>" under the block, so the placement key is discoverable without reading the config. */
+    public static void drawMoveHint(GuiGraphics gg, Font font, int x, int y, int screenW) {
+        var key = dev.watdafawx.foxstweaks.client.FoxsTweaksKeys.MOVE_PERF_OVERLAY;
+        if (key.getKey().getValue() == com.mojang.blaze3d.platform.InputConstants.UNKNOWN.getValue())
+            return;
+
+        String hint = "Move: " + key.getTranslatedKeyMessage().getString();
+        gg.drawString(font, hint, clampX(x, screenW), y + 2, COL_MUTED, false);
     }
 
     private static int serverCardHeight(PerfSnapshotPayload s) {

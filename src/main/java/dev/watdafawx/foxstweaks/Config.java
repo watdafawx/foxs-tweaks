@@ -752,6 +752,17 @@ public final class Config {
         return !SPEC.isLoaded() || PERF_OVERLAY_CLIENT_CARD.get();
     }
 
+    /** Persists the overlay placement/offset chosen in game (see {@code client.PerfOverlayMover}). */
+    public static void setPerfOverlayPosition(String placement, int offsetX, int offsetY) {
+        if (!SPEC.isLoaded())
+            return;
+
+        PERF_OVERLAY_PLACEMENT.set(placement);
+        PERF_OVERLAY_OFFSET_X.set(offsetX);
+        PERF_OVERLAY_OFFSET_Y.set(offsetY);
+        SPEC.save();
+    }
+
     private Config() {
     }
 }

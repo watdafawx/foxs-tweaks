@@ -807,6 +807,27 @@ the list's `rebuild` (`@Inject` on the `OptionMenuConstructor.constructAndApplyT
   `IrisSearchList`; both mixins are `remap = false` and `require = 0`, so an Iris update drops the
   feature instead of crashing. Toggle: `irisSettingsSearch`. Client section.
 
+### Tab performance cards (`perf/PerfOverlayRenderer`, `client/PerfOverlayMover`, `client/PerfOverlayScreen`)
+
+The two cards (Server / Client) are drawn from `RenderGuiLayerEvent.Post(TAB_LIST)` and positioned by
+`Config.perfOverlayPlacement`: `flank` (default) puts Server left of the player list and Client right, falling
+back to centred below it when the list is too wide, and every other value (`topLeft` … `bottomRight`) pins the
+pair to that edge or corner as a stacked block and ignores the player list entirely. `perfOverlayOffsetX/Y` move
+the pinned block (`anchorX`/`anchorY` give the base position, `clampX`/`clampY` keep it on screen), and
+`perfOverlayServerCard`/`perfOverlayClientCard` hide either card.
+
+Moving it in game: `key.foxstweaks.move_perf_overlay` (unbound) — pressed while the Tab overlay is up it cycles
+the seven presets and writes them with `Config.setPerfOverlayPosition` (which also `SPEC.save()`s), and pressed
+anywhere else it opens `PerfOverlayScreen`, where the block is dragged (or arrow-keyed, Shift = 1px) and released;
+release snaps to the nearest edge/corner preset and stores the remainder as a pixel offset, so the config stays
+readable. A pinned placement also draws `Move: <key>` under the block, so the key is discoverable.
+
+Minecraft hides and locks the cursor while no screen is open, which is why dragging happens in a screen rather
+than on the HUD; there is no mouse position to drag with on the Tab overlay itself.
+
+Dev check: `build.bat runConfigCheck` opens `PerfOverlayScreen`, drags the block, and asserts the config took the
+new placement. The cards' own rendering is not covered — it needs a live world and a held Tab.
+
 ### Mob & Chunk Loader and Apotheosis tiers (`anchor/`, `compat/ApothicAnchorTier`, two mixins)
 
 The anchor (`SpawnAnchorItem`, the craftable dummy, and `/foxstweaks anchor add|remove|list|tp`) registers a
