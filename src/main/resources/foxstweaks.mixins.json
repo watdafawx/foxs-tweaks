@@ -42,6 +42,7 @@
   "client": [
     "Ae2EmiQuickFillMixin",
     "BackpackRenderInfoMixin",
+    "BlockEntityRenderProfilerMixin",
     "BreakingRenderPoseGuardMixin",
     "CuriosCacheHandlerMixin",
     "EditBoxSearchAssistMixin",
@@ -53,6 +54,7 @@
     "EmiSlimStackMixin",
     "EmiSlimTagIngredientMixin",
     "EmiSlimTagsMixin",
+    "EntityRenderProfilerMixin",
     "FtbSidebarTooltipFlushMixin",
     "GpuShiftClassifierMixin",
     "GuideMeHotkeyMixin",
@@ -67,6 +69,7 @@
     "SbEmiFillButtonMixin",
     "SbEmiFillerMixin",
     "ShrinkScreenMixin",
+    "SparkCommandHookMixin",
     "TaczAttachmentTooltipMixin",
     "TaczBedrockCubeMixin",
     "TransmogInventoryMixin",

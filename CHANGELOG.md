@@ -1,5 +1,12 @@
 # Changelog
 
+## 1.35.0
+
+- Added **In-World FPS Hotspot Highlighter** (Observable-style for client render time):
+  - Automatically starts/stops alongside `/sparkc profiler` (toggle: `fpsHighlighterSparkHook`, default on) or run standalone via `/foxstweaks fps [seconds|stop|clear]`.
+  - Times `BlockEntityRenderDispatcher#render` and `EntityRenderDispatcher#render` with zero overhead when inactive.
+  - Highlights the heaviest BlockEntities and Entities in-world with through-wall heat-colored boxes (green → yellow → orange → red), floating `µs/frame` labels, a compact HUD badge, and a ranked Top-8 chat summary with coordinates.
+
 ## 1.34.5
 
 - Added `disableFloraLuckParticles` (default on, server-side): stops Kaleidoscope Flora (`PlayerEvents#coronationMotes`) from orbiting yellow dust particles around any player or entity with the vanilla Luck effect.

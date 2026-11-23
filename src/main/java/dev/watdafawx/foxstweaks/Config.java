@@ -495,6 +495,15 @@ public final class Config {
                     "Server-side. Does nothing without Kaleidoscope Flora.")
             .define("disableFloraLuckParticles", true);
 
+    public static final ModConfigSpec.BooleanValue FPS_HIGHLIGHTER_SPARK_HOOK = BUILDER
+            .comment(
+                    "Automatically run the in-world FPS hotspot highlighter whenever you run /sparkc profiler.",
+                    "Highlights the heaviest BlockEntities and Entities with through-wall heat boxes and",
+                    "µs/frame labels. You can also run /foxstweaks fps [seconds|stop|clear] standalone.",
+                    "",
+                    "Client-side only. Zero overhead when not scanning.")
+            .define("fpsHighlighterSparkHook", true);
+
     public static final ModConfigSpec.BooleanValue CHICKENS_RADIATION_KEEP_LOOT = BUILDER
             .comment(
                     "Stop Modern Chickens' Mekanism radiation check from filling structure chests. It reads every",
