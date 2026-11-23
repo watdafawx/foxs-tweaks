@@ -176,6 +176,42 @@ public final class PerfShot {
             shot("perf-3-crowded-28p-scale3.png");
         });
 
+        // Pinned placement: the cards must leave the player list alone and sit in the corner.
+        add(6, () -> {
+            dev.watdafawx.foxstweaks.Config.setPerfOverlayPosition("bottomRight", 0, 0);
+            Minecraft mc = Minecraft.getInstance();
+            mc.options.guiScale().set(2);
+            mc.resizeDisplay();
+        });
+        add(10, () -> {
+            Minecraft mc = Minecraft.getInstance();
+            var window = mc.getWindow();
+            int w = window.getGuiScaledWidth();
+            int h = window.getGuiScaledHeight();
+            int x = PerfOverlayRenderer.lastBlockX;
+            int y = PerfOverlayRenderer.lastBlockY;
+            check("pinned placement ignores the player list", !PerfOverlayRenderer.lastFlankedVanillaTab, "still flanked");
+            // Compare the block's centre, not its top: a stacked pair is taller than half the GUI at scale 2.
+            int centreX = x + PerfOverlayRenderer.lastBlockW / 2;
+            int centreY = y + PerfOverlayRenderer.lastBlockH / 2;
+            check("pinned placement sits in the bottom-right", centreX > w / 2 && centreY > h / 2,
+                    "centre=" + centreX + "," + centreY + " screen=" + w + "x" + h);
+            log("pinned bottomRight at " + x + "," + y + " on " + w + "x" + h
+                    + " block " + PerfOverlayRenderer.lastBlockW + "x" + PerfOverlayRenderer.lastBlockH);
+            shot("perf-5-placement-bottomright.png");
+        });
+
+        // The key path, minus the keypress: PerfOverlayMover.cyclePlacement is exactly what it calls.
+        add(6, () -> {
+            String before = dev.watdafawx.foxstweaks.Config.perfOverlayPlacement();
+            dev.watdafawx.foxstweaks.client.PerfOverlayMover.cyclePlacement();
+            String after = dev.watdafawx.foxstweaks.Config.perfOverlayPlacement();
+            check("cycling moves the cards to the next preset", !before.equals(after), before + " -> " + after);
+            log("placement " + before + " -> " + after);
+        });
+        add(10, () -> shot("perf-6-placement-cycled.png"));
+        add(4, () -> dev.watdafawx.foxstweaks.Config.setPerfOverlayPosition("flank", 0, 0));
+
         // Release Tab and test pinned mini-HUD
         add(6, () -> {
             Minecraft mc = Minecraft.getInstance();

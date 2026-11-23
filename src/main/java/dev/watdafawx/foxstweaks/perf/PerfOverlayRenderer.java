@@ -59,6 +59,12 @@ public final class PerfOverlayRenderer {
     public static int lastVanillaTabBottomY;
     public static boolean lastFlankedVanillaTab;
 
+    /** Where a pinned block was last drawn (0 when the placement was {@code flank}); for checks. */
+    public static int lastBlockX;
+    public static int lastBlockY;
+    public static int lastBlockW;
+    public static int lastBlockH;
+
     private PerfOverlayRenderer() {
     }
 
@@ -188,6 +194,11 @@ public final class PerfOverlayRenderer {
 
         int x = clampX(anchorX(placement, screenW) + offX, screenW);
         int y = clampY(anchorY(placement, screenH, totalH) + offY, totalH, screenH);
+
+        lastBlockX = x;
+        lastBlockY = y;
+        lastBlockW = CARD_W;
+        lastBlockH = totalH;
 
         if (showServer) {
             drawServerCard(gg, font, x, y, CARD_W, srvH, srv);

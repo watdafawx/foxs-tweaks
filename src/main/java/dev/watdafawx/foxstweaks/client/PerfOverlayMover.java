@@ -33,15 +33,22 @@ public final class PerfOverlayMover {
                 continue;
 
             if (ClientPerfTracker.isTabOverlayVisible() && mc.screen == null) {
-                // On the spot: next preset, offsets cleared so the preset actually lands where it says.
-                String current = Config.perfOverlayPlacement();
-                int index = PLACEMENTS.indexOf(current);
-                String next = PLACEMENTS.get((index + 1) % PLACEMENTS.size());
-                Config.setPerfOverlayPosition(next, 0, 0);
+                cyclePlacement();
             } else if (mc.screen == null) {
                 mc.setScreen(new PerfOverlayScreen(null));
             }
         }
+    }
+
+    /**
+     * On the spot: next preset, offsets cleared so the preset actually lands where it says. Public so the dev
+     * check can drive exactly what the key does.
+     */
+    public static void cyclePlacement() {
+        String current = Config.perfOverlayPlacement();
+        int index = PLACEMENTS.indexOf(current);
+        String next = PLACEMENTS.get((index + 1) % PLACEMENTS.size());
+        Config.setPerfOverlayPosition(next, 0, 0);
     }
 
     private PerfOverlayMover() {
