@@ -88,6 +88,15 @@ quality-of-life features sharing a jar, among them:
 19. **Settings screen** — `client/ConfigScreenKeys`: NeoForge's generated config screen, from the Mods list and a key.
     **Every new config key needs a `foxstweaks.configuration.<key>` label in `en_us.json`**, or the screen shows the
     raw key. Tooltips fall back to the value's `.comment(...)`.
+    **Both config files are grouped into sections** (`BUILDER.push(...)` in `push`/`pop` static initializers), which
+    NeoForge renders as one "Edit" row per section instead of a flat list: common = relics, world, apotheosis,
+    storage, performance, integrations, misc; server = portal, performance, spawnAnchors. Each section name needs
+    its own `foxstweaks.configuration.<section>` label too. Moving a key into a section **changes its path in the
+    toml**, so values written before that move are ignored and fall back to defaults - say so in the CHANGELOG.
+    Dev check: `build.bat runConfigCheck` (game dir `run-config/`, no extra mods) reads the specs to assert the
+    sections and that every section/key label resolves, opens the real screen, and screenshots it. NeoForge's
+    config rows are list entries, not screen children, so a check cannot click into a section without widening
+    `OptionsSubScreen#list`; assert on the spec instead.
 20. **Iris shader settings search** — client-side; `client/compat/IrisSettingsSearch` + two Iris mixins put a search
     box under Iris' shader pack settings. See [Iris settings search](#iris-shader-settings-search-clientcompatirissettingssearch).
 21. **Sophisticated Backpacks recipes in EMI** — client-side; `client/compat/SbEmiFill` + two string-targeted EMI

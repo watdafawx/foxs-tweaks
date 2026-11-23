@@ -162,6 +162,14 @@ neoForge {
             }
         }
 
+        // Dev-only check of the settings screen's sections (client/dev/ConfigScreenCheck):
+        // report and screenshots land in run-config/. No extra mods needed.
+        configCheck {
+            client()
+            gameDirectory = file('run-config')
+            systemProperty 'foxstweaks.configCheck', 'true'
+        }
+
         // Headless: enough to load datapacks and read the log, e.g. to check what the affix patcher did.
         // Needs the same hand-placed jars as the client, in run-server/mods.
         server {

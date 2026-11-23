@@ -1,5 +1,6 @@
 package dev.watdafawx.foxstweaks.perf;
 
+import dev.watdafawx.foxstweaks.Config;
 import dev.watdafawx.foxstweaks.FoxsTweaks;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.Font;
@@ -111,7 +112,7 @@ public final class PerfOverlayRenderer {
 
     private static void renderTabCards(GuiGraphics gg, Font font,
                                        boolean hasVanilla, int vMinX, int vMinY, int vMaxX, int vMaxY) {
-        PerfSnapshotPayload srv = ClientPerfTracker.serverSnapshot();
+        PerfSnapshotPayload srv = Config.perfOverlayServerCard() ? ClientPerfTracker.serverSnapshot() : null;
         ClientPerfTracker.ClientStats cli = ClientPerfTracker.clientStats();
         float[] cliFrames = ClientPerfTracker.recentFrameTimesMs(PerfSnapshotPayload.SPARKLINE_SAMPLES);
 
@@ -120,20 +121,18 @@ public final class PerfOverlayRenderer {
         int cliH = 122;
         int srvH = srv != null ? serverCardHeight(srv) : cliH;
 
-        if (srv == null) {
+        // An explicit placement wins over the player list: the cards are pinned to an edge as a
+        // stacked block, nudged by the offset. This is what makes the overlay movable at all.
+        String placement = Config.perfOverlayPlacement();
+        if (!"flank".equals(placement)) {
             lastFlankedVanillaTab = false;
-            if (hasVanilla && vMaxX + CARD_GAP + CARD_W <= screenW - 4) {
-                lastFlankedVanillaTab = true;
-                drawClientCard(gg, font, vMaxX + CARD_GAP, clampY(vMinY, cliH, screenH), CARD_W, cliH, cli, cliFrames);
-            } else {
-                int y = hasVanilla ? vMaxY + CARD_GAP : 10;
-                drawClientCard(gg, font, (screenW - CARD_W) / 2, clampY(y, cliH, screenH), CARD_W, cliH, cli, cliFrames);
-            }
+            renderAnchored(gg, font, placement, screenW, screenH, srv, srvH, cli, cliFrames, cliH);
             return;
         }
 
-        // Preferred when vanilla Tab is visible: flank left (Server) and right (Client)
-        if (hasVanilla) {
+        // Flank mode: both cards beside the player list when they fit, else centred below it.
+        boolean showClient = Config.perfOverlayClientCard();
+        if (hasVanilla && showClient && srv != null) {
             int leftX = vMinX - CARD_GAP - CARD_W;
             int rightX = vMaxX + CARD_GAP;
             if (leftX >= 4 && rightX + CARD_W <= screenW - 4) {
@@ -144,22 +143,71 @@ public final class PerfOverlayRenderer {
             }
         }
 
-        // Fallback (solo singleplayer with no vanilla Tab, or Tab list too wide to flank): side-by-side or stacked
         lastFlankedVanillaTab = false;
         int startY = hasVanilla ? vMaxY + CARD_GAP : 10;
-        int combinedW = CARD_W * 2 + CARD_GAP;
+        int cards = (srv != null ? 1 : 0) + (showClient ? 1 : 0);
+        int combinedW = cards == 2 ? CARD_W * 2 + CARD_GAP : CARD_W;
         if (combinedW <= screenW - 8) {
-            int maxH = Math.max(srvH, cliH);
+            int maxH = cards == 2 ? Math.max(srvH, cliH) : (srv != null ? srvH : cliH);
             int y = clampY(startY, maxH, screenH);
-            int leftX = (screenW - combinedW) / 2;
-            drawServerCard(gg, font, leftX, y, CARD_W, srvH, srv);
-            drawClientCard(gg, font, leftX + CARD_W + CARD_GAP, y, CARD_W, cliH, cli, cliFrames);
+            int x = (screenW - combinedW) / 2;
+            if (srv != null) {
+                drawServerCard(gg, font, x, y, CARD_W, srvH, srv);
+                x += CARD_W + CARD_GAP;
+            }
+            if (showClient)
+                drawClientCard(gg, font, x, y, CARD_W, cliH, cli, cliFrames);
         } else {
             int x = Math.max(4, (screenW - CARD_W) / 2);
             int y = clampY(startY, srvH + cliH + CARD_GAP, screenH);
-            drawServerCard(gg, font, x, y, CARD_W, srvH, srv);
-            drawClientCard(gg, font, x, y + srvH + CARD_GAP, CARD_W, cliH, cli, cliFrames);
+            if (srv != null) {
+                drawServerCard(gg, font, x, y, CARD_W, srvH, srv);
+                y += srvH + CARD_GAP;
+            }
+            if (showClient)
+                drawClientCard(gg, font, x, y, CARD_W, cliH, cli, cliFrames);
         }
+    }
+
+    /**
+     * Pins the cards to an edge or corner as a stacked block (Server above Client), ignoring the player
+     * list. Used for every placement other than {@code flank}; the offsets let a player push the block
+     * away from whatever else they have on screen, and the result is clamped so nothing goes off-screen.
+     */
+    private static void renderAnchored(GuiGraphics gg, Font font, String placement,
+                                       int screenW, int screenH, PerfSnapshotPayload srv, int srvH,
+                                       ClientPerfTracker.ClientStats cli, float[] cliFrames, int cliH) {
+        boolean showClient = Config.perfOverlayClientCard();
+        boolean showServer = srv != null;
+        if (!showClient && !showServer)
+            return;
+
+        int gap = showClient && showServer ? CARD_GAP : 0;
+        int totalH = (showServer ? srvH : 0) + gap + (showClient ? cliH : 0);
+        int offX = Config.perfOverlayOffsetX();
+        int offY = Config.perfOverlayOffsetY();
+
+        int x;
+        if (placement.endsWith("Left"))
+            x = 4 + offX;
+        else if (placement.endsWith("Right"))
+            x = screenW - CARD_W - 4 + offX;
+        else
+            x = (screenW - CARD_W) / 2 + offX;
+
+        int y = placement.startsWith("bottom")
+                ? screenH - totalH - 4 + offY
+                : 4 + offY;
+
+        x = Math.max(2, Math.min(x, screenW - CARD_W - 2));
+        y = clampY(y, totalH, screenH);
+
+        if (showServer) {
+            drawServerCard(gg, font, x, y, CARD_W, srvH, srv);
+            y += srvH + gap;
+        }
+        if (showClient)
+            drawClientCard(gg, font, x, y, CARD_W, cliH, cli, cliFrames);
     }
 
     private static int serverCardHeight(PerfSnapshotPayload s) {

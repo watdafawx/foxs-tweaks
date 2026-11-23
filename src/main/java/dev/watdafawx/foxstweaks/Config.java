@@ -6,6 +6,11 @@ import net.neoforged.neoforge.common.ModConfigSpec;
 public final class Config {
     private static final ModConfigSpec.Builder BUILDER = new ModConfigSpec.Builder();
 
+    // ---- relics ----
+    static {
+        BUILDER.push("relics");
+    }
+
     public static final ModConfigSpec.BooleanValue AUTO_SOLVE_ON_PICKUP = BUILDER
             .comment(
                     "Complete a relic's constellation research automatically, so its abilities are never",
@@ -84,6 +89,15 @@ public final class Config {
                     "with the client alone.")
             .define("relicParticleToggle", true);
 
+    static {
+        BUILDER.pop();
+    }
+
+    // ---- world ----
+    static {
+        BUILDER.push("world");
+    }
+
     public static final ModConfigSpec.BooleanValue OVERWORLD_COPY = BUILDER
             .comment(
                     "Adds a second, default overworld (foxstweaks:overworld_copy): vanilla noise settings, the",
@@ -95,6 +109,15 @@ public final class Config {
                     "Off: the portals stop working and the dimension is not loaded. Restart the world/server",
                     "after changing it. Anything built in the copy stays on disk.")
             .define("overworldCopy", true);
+
+    static {
+        BUILDER.pop();
+    }
+
+    // ---- apotheosis ----
+    static {
+        BUILDER.push("apotheosis");
+    }
 
     public static final ModConfigSpec.BooleanValue AFFIX_TOOLTIP_PANEL = BUILDER
             .comment(
@@ -159,6 +182,46 @@ public final class Config {
                     "A heuristic starting point: tune it against the mobs you actually fight.")
             .defineInRange("gunDamageMaxMultiplier", 20.0, 1.0, 1000.0);
 
+    public static final ModConfigSpec.BooleanValue ASCENSION_COMPAT = BUILDER
+            .comment(
+                    "Make third-party Apotheosis affixes (Apothic Compats, Iron's Apothic, Fallen Gems,",
+                    "Ragnarok, ...) available at Apothic Ascension's rarities. Apothic Ascension only ships",
+                    "values for Apotheosis' own affixes, so every other affix silently vanishes above Mythic.",
+                    "",
+                    "Values for the new rarities are extrapolated from each affix's own top tier on the same",
+                    "curve Ascension uses. Server-side: the server needs this mod, clients do not.")
+            .define("ascensionCompat", true);
+
+    public static final ModConfigSpec.BooleanValue ANCIENT_REFORGING_COMPAT = BUILDER
+            .comment(
+                    "Make third-party Apotheosis affixes (Apothic Point Blank, Apothic Compats, Iron's Apothic,",
+                    "...) available at Ancient Reforging's Ancient rarity. An affix only exists at rarities it",
+                    "lists a value for, so a weapon reforged at the Ancient Reforging table comes out with no",
+                    "affixes of these packs at all ('no affixes available' in the log).",
+                    "",
+                    "Ancient sits level with Apothic Ascension's Legendary, so it gets the values extrapolated",
+                    "for Legendary, from each affix's own top tier. Affixes that already list Ancient (or get",
+                    "it from ragnarokAncientReforging) are left alone. Works without Apothic Ascension.",
+                    "Server-side, like ascensionCompat.")
+            .define("ancientReforgingCompat", true);
+
+    public static final ModConfigSpec.BooleanValue RAGNAROK_ANCIENT_REFORGING = BUILDER
+            .comment(
+                    "Let Apotheosis Modern Ragnarok's gun affixes roll at Ancient Reforging's Ancient rarity.",
+                    "Ragnarok's affixes only know its own Ancient rarity, so a gun reforged at the Ancient",
+                    "Reforging table would otherwise come out with no affixes at all. The values are",
+                    "Ragnarok's own Ancient values, copied across. Server-side, like ascensionCompat.")
+            .define("ragnarokAncientReforging", true);
+
+    static {
+        BUILDER.pop();
+    }
+
+    // ---- storage ----
+    static {
+        BUILDER.push("storage");
+    }
+
     public static final ModConfigSpec.BooleanValue PRINTER_NEARBY_STORAGE = BUILDER
             .comment(
                     "Let Vic's Point Blank's weapon printer take a recipe's ingredients from storage near the",
@@ -209,47 +272,89 @@ public final class Config {
                     "Server-side: the server needs this mod, clients do not.")
             .define("ammoBoxReset", true);
 
-    public static final ModConfigSpec.BooleanValue CURIOS_TOOLTIP_WORKAROUND = BUILDER
-            .comment(
-                    "Recover the hovered item ourselves when a screen's own tooltip rendering forgets to",
-                    "attach it. Curios' inventory screen does this for every populated curio slot",
-                    "(TheIllusiveC4/Curios#536), which otherwise blanks out the affix panel there.",
-                    "",
-                    "Only restores our own panel - Apotheosis' own tooltip content is Apotheosis' code",
-                    "reading the same broken event, and this can't reach it. Turn off once Curios ships",
-                    "its own fix (TheIllusiveC4/Curios#625).")
-            .define("curiosTooltipWorkaround", true);
+    static {
+        BUILDER.pop();
+    }
 
-    public static final ModConfigSpec.BooleanValue ASCENSION_COMPAT = BUILDER
-            .comment(
-                    "Make third-party Apotheosis affixes (Apothic Compats, Iron's Apothic, Fallen Gems,",
-                    "Ragnarok, ...) available at Apothic Ascension's rarities. Apothic Ascension only ships",
-                    "values for Apotheosis' own affixes, so every other affix silently vanishes above Mythic.",
-                    "",
-                    "Values for the new rarities are extrapolated from each affix's own top tier on the same",
-                    "curve Ascension uses. Server-side: the server needs this mod, clients do not.")
-            .define("ascensionCompat", true);
+    // ---- performance ----
+    static {
+        BUILDER.push("performance");
+    }
 
-    public static final ModConfigSpec.BooleanValue ANCIENT_REFORGING_COMPAT = BUILDER
+    public static final ModConfigSpec.BooleanValue PERF_TAB_OVERLAY = BUILDER
             .comment(
-                    "Make third-party Apotheosis affixes (Apothic Point Blank, Apothic Compats, Iron's Apothic,",
-                    "...) available at Ancient Reforging's Ancient rarity. An affix only exists at rarities it",
-                    "lists a value for, so a weapon reforged at the Ancient Reforging table comes out with no",
-                    "affixes of these packs at all ('no affixes available' in the log).",
+                    "Show two live performance cards (Server Performance & Client Performance) directly below",
+                    "the Tab player list: TPS (5s/10s/1m/5m/15m), tick durations (min/med/p95/max ms), CPU,",
+                    "heap & GC, loaded chunks/entities, per-dimension tick times, client FPS (with 1% low),",
+                    "frame times, client CPU/GPU/heap and ping. Zero network traffic while Tab is closed.",
                     "",
-                    "Ancient sits level with Apothic Ascension's Legendary, so it gets the values extrapolated",
-                    "for Legendary, from each affix's own top tier. Affixes that already list Ancient (or get",
-                    "it from ragnarokAncientReforging) are left alone. Works without Apothic Ascension.",
-                    "Server-side, like ascensionCompat.")
-            .define("ancientReforgingCompat", true);
+                    "Client-side display toggle. Needs Fox's Tweaks on the server for the Server card; on a",
+                    "vanilla server only the Client card is shown.")
+            .define("perfTabOverlay", true);
 
-    public static final ModConfigSpec.BooleanValue RAGNAROK_ANCIENT_REFORGING = BUILDER
+    public static final ModConfigSpec.BooleanValue PERF_MINI_HUD = BUILDER
             .comment(
-                    "Let Apotheosis Modern Ragnarok's gun affixes roll at Ancient Reforging's Ancient rarity.",
-                    "Ragnarok's affixes only know its own Ancient rarity, so a gun reforged at the Ancient",
-                    "Reforging table would otherwise come out with no affixes at all. The values are",
-                    "Ragnarok's own Ancient values, copied across. Server-side, like ascensionCompat.")
-            .define("ragnarokAncientReforging", true);
+                    "Start with the compact pinned performance mini-HUD visible at top-left (can also be",
+                    "toggled live at any time with the 'Toggle Performance Mini-HUD' key under Controls).",
+                    "",
+                    "Client-side only.")
+            .define("perfMiniHud", false);
+
+    public static final ModConfigSpec.ConfigValue<String> PERF_OVERLAY_PLACEMENT = BUILDER
+            .comment(
+                    "Where the Tab performance cards go.",
+                    "",
+                    "flank (default): the Server card left of the player list and the Client card right of it,",
+                    "falling back to centred below the list when it is too wide to fit beside it.",
+                    "",
+                    "topLeft / topCenter / topRight / bottomLeft / bottomCenter / bottomRight: pin the pair to",
+                    "that edge or corner as a stacked block, ignoring the player list entirely.",
+                    "",
+                    "Client-side only.")
+            // Arrays.asList, not List.of: ModConfigSpec tests a missing key with null, and List.of's
+            // immutable contains(null) throws instead of returning false.
+            .defineInList("perfOverlayPlacement", "flank",
+                    java.util.Arrays.asList("flank", "topLeft", "topCenter", "topRight",
+                            "bottomLeft", "bottomCenter", "bottomRight"));
+
+    public static final ModConfigSpec.IntValue PERF_OVERLAY_OFFSET_X = BUILDER
+            .comment(
+                    "Pixels to nudge the Tab performance cards horizontally, on top of perfOverlayPlacement.",
+                    "Positive is right. Ignored in 'flank' mode, where the player list decides the position.")
+            .defineInRange("perfOverlayOffsetX", 0, -2000, 2000);
+
+    public static final ModConfigSpec.IntValue PERF_OVERLAY_OFFSET_Y = BUILDER
+            .comment(
+                    "Pixels to nudge the Tab performance cards vertically, on top of perfOverlayPlacement.",
+                    "Positive is down. Ignored in 'flank' mode.")
+            .defineInRange("perfOverlayOffsetY", 0, -2000, 2000);
+
+    public static final ModConfigSpec.BooleanValue PERF_OVERLAY_SERVER_CARD = BUILDER
+            .comment(
+                    "Draw the Server performance card. Off leaves only the Client card, which is what a",
+                    "client without Fox's Tweaks on the server sees anyway.")
+            .define("perfOverlayServerCard", true);
+
+    public static final ModConfigSpec.BooleanValue PERF_OVERLAY_CLIENT_CARD = BUILDER
+            .comment("Draw the Client performance card.")
+            .define("perfOverlayClientCard", true);
+
+    public static final ModConfigSpec.BooleanValue FPS_HIGHLIGHTER_SPARK_HOOK = BUILDER
+            .comment(
+                    "Automatically run the in-world FPS hotspot highlighter whenever you run /sparkc profiler.",
+                    "Highlights the heaviest BlockEntities and Entities with through-wall heat boxes and",
+                    "µs/frame labels. You can also run /foxstweaks fps [seconds|stop|clear] standalone.",
+                    "",
+                    "Client-side only. Zero overhead when not scanning.")
+            .define("fpsHighlighterSparkHook", true);
+
+    public static final ModConfigSpec.BooleanValue DISABLE_FLORA_LUCK_PARTICLES = BUILDER
+            .comment(
+                    "Stop Kaleidoscope Flora from spawning orbiting yellow dust particles around any player",
+                    "or mob that has the vanilla Luck effect (from relics, potions, gear, etc.).",
+                    "",
+                    "Server-side. Does nothing without Kaleidoscope Flora.")
+            .define("disableFloraLuckParticles", true);
 
     public static final ModConfigSpec.BooleanValue ICON_PICKER_CACHE = BUILDER
             .comment(
@@ -281,14 +386,6 @@ public final class Config {
                     "Client-side only. Does nothing without EMI. Applies on the next EMI reload.")
             .define("emiInternPatches", true);
 
-    public static final ModConfigSpec.BooleanValue GUIDEME_TOOLTIP_FIX = BUILDER
-            .comment(
-                    "Stop GuideME's 'Hold [G] to open guide' tooltip line from flickering, or showing another",
-                    "item's guide, when some other mod builds a tooltip for a different item every tick.",
-                    "",
-                    "Client-side only. Does nothing without GuideME.")
-            .define("guidemeTooltipFix", true);
-
     public static final ModConfigSpec.BooleanValue BACKPACK_RENDER_INFO_CACHE = BUILDER
             .comment(
                     "Stop Sophisticated Backpacks re-reading a backpack's render data every frame. Drawing a",
@@ -309,16 +406,6 @@ public final class Config {
                     "Client-side only. Does nothing without Hats. Needs a restart.")
             .define("hatsFieldLookupCache", true);
 
-    public static final ModConfigSpec.BooleanValue SHRINK_HOTKEY = BUILDER
-            .comment(
-                    "Let the 'Toggle Shrink' key (Controls, unbound by default) use a Shrink 'Shrinking Device' from",
-                    "your hands, its own Curios slot or your inventory. Press it to shrink or unshrink the mob or",
-                    "player you are looking at (within reach), or yourself when you look at nothing; same power",
-                    "cost and scale as using the device. Shift + the key opens Shrink's own device menu (scale).",
-                    "",
-                    "Needs Fox's Tweaks on the server too. Does nothing without Shrink.")
-            .define("shrinkHotkey", true);
-
     public static final ModConfigSpec.BooleanValue GRILLING_SKEWER_CACHE = BUILDER
             .comment(
                     "Stop Kaleidoscope Grilling rebuilding its skewer recipe list for every item drawn. It",
@@ -328,14 +415,6 @@ public final class Config {
                     "",
                     "Does nothing without Kaleidoscope Grilling.")
             .define("grillingSkewerCache", true);
-
-    public static final ModConfigSpec.BooleanValue TACZ_ATTACHMENT_TOOLTIP_NUMBERS = BUILDER
-            .comment(
-                    "Show how much a TACZ attachment changes each stat in its tooltip, not just which stats it",
-                    "changes: '+ ADS Time (+0.1s)', '- Vertical Recoil (-10%)'. Units match TACZ's refit screen.",
-                    "",
-                    "Client-side only. Does nothing without TACZ.")
-            .define("taczAttachmentTooltipNumbers", true);
 
     public static final ModConfigSpec.BooleanValue TACZ_FAST_MODEL_RENDER = BUILDER
             .comment(
@@ -347,16 +426,54 @@ public final class Config {
                     "Client-side only. Does nothing without TACZ.")
             .define("taczFastModelRender", true);
 
-    public static final ModConfigSpec.BooleanValue TEMPORAL_POUCH_CURIO = BUILDER
+    public static final ModConfigSpec.BooleanValue SCROLL_SHELF_CACHE = BUILDER
             .comment(
-                    "Gadgets Against Grind's Temporal Pouch gets its own Curios slot, keeps filling with time",
-                    "while it sits there, and a hotkey (Options -> Controls, unbound by default) uses it on the",
-                    "block you're looking at as if it were in your hand. The slot itself comes from data and",
-                    "shows whenever GAG and Curios are both installed; this toggle turns off the filling and",
-                    "the hotkey.",
+                    "Cache Iron's Spellbooks Scroll Shelf's available-scrolls list until the shelf changes.",
+                    "Without this, every getStackInSlot() call rebuilds the entire scroll list from scratch,",
+                    "making pipe/Logistics Networks stacked insertions O(N^2) and causing 300ms-1.25s stalls.",
                     "",
-                    "Server + client. Does nothing without GAG and Curios.")
-            .define("temporalPouchCurio", true);
+                    "Server-side. Does nothing without Scroll Shelf.")
+            .define("scrollShelfCache", true);
+
+    public static final ModConfigSpec.BooleanValue TRANSMOG_INVENTORY_FAST_PATH = BUILDER
+            .comment(
+                    "Stop Transmog copying your whole inventory every time something looks at it while the",
+                    "game is drawing. Transmog swaps in each item's transmogged look by building a full copy",
+                    "of the inventory per call; trinket layers, HUDs and ritual renderers call it many times a",
+                    "frame (~10% of frame time in a spark profile). When nothing in the inventory is",
+                    "transmogged the copy would be identical, so the real inventory is returned instead.",
+                    "",
+                    "Client-side only. Does nothing without Transmog.")
+            .define("transmogInventoryFastPath", true);
+
+    public static final ModConfigSpec.BooleanValue ARCHITECTURY_FAST_EVENTS = BUILDER
+            .comment(
+                    "Make Architectury's events call their listeners directly. For every listener of every",
+                    "event, Architectury looked the method up again through reflection (MethodHandles",
+                    "unreflect) and invoked it the slowest way; with many Architectury mods that was a few",
+                    "percent of both client frame time and server tick time.",
+                    "",
+                    "Both sides. Does nothing without Architectury.")
+            .define("architecturyFastEvents", true);
+
+    public static final ModConfigSpec.BooleanValue CURIOS_CACHE_HANDLER_FIX = BUILDER
+            .comment(
+                    "Let Curios Performance Fix's client cache actually hit. Its cache is rebuilt whenever it",
+                    "is asked through a different Curios inventory object, but Curios hands out a new one on",
+                    "every lookup, so most lookups rebuilt it. This reuses one inventory object per entity",
+                    "for up to a second (the same refresh window the cache itself uses).",
+                    "",
+                    "Client-side only. Does nothing without Curios Performance Fix.")
+            .define("curiosCacheHandlerFix", true);
+
+    public static final ModConfigSpec.BooleanValue GPUSHIFT_CLASSIFIER_CACHE = BUILDER
+            .comment(
+                    "Remember GPUShift's particle category per particle type. It worked the category out",
+                    "again for every particle spawned, lower-casing class names up the class hierarchy each",
+                    "time; the answer never changes for a given particle class.",
+                    "",
+                    "Client-side only. Does nothing without GPUShift.")
+            .define("gpushiftClassifierCache", true);
 
     public static final ModConfigSpec.BooleanValue AE2_EMI_QUICK_FILL = BUILDER
             .comment(
@@ -368,6 +485,63 @@ public final class Config {
                     "",
                     "Client-side only. Does nothing without AE2 and EMI.")
             .define("ae2EmiQuickFill", true);
+
+    static {
+        BUILDER.pop();
+    }
+
+    // ---- integrations ----
+    static {
+        BUILDER.push("integrations");
+    }
+
+    public static final ModConfigSpec.BooleanValue GUIDEME_TOOLTIP_FIX = BUILDER
+            .comment(
+                    "Stop GuideME's 'Hold [G] to open guide' tooltip line from flickering, or showing another",
+                    "item's guide, when some other mod builds a tooltip for a different item every tick.",
+                    "",
+                    "Client-side only. Does nothing without GuideME.")
+            .define("guidemeTooltipFix", true);
+
+    public static final ModConfigSpec.BooleanValue CURIOS_TOOLTIP_WORKAROUND = BUILDER
+            .comment(
+                    "Recover the hovered item ourselves when a screen's own tooltip rendering forgets to",
+                    "attach it. Curios' inventory screen does this for every populated curio slot",
+                    "(TheIllusiveC4/Curios#536), which otherwise blanks out the affix panel there.",
+                    "",
+                    "Only restores our own panel - Apotheosis' own tooltip content is Apotheosis' code",
+                    "reading the same broken event, and this can't reach it. Turn off once Curios ships",
+                    "its own fix (TheIllusiveC4/Curios#625).")
+            .define("curiosTooltipWorkaround", true);
+
+    public static final ModConfigSpec.BooleanValue TACZ_ATTACHMENT_TOOLTIP_NUMBERS = BUILDER
+            .comment(
+                    "Show how much a TACZ attachment changes each stat in its tooltip, not just which stats it",
+                    "changes: '+ ADS Time (+0.1s)', '- Vertical Recoil (-10%)'. Units match TACZ's refit screen.",
+                    "",
+                    "Client-side only. Does nothing without TACZ.")
+            .define("taczAttachmentTooltipNumbers", true);
+
+    public static final ModConfigSpec.BooleanValue SHRINK_HOTKEY = BUILDER
+            .comment(
+                    "Let the 'Toggle Shrink' key (Controls, unbound by default) use a Shrink 'Shrinking Device' from",
+                    "your hands, its own Curios slot or your inventory. Press it to shrink or unshrink the mob or",
+                    "player you are looking at (within reach), or yourself when you look at nothing; same power",
+                    "cost and scale as using the device. Shift + the key opens Shrink's own device menu (scale).",
+                    "",
+                    "Needs Fox's Tweaks on the server too. Does nothing without Shrink.")
+            .define("shrinkHotkey", true);
+
+    public static final ModConfigSpec.BooleanValue TEMPORAL_POUCH_CURIO = BUILDER
+            .comment(
+                    "Gadgets Against Grind's Temporal Pouch gets its own Curios slot, keeps filling with time",
+                    "while it sits there, and a hotkey (Options -> Controls, unbound by default) uses it on the",
+                    "block you're looking at as if it were in your hand. The slot itself comes from data and",
+                    "shows whenever GAG and Curios are both installed; this toggle turns off the filling and",
+                    "the hotkey.",
+                    "",
+                    "Server + client. Does nothing without GAG and Curios.")
+            .define("temporalPouchCurio", true);
 
     public static final ModConfigSpec.BooleanValue BOTANY_POTS_SOURCE = BUILDER
             .comment(
@@ -437,72 +611,6 @@ public final class Config {
 
     // Performance patches. Each one targets another mod by class name, so a pack without that mod
     // simply never applies it; the toggle switches it off in a pack that has the mod.
-
-    public static final ModConfigSpec.BooleanValue TRANSMOG_INVENTORY_FAST_PATH = BUILDER
-            .comment(
-                    "Stop Transmog copying your whole inventory every time something looks at it while the",
-                    "game is drawing. Transmog swaps in each item's transmogged look by building a full copy",
-                    "of the inventory per call; trinket layers, HUDs and ritual renderers call it many times a",
-                    "frame (~10% of frame time in a spark profile). When nothing in the inventory is",
-                    "transmogged the copy would be identical, so the real inventory is returned instead.",
-                    "",
-                    "Client-side only. Does nothing without Transmog.")
-            .define("transmogInventoryFastPath", true);
-
-    public static final ModConfigSpec.BooleanValue ARCHITECTURY_FAST_EVENTS = BUILDER
-            .comment(
-                    "Make Architectury's events call their listeners directly. For every listener of every",
-                    "event, Architectury looked the method up again through reflection (MethodHandles",
-                    "unreflect) and invoked it the slowest way; with many Architectury mods that was a few",
-                    "percent of both client frame time and server tick time.",
-                    "",
-                    "Both sides. Does nothing without Architectury.")
-            .define("architecturyFastEvents", true);
-
-    public static final ModConfigSpec.BooleanValue CURIOS_CACHE_HANDLER_FIX = BUILDER
-            .comment(
-                    "Let Curios Performance Fix's client cache actually hit. Its cache is rebuilt whenever it",
-                    "is asked through a different Curios inventory object, but Curios hands out a new one on",
-                    "every lookup, so most lookups rebuilt it. This reuses one inventory object per entity",
-                    "for up to a second (the same refresh window the cache itself uses).",
-                    "",
-                    "Client-side only. Does nothing without Curios Performance Fix.")
-            .define("curiosCacheHandlerFix", true);
-
-    public static final ModConfigSpec.BooleanValue GPUSHIFT_CLASSIFIER_CACHE = BUILDER
-            .comment(
-                    "Remember GPUShift's particle category per particle type. It worked the category out",
-                    "again for every particle spawned, lower-casing class names up the class hierarchy each",
-                    "time; the answer never changes for a given particle class.",
-                    "",
-                    "Client-side only. Does nothing without GPUShift.")
-            .define("gpushiftClassifierCache", true);
-
-    public static final ModConfigSpec.BooleanValue SCROLL_SHELF_CACHE = BUILDER
-            .comment(
-                    "Cache Iron's Spellbooks Scroll Shelf's available-scrolls list until the shelf changes.",
-                    "Without this, every getStackInSlot() call rebuilds the entire scroll list from scratch,",
-                    "making pipe/Logistics Networks stacked insertions O(N^2) and causing 300ms-1.25s stalls.",
-                    "",
-                    "Server-side. Does nothing without Scroll Shelf.")
-            .define("scrollShelfCache", true);
-
-    public static final ModConfigSpec.BooleanValue DISABLE_FLORA_LUCK_PARTICLES = BUILDER
-            .comment(
-                    "Stop Kaleidoscope Flora from spawning orbiting yellow dust particles around any player",
-                    "or mob that has the vanilla Luck effect (from relics, potions, gear, etc.).",
-                    "",
-                    "Server-side. Does nothing without Kaleidoscope Flora.")
-            .define("disableFloraLuckParticles", true);
-
-    public static final ModConfigSpec.BooleanValue FPS_HIGHLIGHTER_SPARK_HOOK = BUILDER
-            .comment(
-                    "Automatically run the in-world FPS hotspot highlighter whenever you run /sparkc profiler.",
-                    "Highlights the heaviest BlockEntities and Entities with through-wall heat boxes and",
-                    "µs/frame labels. You can also run /foxstweaks fps [seconds|stop|clear] standalone.",
-                    "",
-                    "Client-side only. Zero overhead when not scanning.")
-            .define("fpsHighlighterSparkHook", true);
 
     public static final ModConfigSpec.BooleanValue CHICKENS_RADIATION_KEEP_LOOT = BUILDER
             .comment(
@@ -588,32 +696,25 @@ public final class Config {
                     "Client-side only. Needs both Inventory Profiles Next and FTB Library.")
             .define("ipnSidebarButtons", true);
 
-    public static final ModConfigSpec.BooleanValue PERF_TAB_OVERLAY = BUILDER
-            .comment(
-                    "Show two live performance cards (Server Performance & Client Performance) directly below",
-                    "the Tab player list: TPS (5s/10s/1m/5m/15m), tick durations (min/med/p95/max ms), CPU,",
-                    "heap & GC, loaded chunks/entities, per-dimension tick times, client FPS (with 1% low),",
-                    "frame times, client CPU/GPU/heap and ping. Zero network traffic while Tab is closed.",
-                    "",
-                    "Client-side display toggle. Needs Fox's Tweaks on the server for the Server card; on a",
-                    "vanilla server only the Client card is shown.")
-            .define("perfTabOverlay", true);
+    static {
+        BUILDER.pop();
+    }
 
-    public static final ModConfigSpec.BooleanValue PERF_MINI_HUD = BUILDER
-            .comment(
-                    "Start with the compact pinned performance mini-HUD visible at top-left (can also be",
-                    "toggled live at any time with the 'Toggle Performance Mini-HUD' key under Controls).",
-                    "",
-                    "Client-side only.")
-            .define("perfMiniHud", false);
+    // ---- misc ----
+    static {
+        BUILDER.push("misc");
+    }
 
-    public static final ModConfigSpec.IntValue DEBUG_LOG_LOOT_ROLLS = BUILDER
-            .comment(
+    public static final ModConfigSpec.IntValue DEBUG_LOG_LOOT_ROLLS = BUILDER            .comment(
                     "Debugging aid, off by default. When above 0, logs a stack trace for each of the first N",
                     "times a chest/barrel (any RandomizableContainer) rolls its loot table with no player",
                     "opening it - i.e. some mod read its contents. Used to find what fills structure loot",
                     "before Lootr can convert it. Look for 'Loot rolled without a player' in latest.log.")
             .defineInRange("debugLogLootRolls", 0, 0, 1000);
+
+    static {
+        BUILDER.pop();
+    }
 
     public static final ModConfigSpec SPEC = BUILDER.build();
 
@@ -628,6 +729,27 @@ public final class Config {
         }
 
         return value.get();
+    }
+
+    /** Where the Tab performance cards go; see {@link #PERF_OVERLAY_PLACEMENT}. */
+    public static String perfOverlayPlacement() {
+        return SPEC.isLoaded() ? PERF_OVERLAY_PLACEMENT.get() : "flank";
+    }
+
+    public static int perfOverlayOffsetX() {
+        return SPEC.isLoaded() ? PERF_OVERLAY_OFFSET_X.get() : 0;
+    }
+
+    public static int perfOverlayOffsetY() {
+        return SPEC.isLoaded() ? PERF_OVERLAY_OFFSET_Y.get() : 0;
+    }
+
+    public static boolean perfOverlayServerCard() {
+        return !SPEC.isLoaded() || PERF_OVERLAY_SERVER_CARD.get();
+    }
+
+    public static boolean perfOverlayClientCard() {
+        return !SPEC.isLoaded() || PERF_OVERLAY_CLIENT_CARD.get();
     }
 
     private Config() {

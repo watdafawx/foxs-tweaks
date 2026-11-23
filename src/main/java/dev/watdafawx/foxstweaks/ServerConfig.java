@@ -18,6 +18,10 @@ public final class ServerConfig {
 
     public static final String DEFAULT_FRAME = "minecraft:stone_bricks";
 
+    static {
+        BUILDER.push("portal");
+    }
+
     public static final ModConfigSpec.ConfigValue<List<? extends String>> OVERWORLD_COPY_FRAME = BUILDER
             .comment(
                     "Blocks (or #tags) that make a portal frame to the overworld copy. Same rules as a Nether",
@@ -49,6 +53,11 @@ public final class ServerConfig {
             .comment("Right-click a portal to the overworld copy with a dye to colour it. Needs the mod on the client to be seen.")
             .define("overworldCopyPortalDye", true);
 
+    static {
+        BUILDER.pop();
+        BUILDER.push("performance");
+    }
+
     public static final ModConfigSpec.BooleanValue PERF_OVERLAY_ENABLED = BUILDER
             .comment("Allow the server to send live performance snapshots (TPS, MSPT, CPU, heap, world counts) to clients holding Tab or using the mini-HUD.")
             .define("perfOverlayEnabled", true);
@@ -56,6 +65,11 @@ public final class ServerConfig {
     public static final ModConfigSpec.BooleanValue PERF_OVERLAY_OP_ONLY = BUILDER
             .comment("Restrict server performance snapshots to operators (permission level 2+). Off by default so every player can check server TPS/MSPT.")
             .define("perfOverlayOpOnly", false);
+
+    static {
+        BUILDER.pop();
+        BUILDER.push("spawnAnchors");
+    }
 
     public static final ModConfigSpec.BooleanValue SPAWN_ANCHORS_ENABLED = BUILDER
             .comment("Allow virtual spawn anchors (/foxstweaks anchor add|remove|list|tp) that force-load chunks, run random ticks (Dreadful Dirt, crops), activate spawners, and prevent mob despawning.")
@@ -81,6 +95,10 @@ public final class ServerConfig {
                     "anchor owner's. A player inside this radius always wins; nobody inside means the anchor's tier",
                     "is used. 0 = the anchor always wins.")
             .defineInRange("spawnAnchorsTierPlayerRange", 128, 0, 512);
+
+    static {
+        BUILDER.pop();
+    }
 
     public static final ModConfigSpec SPEC = BUILDER.build();
 

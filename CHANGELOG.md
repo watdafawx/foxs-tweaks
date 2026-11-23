@@ -2,6 +2,9 @@
 
 ## 1.36.1
 
+- The settings screen is now **grouped into sections** instead of one long list: common (Relics, World, Apotheosis, Nearby Storage, Performance, Mod Integrations, Misc) and server (Overworld Copy Portals, Performance, Mob & Chunk Loader), each opened from its own row. **Settings written by an older version fall back to their defaults once**, because every key moved under its section in the toml; set anything you had changed again.
+- The **Tab performance cards are now placeable**: `perfOverlayPlacement` keeps `flank` (Server left of the player list, Client right) or pins the pair to any edge/corner (`topLeft` … `bottomRight`), `perfOverlayOffsetX`/`perfOverlayOffsetY` nudge them, and `perfOverlayServerCard`/`perfOverlayClientCard` hide either card.
+- Dev check: `build.bat runConfigCheck` (game dir `run-config/`) asserts the sections and that every section and key has a real label, then screenshots the screen. `runServer` also catches a broken config spec headlessly - a `defineInList` with an immutable list crashes config creation, because NeoForge tests a missing key with `null`.
 - The **Mob & Chunk Loader GUI** now does the Apotheosis tier too: a `Tier:` button cycles `off` → `haven` → … → `pinnacle` → `follows <owner>`, and the line under it shows what it is on. It reads `Tier: needs Apotheosis` and stays disabled when Apotheosis isn't installed. The tier button writes the same anchor data `/foxstweaks anchor tier` does.
 - Added `Name: shown/hidden` to the loader GUI: hides the floating `Mob & Chunk Loader [NxN]` label without touching the anchor itself. Persists on the dummy.
 - The GUI payloads grew those fields, so the channel went to version "2"; a client still on v1 keeps working, it just can't open this GUI (payloads stay optional).

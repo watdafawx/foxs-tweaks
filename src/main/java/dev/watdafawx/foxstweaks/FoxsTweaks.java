@@ -127,5 +127,9 @@ public class FoxsTweaks {
         // Dev-only check that an anchor carries its owner's Apotheosis world tier; `build.bat runAnchorTierCheck`.
         if (FMLEnvironment.dist.isClient() && !FMLEnvironment.production && Boolean.getBoolean("foxstweaks.anchorTierCheck"))
             dev.watdafawx.foxstweaks.client.dev.AnchorTierCheck.install();
+
+        // Dev-only check of the settings screen's sections; `build.bat runConfigCheck`.
+        if (FMLEnvironment.dist.isClient() && !FMLEnvironment.production && Boolean.getBoolean("foxstweaks.configCheck"))
+            dev.watdafawx.foxstweaks.client.dev.ConfigScreenCheck.install();
     }
 }
