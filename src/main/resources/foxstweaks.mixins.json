@@ -60,6 +60,7 @@
     "IconPickerScreenMixin",
     "IrisOptionListSearchMixin",
     "IrisShaderScreenSearchMixin",
+    "ParticleEngineMixin",
     "PlayerTabOverlayMixin",
     "RelicOptionsMixin",
     "SbEmiFillButtonMixin",

@@ -1,5 +1,9 @@
 # Changelog
 
+## 1.34.4
+
+- Fixed `/foxstweaks debug particles` and client-side relic particle suppression missing particles: `ClientLevel` overrides `addParticle` without calling `Level#addParticle`. Moved both to a new `ParticleEngineMixin` hooking `ParticleEngine#createParticle` and `ParticleEngine#add`, catching every client-side particle (including S2C packets and direct `ParticleEngine#add` calls).
+
 ## 1.34.3
 
 - Fixed `ScrollShelfHandlerMixin` failing to apply at runtime (`@Shadow field this$0` descriptor mismatch on `ScrollShelfBlockEntity$1`), which left Scroll Shelf's O(N²) `getAvailableScrolls()` uncached. Also skips cache invalidation on simulated `insertItem`/`extractItem` calls.
