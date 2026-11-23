@@ -1,5 +1,9 @@
 # Changelog
 
+## 1.34.3
+
+- Fixed `ScrollShelfHandlerMixin` failing to apply at runtime (`@Shadow field this$0` descriptor mismatch on `ScrollShelfBlockEntity$1`), which left Scroll Shelf's O(N²) `getAvailableScrolls()` uncached. Also skips cache invalidation on simulated `insertItem`/`extractItem` calls.
+
 ## 1.34.2
 
 - Renamed the Spawn Anchor item/GUI/nametag to **Mob & Chunk Loader** with clearer multi-line item tooltips and GUI subtitle explaining what it does (force-loads chunks, random ticks Dreadful Dirt/crops, activates spawners, prevents mob despawning).
