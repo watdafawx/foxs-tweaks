@@ -20,6 +20,7 @@ import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.List;
 import java.util.Map;
+import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
 
 /**
@@ -92,6 +93,49 @@ public final class SpawnAnchors {
             }
         }
         return false;
+    }
+
+    /**
+     * The nearest anchor that carries an Apotheosis tier and answers for this position (its chunk
+     * square plus one chunk of slack), or {@code null}. Used to give mob spawns near the anchor the
+     * tier of the player who placed it.
+     */
+    public static SpawnAnchorData.Anchor nearestTierAnchor(ServerLevel level, double x, double y, double z) {
+        if (!ServerConfig.spawnAnchorsEnabled())
+            return null;
+        List<SpawnAnchorData.Anchor> anchors = CACHE.get(level.dimension());
+        if (anchors == null || anchors.isEmpty())
+            return null;
+
+        SpawnAnchorData.Anchor best = null;
+        double bestDistSq = Double.MAX_VALUE;
+        for (int i = 0; i < anchors.size(); i++) {
+            SpawnAnchorData.Anchor a = anchors.get(i);
+            if (!a.carriesTier())
+                continue;
+            double d = a.horizontalDistSq(x, z);
+            if (d <= a.coverage() * a.coverage() && d < bestDistSq) {
+                bestDistSq = d;
+                best = a;
+            }
+        }
+        return best;
+    }
+
+    /** The first tier-carrying anchor in this dimension owned by the given player, or {@code null}. */
+    public static SpawnAnchorData.Anchor anchorForOwner(ServerLevel level, UUID owner) {
+        if (!ServerConfig.spawnAnchorsEnabled())
+            return null;
+        List<SpawnAnchorData.Anchor> anchors = CACHE.get(level.dimension());
+        if (anchors == null)
+            return null;
+
+        for (int i = 0; i < anchors.size(); i++) {
+            SpawnAnchorData.Anchor a = anchors.get(i);
+            if (a.carriesTier() && owner.equals(a.owner()))
+                return a;
+        }
+        return null;
     }
 
     public static double nearestAnchorDistSq(ServerLevel level, double x, double y, double z) {

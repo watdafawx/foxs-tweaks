@@ -13,6 +13,7 @@ import net.minecraft.sounds.SoundSource;
 import net.minecraft.world.InteractionResult;
 import net.minecraft.world.entity.Entity;
 import net.minecraft.world.entity.decoration.ArmorStand;
+import net.minecraft.world.entity.player.Player;
 import net.minecraft.world.item.ItemStack;
 import net.neoforged.bus.api.SubscribeEvent;
 import net.neoforged.fml.common.EventBusSubscriber;
@@ -20,6 +21,9 @@ import net.neoforged.neoforge.event.entity.EntityLeaveLevelEvent;
 import net.neoforged.neoforge.event.entity.player.AttackEntityEvent;
 import net.neoforged.neoforge.event.entity.player.PlayerInteractEvent;
 import net.neoforged.neoforge.network.PacketDistributor;
+
+import javax.annotation.Nullable;
+import java.util.UUID;
 
 /**
  * Handles interactions and lifecycle for placed Spawn Anchor dummies (tagged vanilla Armor Stands):
@@ -31,6 +35,10 @@ public final class SpawnDummyEvents {
     private static final String TAG_ID = "foxstweaks_anchor_id";
     private static final String TAG_ENABLED = "foxstweaks_anchor_enabled";
     private static final String TAG_RADIUS = "foxstweaks_anchor_radius";
+    private static final String TAG_OWNER = "foxstweaks_anchor_owner";
+    private static final String TAG_OWNER_NAME = "foxstweaks_anchor_owner_name";
+    private static final String TAG_TIER = "foxstweaks_anchor_tier";
+    private static final String TAG_FOLLOW_OWNER = "foxstweaks_anchor_follow_owner";
 
     private SpawnDummyEvents() {
     }
@@ -52,11 +60,24 @@ public final class SpawnDummyEvents {
         return Math.max(1, Math.min(8, r == 0 ? 2 : r));
     }
 
-    public static void initDummy(ServerLevel level, ArmorStand dummy, String id, boolean enabled, int radius) {
+    public static void initDummy(ServerLevel level, ArmorStand dummy, String id, boolean enabled, int radius,
+                                 @Nullable Player placer) {
         CompoundTag tag = dummy.getPersistentData();
         tag.putString(TAG_ID, id);
         tag.putBoolean(TAG_ENABLED, enabled);
         tag.putInt(TAG_RADIUS, radius);
+
+        // Captured once, at placement: the owner's Apotheosis tier is what a mob spawning here will be
+        // judged against later, when nobody is around. Empty when Apotheosis is not installed.
+        String tier = AnchorTier.tierNameOf(placer);
+        if (placer != null) {
+            tag.putUUID(TAG_OWNER, placer.getUUID());
+            tag.putString(TAG_OWNER_NAME, placer.getGameProfile().getName());
+            tag.putBoolean(TAG_FOLLOW_OWNER, true);
+        }
+        if (!tier.isEmpty())
+            tag.putString(TAG_TIER, tier);
+
         applyState(level, dummy, enabled, radius);
     }
 
@@ -69,7 +90,9 @@ public final class SpawnDummyEvents {
 
         int side = clampedRadius * 2 + 1;
         if (enabled && ServerConfig.spawnAnchorsEnabled()) {
-            SpawnAnchors.add(level, new SpawnAnchorData.Anchor(id, dummy.getX(), dummy.getY(), dummy.getZ(), clampedRadius));
+            SpawnAnchors.add(level, new SpawnAnchorData.Anchor(id, dummy.getX(), dummy.getY(), dummy.getZ(),
+                    clampedRadius, ownerOf(tag), tag.getString(TAG_OWNER_NAME), tag.getString(TAG_TIER),
+                    tag.getBoolean(TAG_FOLLOW_OWNER)));
             dummy.setCustomName(Component.literal("Mob & Chunk Loader ")
                     .withStyle(ChatFormatting.GOLD)
                     .append(Component.literal("[" + side + "x" + side + "]").withStyle(ChatFormatting.GREEN)));
@@ -80,6 +103,11 @@ public final class SpawnDummyEvents {
                     .append(Component.literal("[OFF]").withStyle(ChatFormatting.RED)));
         }
         dummy.setCustomNameVisible(true);
+    }
+
+    @Nullable
+    private static UUID ownerOf(CompoundTag tag) {
+        return tag.hasUUID(TAG_OWNER) ? tag.getUUID(TAG_OWNER) : null;
     }
 
     public static void pickUpDummy(ServerPlayer player, ArmorStand dummy) {

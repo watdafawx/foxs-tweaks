@@ -123,5 +123,9 @@ public class FoxsTweaks {
         // Dev-only end-to-end check of virtual spawn anchors; `build.bat runAnchorCheck` sets the property.
         if (FMLEnvironment.dist.isClient() && !FMLEnvironment.production && Boolean.getBoolean("foxstweaks.anchorCheck"))
             dev.watdafawx.foxstweaks.client.dev.AnchorCheck.install();
+
+        // Dev-only check that an anchor carries its owner's Apotheosis world tier; `build.bat runAnchorTierCheck`.
+        if (FMLEnvironment.dist.isClient() && !FMLEnvironment.production && Boolean.getBoolean("foxstweaks.anchorTierCheck"))
+            dev.watdafawx.foxstweaks.client.dev.AnchorTierCheck.install();
     }
 }

@@ -97,6 +97,10 @@ quality-of-life features sharing a jar, among them:
     container screens whose menu has no slots (Waystones' settings screens), which crashed GuiTween's render hook.
 23. **Search box assist** — client-side; `mixin/EditBoxSearchAssistMixin` + `client/search/*` give every search box
     grey autocomplete and a "Did you mean" line. See [Search box assist](#search-box-assist-clientsearch-mixineditboxsearchassistmixin).
+24. **Mob & Chunk Loader** — server-side; the craftable anchor dummy plus `/foxstweaks anchor add|remove|list|tp`
+    force-load a chunk square, run random ticks (Dreadful Dirt, crops), activate spawners and stop mobs despawning.
+    It can also carry its owner's Apotheosis world tier. See
+    [Mob & Chunk Loader and Apotheosis tiers](#mob--chunk-loader-and-apotheosis-tiers-anchor-and-anchortier).
 
 **Every parent mod is optional.** The mod must load and behave correctly with either, both, or
 neither installed. This is the single most important invariant in the codebase — see
@@ -793,6 +797,86 @@ the list's `rebuild` (`@Inject` on the `OptionMenuConstructor.constructAndApplyT
 - Iris types are compile-only (`iris_version`) and appear both in the mixins and in `IrisSettingsSearch`/
   `IrisSearchList`; both mixins are `remap = false` and `require = 0`, so an Iris update drops the
   feature instead of crashing. Toggle: `irisSettingsSearch`. Client section.
+
+### Mob & Chunk Loader and Apotheosis tiers (`anchor/`, `compat/ApothicAnchorTier`, two mixins)
+
+The anchor (`SpawnAnchorItem`, the craftable dummy, and `/foxstweaks anchor add|remove|list|tp`) registers a
+force-tick ticket per chunk square and answers the proximity checks `ChunkMap`, `ServerLevel` and
+`NaturalSpawner` ask (`ChunkMapAnchorMixin`, `ServerLevelAnchorMixin`, `NaturalSpawnerAnchorMixin`), so a loaded
+farm keeps spawning, random-ticking and not despawning with nobody around.
+
+**Apotheosis has no such notion.** It takes the world tier from the nearest player *in the dimension*
+(`ApothMobEvents#finalizeMobSpawns`, `getNearestPlayer(x,y,z,-1,false)`), and that one value drives everything:
+tier augments, elites and invaders. With nobody in the dimension the handler bails out at its first line; with
+someone 600 blocks away it uses their tier and rejects invader (boss) spawns as too far. `AnchorTier` therefore
+hands Apotheosis a stand-in player at the spawn that carries the anchor's tier:
+
+- `AnchorTier.replace(real, level, pos)` — keeps the real player when one is within
+  `spawnAnchorsTierPlayerRange` (128), otherwise asks `compat/ApothicAnchorTier` for a stand-in for the nearest
+  tier-carrying anchor.
+- `ApothicAnchorTier.forAnchor` uses `FakePlayerFactory.get(level, profile)` and sets
+  `Apoth.Attachments.WORLD_TIER` directly — **never** `WorldTier.setTier`, which sends a packet, runs tier
+  augments and awards a statistic on any `ServerPlayer`. The stand-in is moved to the spawn position, so
+  Apotheosis' own distance checks pass, and marked creative so `AdventureConfig.bossAutoAggro` does not target it.
+- **Profile UUID matters.** `WorldTier.getTier(FakePlayer)` looks the real player up by UUID and overwrites the
+  attachment, which is how "follow the owner" works for free. A tier pinned with `/foxstweaks anchor tier` must
+  therefore use an anchor-derived UUID (`UUID.nameUUIDFromBytes("foxstweaks:anchor:" + name)`), or an online
+  owner's live tier would silently replace the pin — that bug cost a debugging round.
+
+**Three hooks, all `require = 0` and targeted by string** (`ApothMobEventsTierMixin`, `ApothSurfaceTypeTierMixin`):
+
+| Hook | Why |
+|---|---|
+| `ApothMobEvents#finalizeMobSpawns`, the `getNearestPlayer` call | the tier/elite/boss decision itself |
+| `ApothMobEvents#delayedEliteMobs`, `getPlayerByUUID` + `getNearestPlayer` | elites transform on entity join, by UUID; a stand-in is not a real player, so an offline owner's elite would never transform (it keeps `apoth.miniboss` as a String) |
+| `SurfaceType#skyOrSameVerticalSlice`, its own `getNearestPlayer` | that method dereferences the result with no null check. Unreachable while Apotheosis' bail-out protects it, but hook 1 deliberately gets past the bail-out, so a roofed farm with nobody online would NPE (Overworld's default surface rule is this one). Answering with the stand-in also makes its 8-block vertical-slice test pass. |
+
+`AdventureEvents#applyMissedTierAugments` is *not* hooked: it only runs for mobs that never went through
+`finalizeMobSpawns`, which is not the farm path.
+
+**Config**: `spawnAnchorsApotheosisTier` (default on) and `spawnAnchorsTierPlayerRange` (128, 0 = the anchor
+always wins). **Commands**: `/foxstweaks anchor tier <name> <haven|frontier|ascent|summit|pinnacle|owner|off>`
+(`owner` follows the placer again), and `anchor list` shows each anchor's tier and mode. Anchors that existed
+before 1.36.0 carry no tier until one is set; a player-placed dummy captures the placer and their tier on
+placement (`SpawnDummyEvents.initDummy`, tags `foxstweaks_anchor_owner|owner_name|tier|follow_owner`).
+`SpawnDummyEvents.applyState` rebuilds the anchor record on every GUI click, so it must carry those tags over or
+a radius change silently clears the owner.
+
+**Not carried**: luck, game stages, and the owner's invader cooldown only when they are online. That last one is
+deliberate — the stand-in shares the owner's cooldown instead of handing each anchor a fresh one, so an offline
+farm cannot spawn invaders faster than the owner could standing there.
+
+**Telling the owner when it breaks** (`anchor/AnchorTierNotice`, `compat/ApothicHookProbe`): because every hook is
+`require = 0`, an Apotheosis update that renames or moves a target would otherwise turn the feature off without a
+word. On `ServerStartedEvent` the mod probes the three targets by reflection (class present, method name and
+event parameter unchanged), resolves `Apoth.Attachments.WORLD_TIER` and `WorldTier.values()`, and:
+
+- logs `Spawn anchor Apotheosis tier support fits Apotheosis <version> (N anchor(s) carrying a tier)` when healthy;
+- logs a `WARN` naming the part that moved when not, and sends that same line once per operator
+  (permission 2+, once per session) in chat on join - `[Fox's Tweaks] Apotheosis <version> no longer fits ...`;
+- still speaks up if the feature is switched off or Apotheosis was removed while anchors carry a tier
+  (info level, no chat).
+
+The probe verifies declarations, not bytecode: a method that kept its name and signature but lost the
+`getNearestPlayer` call inside it looks fine to it, which is what `runAnchorTierCheck` is for. `-PfakeBreak`
+(`-Dfoxstweaks.anchorTier.fakeBreak=true`) makes the probe report a fabricated break so the warning and the chat
+line can be checked without waiting for a real update; it must be removed from `AnchorTier.probe` only if the probe
+itself is rewritten.
+
+**Dev check**: `build.bat runAnchorTierCheck` (game dir `run-anchor-tier/`; put Apotheosis, ApothicAttributes and
+Placebo in its `mods/`). `client/dev/AnchorTierCheck` builds a roofed farm, pins the anchor to Pinnacle, moves the
+only player 600 blocks away and runs the exact call Dreadful Dirt makes
+(`EventHooks.finalizeMobSpawn(..., MobSpawnType.NATURAL, null)`), then asserts the `apotheosis:pinnacle/armor`
+modifier appears (300/300), that an invader spawns (`apoth.boss`), that turning the tier off stops it, and that it
+still works with the player in the Nether. `-PtierOff` (`-Dfoxstweaks.anchorTier.off=true`) runs the same check
+with the path disabled and must fail all three tier assertions — it does. Report:
+`run-anchor-tier/foxstweaks-anchortier-check.txt`.
+
+Two things that cost time and are easy to trip over again: **spawn the test mobs across a floor, not stacked in
+one block** — Apotheosis' boss placement runs `checkSpawnObstruction`, which is false when a mob already occupies
+the spot, so a single-block pile reports zero bosses and looks like a broken hook; and **`Apotheosis.LOGGER.debug`
+is filtered**, so its `APOTH_DEBUG_MOBS` branch prints nothing useful — reproduce the gates in the check instead
+(the `invader sample` line does that).
 
 ### Search box assist (`client/search/*`, `mixin/EditBoxSearchAssistMixin`)
 

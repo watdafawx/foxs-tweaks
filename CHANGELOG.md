@@ -1,5 +1,15 @@
 # Changelog
 
+## 1.36.0
+
+- Added **Apotheosis world tier for the Mob & Chunk Loader** (`spawnAnchorsApotheosisTier`, default on):
+  - An anchor remembers the player who placed it and hands Apotheosis a stand-in "player" at the spawn, so mobs spawning around a loaded farm are judged against the owner's world tier instead of nobody's. Bosses (invaders), elites and tier augments now happen with the owner thousands of blocks away or offline; while the owner is online their *live* tier is used.
+  - A real player within `spawnAnchorsTierPlayerRange` (128 blocks) always keeps their own tier.
+  - `/foxstweaks anchor tier <name> <haven|frontier|ascent|summit|pinnacle|owner|off>` pins a tier or goes back to following the owner; `anchor list` shows each anchor's tier. Anchors placed before this update carry no tier until one is set.
+  - Three `require = 0` hooks into Apotheosis (`finalizeMobSpawns`, `delayedEliteMobs`, `SurfaceType#skyOrSameVerticalSlice`). An Apotheosis update that moves them makes the anchor stop carrying a tier rather than break the game.
+  - **Tells you when that happens**: on server start the mod checks that every hook target still exists and logs a warning naming what moved, and every operator gets that warning once in chat on join. A healthy build logs one info line instead. Silent failure was the worst part of `require = 0`.
+  - Dev check: `build.bat runAnchorTierCheck` (game dir `run-anchor-tier/`, needs Apotheosis + ApothicAttributes + Placebo in `mods/`). `-PtierOff` switches the path off to prove the assertions can fail; `-PfakeBreak` makes the startup probe report a broken hook to prove the warning renders.
+
 ## 1.35.0
 
 - Added **In-World FPS Hotspot Highlighter** (Observable-style for client render time):

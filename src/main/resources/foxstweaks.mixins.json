@@ -4,6 +4,8 @@
   "package": "dev.watdafawx.foxstweaks.mixin",
   "compatibilityLevel": "JAVA_21",
   "mixins": [
+    "ApothMobEventsTierMixin",
+    "ApothSurfaceTypeTierMixin",
     "ApotSpawnerKillMixin",
     "ApotSpawnerMissingItemsMixin",
     "ApotSpawnerXpFluidMixin",

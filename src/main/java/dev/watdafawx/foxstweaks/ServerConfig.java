@@ -65,6 +65,23 @@ public final class ServerConfig {
             .comment("Maximum chunk radius allowed for a virtual spawn anchor (1 = 3x3 chunks, 2 = 5x5, 4 = 9x9).")
             .defineInRange("spawnAnchorsMaxRadius", 4, 1, 8);
 
+    public static final ModConfigSpec.BooleanValue SPAWN_ANCHORS_APOTHEOSIS_TIER = BUILDER
+            .comment(
+                    "Let a spawn anchor carry an Apotheosis world tier, so mobs spawning around it get the tier of the",
+                    "player who placed it even when they are far away or offline. Without this, a loaded farm only",
+                    "gets Apotheosis bosses, elites and tier augments while a player is somewhere in that dimension.",
+                    "The tier is captured when the anchor is placed and follows the owner live while they are online;",
+                    "change it with /foxstweaks anchor tier <name> <haven|frontier|ascent|summit|pinnacle|off>.",
+                    "Does nothing unless Apotheosis is installed.")
+            .define("spawnAnchorsApotheosisTier", true);
+
+    public static final ModConfigSpec.IntValue SPAWN_ANCHORS_TIER_PLAYER_RANGE = BUILDER
+            .comment(
+                    "How close a real player has to be to a spawn to keep their own Apotheosis tier instead of the",
+                    "anchor owner's. A player inside this radius always wins; nobody inside means the anchor's tier",
+                    "is used. 0 = the anchor always wins.")
+            .defineInRange("spawnAnchorsTierPlayerRange", 128, 0, 512);
+
     public static final ModConfigSpec SPEC = BUILDER.build();
 
     /** False before a world's server config is read (main menu, datapack loading); callers fall back to the defaults. */
@@ -98,6 +115,14 @@ public final class ServerConfig {
 
     public static int spawnAnchorsMaxRadius() {
         return loaded() ? SPAWN_ANCHORS_MAX_RADIUS.get() : 4;
+    }
+
+    public static boolean spawnAnchorsApotheosisTier() {
+        return !loaded() || SPAWN_ANCHORS_APOTHEOSIS_TIER.get();
+    }
+
+    public static int spawnAnchorsTierPlayerRange() {
+        return loaded() ? SPAWN_ANCHORS_TIER_PLAYER_RANGE.get() : 128;
     }
 
     private ServerConfig() {

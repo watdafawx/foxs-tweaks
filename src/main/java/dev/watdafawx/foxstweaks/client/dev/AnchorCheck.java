@@ -127,7 +127,7 @@ public final class AnchorCheck {
                 dummy.moveTo(10.5, -60.0, 10.5, 0f, 0f);
                 dummy.setShowArms(true);
                 dummy.setInvulnerable(true);
-                dev.watdafawx.foxstweaks.anchor.SpawnDummyEvents.initDummy(level, dummy, "dummy_test", true, 2);
+                dev.watdafawx.foxstweaks.anchor.SpawnDummyEvents.initDummy(level, dummy, "dummy_test", true, 2, null);
                 level.addFreshEntity(dummy);
                 return dummy.getId();
             });

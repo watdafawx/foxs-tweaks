@@ -146,6 +146,22 @@ neoForge {
             systemProperty 'foxstweaks.anchorCheck', 'true'
         }
 
+        // Dev-only check that an anchor carries its owner's Apotheosis world tier (client/dev/AnchorTierCheck):
+        // report lands in run-anchor-tier/. Put Apotheosis, ApothicAttributes and Placebo in run-anchor-tier/mods.
+        // -PtierOff runs it with the tier path switched off, which must fail the tier assertions.
+        // -PfakeBreak makes the startup probe report a broken hook, to prove the warning is shown.
+        anchorTierCheck {
+            client()
+            gameDirectory = file('run-anchor-tier')
+            systemProperty 'foxstweaks.anchorTierCheck', 'true'
+            if (project.hasProperty('tierOff')) {
+                systemProperty 'foxstweaks.anchorTier.off', 'true'
+            }
+            if (project.hasProperty('fakeBreak')) {
+                systemProperty 'foxstweaks.anchorTier.fakeBreak', 'true'
+            }
+        }
+
         // Headless: enough to load datapacks and read the log, e.g. to check what the affix patcher did.
         // Needs the same hand-placed jars as the client, in run-server/mods.
         server {

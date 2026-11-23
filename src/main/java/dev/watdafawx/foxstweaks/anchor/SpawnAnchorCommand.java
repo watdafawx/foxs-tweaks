@@ -24,6 +24,10 @@ import java.util.Locale;
  */
 @EventBusSubscriber(modid = FoxsTweaks.MODID)
 public final class SpawnAnchorCommand {
+
+    /** Apotheosis' tier names, plus {@code owner} to follow the placer and {@code off} to carry none. */
+    private static final List<String> TIER_NAMES = List.of("haven", "frontier", "ascent", "summit", "pinnacle", "owner", "off");
+
     private SpawnAnchorCommand() {
     }
 
@@ -46,6 +50,14 @@ public final class SpawnAnchorCommand {
                                                 .executes(ctx -> remove(ctx.getSource(), StringArgumentType.getString(ctx, "name")))))
                                 .then(Commands.literal("list")
                                         .executes(ctx -> list(ctx.getSource())))
+                                .then(Commands.literal("tier")
+                                        .then(Commands.argument("name", StringArgumentType.word())
+                                                .suggests((ctx, builder) -> SharedSuggestionProvider.suggest(allNames(ctx.getSource()), builder))
+                                                .then(Commands.argument("tier", StringArgumentType.word())
+                                                        .suggests((ctx, builder) -> SharedSuggestionProvider.suggest(TIER_NAMES, builder))
+                                                        .executes(ctx -> setTier(ctx.getSource(),
+                                                                StringArgumentType.getString(ctx, "name"),
+                                                                StringArgumentType.getString(ctx, "tier"))))))
                                 .then(Commands.literal("tp")
                                         .then(Commands.argument("name", StringArgumentType.word())
                                                 .suggests((ctx, builder) -> SharedSuggestionProvider.suggest(allNames(ctx.getSource()), builder))
@@ -65,7 +77,11 @@ public final class SpawnAnchorCommand {
 
         ServerLevel level = source.getLevel();
         Vec3 pos = source.getPosition();
-        SpawnAnchorData.Anchor anchor = new SpawnAnchorData.Anchor(name, pos.x, pos.y, pos.z, radius);
+        ServerPlayer placer = source.getPlayer();
+        SpawnAnchorData.Anchor anchor = new SpawnAnchorData.Anchor(name, pos.x, pos.y, pos.z, radius,
+                placer == null ? null : placer.getUUID(),
+                placer == null ? "" : placer.getGameProfile().getName(),
+                AnchorTier.tierNameOf(placer), placer != null);
         SpawnAnchors.add(level, anchor);
 
         int side = radius * 2 + 1;
@@ -73,6 +89,56 @@ public final class SpawnAnchorCommand {
                 "Spawn anchor '%s' active in %s at (%.1f, %.1f, %.1f) — loading %dx%d chunks (%d).",
                 name, level.dimension().location(), pos.x, pos.y, pos.z, side, side, side * side)), true);
         return 1;
+    }
+
+    /** {@code /foxstweaks anchor tier <name> <haven|frontier|ascent|summit|pinnacle|owner|off>}. */
+    private static int setTier(CommandSourceStack source, String name, String tierName) {
+        if (!AnchorTier.loaded()) {
+            source.sendFailure(Component.literal("Apotheosis is not installed, so anchors have no world tier to carry."));
+            return 0;
+        }
+
+        boolean off = tierName.equalsIgnoreCase("off");
+        boolean followOwner = tierName.equalsIgnoreCase("owner");
+        String tier = off || followOwner ? "" : AnchorTier.normaliseTier(tierName);
+        if (!off && !followOwner && tier.isEmpty()) {
+            source.sendFailure(Component.literal("Unknown tier '" + tierName + "'. Use one of: " + String.join(", ", TIER_NAMES)));
+            return 0;
+        }
+
+        for (ServerLevel level : source.getServer().getAllLevels()) {
+            SpawnAnchorData.Anchor current = SpawnAnchorData.get(level).get(name);
+            if (current == null)
+                continue;
+
+            String newTier = tier;
+            if (followOwner) {
+                ServerPlayer owner = current.owner() == null ? null
+                        : source.getServer().getPlayerList().getPlayer(current.owner());
+                newTier = AnchorTier.tierNameOf(owner);
+                if (newTier.isEmpty()) {
+                    newTier = current.tier();
+                    if (newTier.isEmpty()) {
+                        source.sendFailure(Component.literal("Anchor '" + name + "' has no owner online and no tier to keep; set a tier by name instead."));
+                        return 0;
+                    }
+                }
+            }
+
+            SpawnAnchorData.Anchor updated = new SpawnAnchorData.Anchor(current.name(), current.x(), current.y(),
+                    current.z(), current.chunkRadius(), current.owner(), current.ownerName(), newTier,
+                    followOwner && !current.ownerName().isEmpty());
+            SpawnAnchors.add(level, updated);
+
+            source.sendSuccess(() -> Component.literal(off
+                    ? "Spawn anchor '" + name + "' no longer carries a world tier."
+                    : "Spawn anchor '" + name + "' now carries the " + updated.tier() + " world tier"
+                    + (updated.followOwner() ? " and follows " + updated.ownerName() + "." : " (fixed).")), true);
+            return 1;
+        }
+
+        source.sendFailure(Component.literal("No spawn anchor named '" + name + "'."));
+        return 0;
     }
 
     private static int remove(CommandSourceStack source, String name) {
@@ -93,9 +159,12 @@ public final class SpawnAnchorCommand {
         for (ServerLevel level : source.getServer().getAllLevels()) {
             for (SpawnAnchorData.Anchor a : SpawnAnchors.list(level)) {
                 int side = a.chunkRadius() * 2 + 1;
+                String tier = a.carriesTier()
+                        ? a.tier() + (a.followOwner() && !a.ownerName().isEmpty() ? " (follows " + a.ownerName() + ")" : " (fixed)")
+                        : "no tier";
                 source.sendSuccess(() -> Component.literal(String.format(Locale.ROOT,
-                        "- %s [%s] (%.1f, %.1f, %.1f) %dx%d chunks",
-                        a.name(), level.dimension().location(), a.x(), a.y(), a.z(), side, side)), false);
+                        "- %s [%s] (%.1f, %.1f, %.1f) %dx%d chunks, %s",
+                        a.name(), level.dimension().location(), a.x(), a.y(), a.z(), side, side, tier)), false);
                 count++;
             }
         }

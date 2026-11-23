@@ -75,7 +75,9 @@ public class SpawnAnchorItem extends Item {
 
         int defaultRadius = Math.min(2, ServerConfig.spawnAnchorsMaxRadius());
         String id = "dummy_" + UUID.randomUUID().toString().substring(0, 8);
-        SpawnDummyEvents.initDummy(serverLevel, dummy, id, true, defaultRadius);
+        // The placer is remembered with the anchor so Apotheosis mob spawns around it can use their
+        // world tier while they are away (see AnchorTier).
+        SpawnDummyEvents.initDummy(serverLevel, dummy, id, true, defaultRadius, context.getPlayer());
 
         serverLevel.addFreshEntity(dummy);
         serverLevel.playSound(null, dummy.getX(), dummy.getY(), dummy.getZ(),
