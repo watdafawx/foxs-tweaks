@@ -138,6 +138,14 @@ neoForge {
             systemProperty 'foxstweaks.perfShot', 'true'
         }
 
+        // Dev-only end-to-end check of the FPS hotspot tools (client/dev/FpsCheck): chests + armor stands, scan,
+        // report screen, look / teleport / show / ignore. Report + screenshots land in run-fps/. No extra mods needed.
+        fpsCheck {
+            client()
+            gameDirectory = file('run-fps')
+            systemProperty 'foxstweaks.fpsCheck', 'true'
+        }
+
         // Dev-only end-to-end check of virtual spawn anchors (client/dev/AnchorCheck):
         // report lands in run-anchor/. No extra mods needed.
         anchorCheck {

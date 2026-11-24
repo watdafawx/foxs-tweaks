@@ -81,8 +81,16 @@ public class FoxsTweaksKeys {
             InputConstants.UNKNOWN.getValue(),
             CATEGORY);
 
+    /** Opens the FPS hotspot report from the last {@code /foxstweaks fps} scan (see {@code client.perf.FpsReportScreen}). Unbound by default. */
+    public static final KeyMapping OPEN_FPS_REPORT = new KeyMapping(
+            "key." + FoxsTweaks.MODID + ".open_fps_report",
+            InputConstants.Type.KEYSYM,
+            InputConstants.UNKNOWN.getValue(),
+            CATEGORY);
+
     @SubscribeEvent
     public static void onRegisterKeyMappings(RegisterKeyMappingsEvent event) {
+        event.register(OPEN_FPS_REPORT);
         event.register(OPEN_RELIC);
         event.register(SHOW_AFFIX_INFO);
         event.register(TOGGLE_AFFIXES);

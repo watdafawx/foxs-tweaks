@@ -125,6 +125,10 @@ public class FoxsTweaks {
         if (FMLEnvironment.dist.isClient() && !FMLEnvironment.production && Boolean.getBoolean("foxstweaks.perfShot"))
             dev.watdafawx.foxstweaks.client.dev.PerfShot.install();
 
+        // Dev-only end-to-end check of the FPS hotspot tools; `build.bat runFpsCheck` sets the property.
+        if (FMLEnvironment.dist.isClient() && !FMLEnvironment.production && Boolean.getBoolean("foxstweaks.fpsCheck"))
+            dev.watdafawx.foxstweaks.client.dev.FpsCheck.install();
+
         // Dev-only end-to-end check of virtual spawn anchors; `build.bat runAnchorCheck` sets the property.
         if (FMLEnvironment.dist.isClient() && !FMLEnvironment.production && Boolean.getBoolean("foxstweaks.anchorCheck"))
             dev.watdafawx.foxstweaks.client.dev.AnchorCheck.install();

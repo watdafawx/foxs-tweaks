@@ -811,6 +811,22 @@ the list's `rebuild` (`@Inject` on the `OptionMenuConstructor.constructAndApplyT
   `IrisSearchList`; both mixins are `remap = false` and `require = 0`, so an Iris update drops the
   feature instead of crashing. Toggle: `irisSettingsSearch`. Client section.
 
+### FPS hotspots (`client/perf/FpsProfiler`, `FpsOverlayRenderer`, `FpsReportScreen`, `FpsActions`)
+
+`/foxstweaks fps [seconds|stop|clear|report]` (or `/sparkc profiler`, via `SparkCommandHookMixin`) times every
+`EntityRenderDispatcher#render` / `BlockEntityRenderDispatcher#render` (two mixins, one volatile read when off).
+Data is per-instance `Hotspot`s plus per-type `Group`s; shares and "+FPS" need the whole-frame time, measured between
+`RenderFrameEvent.Pre`s (gaps over 1 s ignored). Rules that are easy to break:
+
+- **The local player and camera entity are never hotspots** (`playerMicros()` reports them): in first person only a shader
+  pack's shadow pass draws them. Entities not in `mc.level` (`getEntity(id) != entity`) are dropped: GUI paper-dolls share ids.
+- **Times are self time** (child stack per depth), so nested dispatcher calls are not counted twice.
+- **Labels**: ranked, top 20 within 160 blocks, constant screen size (`0.003 * clamp(dist, 2, 120)`). Not every box has a label by design.
+- **Chat buttons run client commands** (`/foxstweaks fps look|tp|show ...`, 1-based rank in `getInstances()`/`getGroups()`).
+  The report screen opens a tick later (`pendingReport`) because the chat screen closes itself after a command.
+- Teleport = real `/tp @s x y z facing ...` to a collision-free spot (`FpsActions.findSpot`), only when `hasPermissions(2)`.
+- **Verified in game** (rig, `build.bat runFpsCheck`, `client/dev/FpsCheck`): scan, player excluded from hotspots, by-type groups, report screen at GUI scale 2 and 3, show type / item beam, `look` / `tp` / `show off` / `clear` through real client commands, ignore type. Labels use a drop shadow, not the font backdrop (it z-fought and dimmed the text tail). Not checked: label size under a shader pack.
+
 ### Tab performance cards (`perf/PerfOverlayRenderer`, `client/PerfOverlayMover`, `client/PerfOverlayScreen`)
 
 The two cards (Server / Client) are drawn from `RenderGuiLayerEvent.Post(TAB_LIST)` and positioned by

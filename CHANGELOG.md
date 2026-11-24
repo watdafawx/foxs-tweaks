@@ -1,5 +1,16 @@
 # Changelog
 
+## 1.40.0
+
+- **FPS hotspots: report screen, by-type totals, clickable chat, clearer overlay** (`/foxstweaks fps`):
+  - **Report screen** (`/foxstweaks fps report`, the chat link, or the new unbound key *Open FPS Hotspot Report*): By type / Individual lists with % of frame, µs, "+FPS if it cost nothing", mod name, distance + direction, and buttons to show it in the world (all of a type, or one with a tall beam), look at it, teleport next to it (needs op), copy coordinates, ignore a type. Shows the spark link when the scan ran with `/sparkc profiler`.
+  - **By type**: every instance of a block entity / entity type added together, so 200 cheap drawers show up as one big row instead of 200 hidden ones.
+  - **You are no longer highlighted**: the local player (and camera entity) is kept out of the boxes and listed as one "You" line; entities that are not in the world (GUI paper-dolls, preview entities, the old `(0, 1, 0)` rows) are ignored; times are self time (nested draws no longer count twice).
+  - **Heat colours by share of the frame**, not fixed µs, so they read the same at 30 and 300 FPS.
+  - **Top-left list**: top 5 with rank, %, µs, distance and a direction arrow, plus your own cost.
+  - **Labels**: numbered to match the list (`#3`), constant size on screen (they were huge up close), white text with a coloured rank (dark green was unreadable under shaders), range 160 blocks, top 20 in rank order.
+  - **Chat**: top 3 with `[Look] [Go] [Show]`, the biggest type with `[Show all]`, `[Open report]`. New commands `show item|group <n>|off`, `look <n>`, `tp <n>`.
+
 ## 1.39.0
 
 - **Holograms: unified Layers & Groups, independent animation/FX, Solo, live multiplayer edits, Undo/Redo, and Free Studio Camera**:
