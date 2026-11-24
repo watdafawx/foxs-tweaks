@@ -27,6 +27,9 @@ import java.util.UUID;
 public record HologramSpec(
         String id,
         BlockPos pos,
+        float offsetX,
+        float offsetY,
+        float offsetZ,
         String block,
         Map<String, String> props,
         float scale,
@@ -54,6 +57,9 @@ public record HologramSpec(
 
     /** Clamps live in the canonical constructor so a hand-written packet cannot produce garbage. */
     public HologramSpec {
+        offsetX = Mth.clamp(offsetX, -16.0F, 16.0F);
+        offsetY = Mth.clamp(offsetY, -16.0F, 16.0F);
+        offsetZ = Mth.clamp(offsetZ, -16.0F, 16.0F);
         scale = Mth.clamp(scale, 0.25F, 8.0F);
         spin = Mth.clamp(spin, -360.0F, 360.0F);
         spinAxis = Mth.clamp(spinAxis, 0, 2);
@@ -70,7 +76,7 @@ public record HologramSpec(
     }
 
     public static HologramSpec create(String id, BlockPos pos, String block, @Nullable UUID owner, String ownerName) {
-        return new HologramSpec(id, pos, block, Map.of(), 1.0F, 0.0F, 0.0F, 0.0F, 0.0F, AXIS_Y,
+        return new HologramSpec(id, pos, 0.0F, 0.0F, 0.0F, block, Map.of(), 1.0F, 0.0F, 0.0F, 0.0F, 0.0F, AXIS_Y,
                 0.0F, 4.0F, false, true, 48, owner, ownerName, List.of(), 0.0F, 0.6F, List.of(),
                 new CompoundTag());
     }
@@ -80,47 +86,54 @@ public record HologramSpec(
      * what the clipboard's paste needs and what keeps a new field from being forgotten at a call site.
      */
     public HologramSpec at(String newId, BlockPos newPos, @Nullable UUID newOwner, String newOwnerName) {
-        return new HologramSpec(newId, newPos, this.block, this.props, this.scale, this.yaw, this.pitch,
-                this.roll, this.spin, this.spinAxis, this.hover, this.hoverPeriod, this.fullbright,
-                this.enabled, this.renderDistance, newOwner, newOwnerName, this.effects, this.appearRadius,
-                this.appearSeconds, this.parts, this.data);
+        return new HologramSpec(newId, newPos, this.offsetX, this.offsetY, this.offsetZ, this.block, this.props,
+                this.scale, this.yaw, this.pitch, this.roll, this.spin, this.spinAxis, this.hover,
+                this.hoverPeriod, this.fullbright, this.enabled, this.renderDistance, newOwner, newOwnerName,
+                this.effects, this.appearRadius, this.appearSeconds, this.parts, this.data);
+    }
+
+    public HologramSpec withProps(Map<String, String> props) {
+        return new HologramSpec(this.id, this.pos, this.offsetX, this.offsetY, this.offsetZ, this.block, props,
+                this.scale, this.yaw, this.pitch, this.roll, this.spin, this.spinAxis, this.hover,
+                this.hoverPeriod, this.fullbright, this.enabled, this.renderDistance, this.owner, this.ownerName,
+                this.effects, this.appearRadius, this.appearSeconds, this.parts, this.data);
     }
 
     public HologramSpec withRenderDistance(int distance) {
-        return new HologramSpec(this.id, this.pos, this.block, this.props, this.scale, this.yaw, this.pitch,
-                this.roll, this.spin, this.spinAxis, this.hover, this.hoverPeriod, this.fullbright,
-                this.enabled, distance, this.owner, this.ownerName, this.effects, this.appearRadius,
-                this.appearSeconds, this.parts, this.data);
+        return new HologramSpec(this.id, this.pos, this.offsetX, this.offsetY, this.offsetZ, this.block, this.props,
+                this.scale, this.yaw, this.pitch, this.roll, this.spin, this.spinAxis, this.hover,
+                this.hoverPeriod, this.fullbright, this.enabled, distance, this.owner, this.ownerName,
+                this.effects, this.appearRadius, this.appearSeconds, this.parts, this.data);
     }
 
     public HologramSpec withEffects(List<HologramEffect> effects) {
-        return new HologramSpec(this.id, this.pos, this.block, this.props, this.scale, this.yaw, this.pitch,
-                this.roll, this.spin, this.spinAxis, this.hover, this.hoverPeriod, this.fullbright,
-                this.enabled, this.renderDistance, this.owner, this.ownerName, effects, this.appearRadius,
-                this.appearSeconds, this.parts, this.data);
+        return new HologramSpec(this.id, this.pos, this.offsetX, this.offsetY, this.offsetZ, this.block, this.props,
+                this.scale, this.yaw, this.pitch, this.roll, this.spin, this.spinAxis, this.hover,
+                this.hoverPeriod, this.fullbright, this.enabled, this.renderDistance, this.owner, this.ownerName,
+                effects, this.appearRadius, this.appearSeconds, this.parts, this.data);
     }
 
     public HologramSpec withData(CompoundTag data) {
-        return new HologramSpec(this.id, this.pos, this.block, this.props, this.scale, this.yaw, this.pitch,
-                this.roll, this.spin, this.spinAxis, this.hover, this.hoverPeriod, this.fullbright,
-                this.enabled, this.renderDistance, this.owner, this.ownerName, this.effects, this.appearRadius,
-                this.appearSeconds, this.parts, data);
+        return new HologramSpec(this.id, this.pos, this.offsetX, this.offsetY, this.offsetZ, this.block, this.props,
+                this.scale, this.yaw, this.pitch, this.roll, this.spin, this.spinAxis, this.hover,
+                this.hoverPeriod, this.fullbright, this.enabled, this.renderDistance, this.owner, this.ownerName,
+                this.effects, this.appearRadius, this.appearSeconds, this.parts, data);
     }
 
     public HologramSpec withParts(List<HologramPart> parts) {
-        return new HologramSpec(this.id, this.pos, this.block, this.props, this.scale, this.yaw, this.pitch,
-                this.roll, this.spin, this.spinAxis, this.hover, this.hoverPeriod, this.fullbright,
-                this.enabled, this.renderDistance, this.owner, this.ownerName, this.effects, this.appearRadius,
-                this.appearSeconds, parts, this.data);
+        return new HologramSpec(this.id, this.pos, this.offsetX, this.offsetY, this.offsetZ, this.block, this.props,
+                this.scale, this.yaw, this.pitch, this.roll, this.spin, this.spinAxis, this.hover,
+                this.hoverPeriod, this.fullbright, this.enabled, this.renderDistance, this.owner, this.ownerName,
+                this.effects, this.appearRadius, this.appearSeconds, parts, this.data);
     }
 
     /** The box the block actually occupies, used for both the selection outline and the click test. */
     public AABB box() {
-        double cx = this.pos.getX() + 0.5;
-        double cz = this.pos.getZ() + 0.5;
+        double cx = this.pos.getX() + this.offsetX + 0.5;
+        double cz = this.pos.getZ() + this.offsetZ + 0.5;
         double half = 0.5 * this.scale + 0.05;
         // The model is anchored at its bottom, so a bigger hologram grows upward from the spot.
-        double cy = this.pos.getY() + half;
+        double cy = this.pos.getY() + this.offsetY + half;
         return new AABB(cx - half, cy - half, cz - half, cx + half, cy + half, cz + half);
     }
 
@@ -128,6 +141,12 @@ public record HologramSpec(
         CompoundTag tag = new CompoundTag();
         tag.putString("id", this.id);
         tag.putLong("pos", this.pos.asLong());
+        if (this.offsetX != 0.0F)
+            tag.putFloat("offsetX", this.offsetX);
+        if (this.offsetY != 0.0F)
+            tag.putFloat("offsetY", this.offsetY);
+        if (this.offsetZ != 0.0F)
+            tag.putFloat("offsetZ", this.offsetZ);
         tag.putString("block", this.block);
         CompoundTag props = new CompoundTag();
         this.props.forEach(props::putString);
@@ -183,7 +202,9 @@ public record HologramSpec(
 
 
         UUID owner = tag.contains("owner") ? tag.getUUID("owner") : null;
-        return new HologramSpec(id, BlockPos.of(tag.getLong("pos")), block, props,
+        return new HologramSpec(id, BlockPos.of(tag.getLong("pos")),
+                tag.getFloat("offsetX"), tag.getFloat("offsetY"), tag.getFloat("offsetZ"),
+                block, props,
                 tag.getFloat("scale"), tag.getFloat("yaw"), tag.getFloat("pitch"), tag.getFloat("roll"),
                 tag.getFloat("spin"), tag.getByte("spinAxis"), tag.getFloat("hover"), tag.getFloat("hoverPeriod"),
                 tag.getBoolean("fullbright"), !tag.contains("enabled") || tag.getBoolean("enabled"),

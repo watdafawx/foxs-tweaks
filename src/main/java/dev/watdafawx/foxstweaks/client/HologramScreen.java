@@ -12,22 +12,30 @@ import net.minecraft.client.gui.components.Button;
 import net.minecraft.client.gui.components.EditBox;
 import net.minecraft.client.gui.screens.Screen;
 import net.minecraft.core.BlockPos;
+import net.minecraft.core.particles.SimpleParticleType;
 import net.minecraft.core.registries.BuiltInRegistries;
 import net.minecraft.nbt.CompoundTag;
-import net.minecraft.core.particles.SimpleParticleType;
 import net.minecraft.network.chat.Component;
 import net.minecraft.resources.ResourceLocation;
 import net.minecraft.util.Mth;
+import net.minecraft.world.entity.EntityType;
+import net.minecraft.world.item.Item;
 import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.item.Items;
+import net.minecraft.world.item.SpawnEggItem;
 import net.minecraft.world.level.block.Block;
+import net.minecraft.world.level.block.EntityBlock;
 import net.minecraft.world.level.block.RenderShape;
 import net.minecraft.world.level.block.state.BlockState;
 import net.minecraft.world.level.block.state.properties.Property;
+import net.minecraft.world.phys.Vec3;
+import org.lwjgl.glfw.GLFW;
 
 import javax.annotation.Nullable;
+import java.util.ArrayDeque;
 import java.util.ArrayList;
 import java.util.Comparator;
+import java.util.Deque;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Locale;
@@ -45,22 +53,26 @@ import java.util.function.DoubleSupplier;
  * <p>Why it looks like this:
  *
  * <ul>
- * <li><b>Two panels, not one.</b> A single window wide enough for a block grid plus every control was
- * covering half the screen at a normal GUI scale. Picking a block and adjusting it are separate jobs,
- * so they are separate panels: block grid and its states on the left, values on the right.
+ * <li><b>Two panels, not one.</b> A single window wide enough for a picker plus every control was
+ * covering half the screen at a normal GUI scale. Picking content (blocks, entities, particles) lives
+ * on the left, values on the right.
  * <li><b>No blurred menu background.</b> Vanilla's screen background blurs the world, which defeats the
  * point - the preview is the real hologram in the real world.
+ * <li><b>3D viewport controls.</b> Right-drag (or left-drag empty space) orbits the player camera while
+ * the GUI stays open, and 3D Move/Rotate/Scale gizmos let you position the hologram directly in world.
  * <li><b>Every number takes the mouse wheel</b>, and one Step multiplier scales all of them, because the
  * natural increment differs per field (size 0.25, angles 15 degrees, range 8 blocks).
  * </ul>
  */
 public class HologramScreen extends Screen {
-    private static final int PANEL_H = 268;
+    private static final int PANEL_H = 278;
     private static final int CELL = 18;
     private static final int GRID_ROWS = 5;
+    private static final int LIST_ROW_H = 15;
+    private static final int LIST_VISIBLE = 6; // 6 * 15 = 90 == GRID_ROWS * CELL
     private static final int PROP_ROWS = 6;
     private static final int PROP_PITCH = 16;
-    private static final int ROW_H = 26;
+    private static final int ROW_H = 23;
     private static final int MAX_EFFECTS = 4;
 
     private static final float[] STEPS = { 1.0F, 2.0F, 5.0F, 10.0F };
@@ -81,11 +93,27 @@ public class HologramScreen extends Screen {
     private static final int TAB_SHARE = 4;
     private static final int TAB_COUNT = 5;
 
+    private static final int LEFT_BLOCKS = 0;
+    private static final int LEFT_ENTITIES = 1;
+    private static final int LEFT_PARTICLES = 2;
+
     private static List<Block> ALL_BLOCKS;
+    private static List<EntityEntry> ALL_ENTITIES;
+    private static List<String> ALL_PARTICLES;
+
+    private record EntityEntry(String id, String displayName, ItemStack icon) {
+    }
+
+    /** Snapshot for Ctrl+Z undo of gizmo drags. */
+    private record TransformSnapshot(float ox, float oy, float oz, float yaw, float pitch, float roll, float scale) {
+    }
 
     /** A row that behaves like a slider: the wheel and the two buttons all move it by {@code step}. */
     private record NumRow(String label, DoubleSupplier get, DoubleConsumer set, double step,
-                          DoubleFunction<String> format) {
+                          DoubleFunction<String> format, @Nullable Runnable reset) {
+        NumRow(String label, DoubleSupplier get, DoubleConsumer set, double step, DoubleFunction<String> format) {
+            this(label, get, set, step, format, null);
+        }
     }
 
     /** A row that flips. */
@@ -105,7 +133,7 @@ public class HologramScreen extends Screen {
     private record AddRow() {
     }
 
-    /** One content part: wheel moves it vertically, click cycles its side offset, right-click removes it. */
+    /** One content part: wheel moves it vertically, click selects it for fine editing, right-click removes it. */
     private record PartRow(int index, HologramPart part) {
     }
 
@@ -116,6 +144,9 @@ public class HologramScreen extends Screen {
     private final UUID owner;
     private final String ownerName;
 
+    private float offsetX;
+    private float offsetY;
+    private float offsetZ;
     private String block;
     private Map<String, String> props;
 
@@ -134,12 +165,24 @@ public class HologramScreen extends Screen {
     private CompoundTag data;
     private int addKind;
     private int pickIndex;
+    private int selectedPart = -1;
     private float appearRadius;
     private float appearSeconds;
 
     private int tab = TAB_LOOK;
+    private int leftMode = LEFT_BLOCKS;
     private int stepIndex;
     private int scroll;
+    private boolean draggingScrollbar;
+
+    private String selectedEntityId = "";
+    private String selectedParticleId = "minecraft:end_rod";
+    private long lastListClickTime;
+    private String lastListClickId = "";
+
+    private final HologramGizmo gizmo = new HologramGizmo();
+    private final Deque<TransformSnapshot> undoStack = new ArrayDeque<>();
+    private boolean orbiting;
 
     private int blockLeft;
     private int adjustLeft;
@@ -149,8 +192,11 @@ public class HologramScreen extends Screen {
 
     private EditBox search;
     private Button stepButton;
+    private Button[] gizmoButtons;
 
-    private List<Block> filtered = List.of();
+    private List<Block> filteredBlocks = List.of();
+    private List<EntityEntry> filteredEntities = List.of();
+    private List<String> filteredParticles = List.of();
     private List<Object> rows = List.of();
 
     public HologramScreen(HologramOpenPayload payload) {
@@ -158,6 +204,9 @@ public class HologramScreen extends Screen {
         HologramSpec spec = payload.spec();
         this.id = spec.id();
         this.pos = spec.pos();
+        this.offsetX = spec.offsetX();
+        this.offsetY = spec.offsetY();
+        this.offsetZ = spec.offsetZ();
         this.block = spec.block();
         this.props = new LinkedHashMap<>(spec.props());
         this.scale = spec.scale();
@@ -189,7 +238,7 @@ public class HologramScreen extends Screen {
     // ---------------------------------------------------------------- layout
 
     private int blockWidth() {
-        return this.gridCols * CELL + 20;
+        return this.gridCols * CELL + 24;
     }
 
     private int adjustWidth() {
@@ -198,6 +247,22 @@ public class HologramScreen extends Screen {
 
     private int tabWidth() {
         return (this.adjustPanelWidth - 20 - (TAB_COUNT - 1) * 4) / TAB_COUNT;
+    }
+
+    private int gridWidth() {
+        return this.gridCols * CELL;
+    }
+
+    private int gridTop() {
+        return this.top + 56;
+    }
+
+    private int gridHeight() {
+        return GRID_ROWS * CELL;
+    }
+
+    private int scrollbarX() {
+        return this.blockLeft + 10 + gridWidth() + 3;
     }
 
     @Override
@@ -209,22 +274,54 @@ public class HologramScreen extends Screen {
         int remaining = Math.max(240, this.width - 16 - gap);
         this.adjustPanelWidth = Mth.clamp((int) (remaining * 0.56), 150, 236);
         int blockTarget = remaining - this.adjustPanelWidth;
-        this.gridCols = Mth.clamp((blockTarget - 20) / CELL, 4, 9);
+        this.gridCols = Mth.clamp((blockTarget - 24) / CELL, 4, 9);
         int adjustWidth = this.adjustPanelWidth;
 
         this.blockLeft = 8;
         this.adjustLeft = this.width - adjustWidth - 8;
         this.top = Math.max(6, (this.height - PANEL_H) / 2);
 
-        this.search = new EditBox(this.font, this.blockLeft + 10, this.top + 22, blockWidth() - 20, 14,
+        // Left panel mode tabs: Block / Entity / Partcl
+        int leftTabW = (blockWidth() - 20 - 6) / 3;
+        String[] leftLabels = { "Block", "Entity", "Partcl" };
+        for (int i = 0; i < 3; i++) {
+            int mode = i;
+            addRenderableWidget(Button.builder(Component.literal(leftLabels[i]), b -> setLeftMode(mode))
+                    .bounds(this.blockLeft + 10 + i * (leftTabW + 3), this.top + 18, leftTabW, 15).build());
+        }
+
+        this.search = new EditBox(this.font, this.blockLeft + 10, this.top + 36, blockWidth() - 20, 14,
                 Component.literal("Search"));
-        this.search.setHint(Component.literal("search blocks...").withStyle(style -> style.withColor(MUTED)));
+        updateSearchHint();
         this.search.setResponder(text -> {
             this.scroll = 0;
             refreshFilter();
         });
         addRenderableWidget(this.search);
 
+        // Top-center compact gizmo mode toolbar in the open viewport
+        HologramGizmo.Mode[] modes = HologramGizmo.Mode.values();
+        int gBtnW = 40;
+        int totalGW = modes.length * (gBtnW + 2) + 46;
+        int gx = (this.width - totalGW) / 2;
+        this.gizmoButtons = new Button[modes.length];
+        for (int i = 0; i < modes.length; i++) {
+            HologramGizmo.Mode m = modes[i];
+            this.gizmoButtons[i] = addRenderableWidget(Button.builder(Component.literal(m.label), b -> {
+                this.gizmo.setMode(m);
+                updateGizmoButtonLabels();
+            }).bounds(gx + i * (gBtnW + 2), 6, gBtnW, 16).build());
+        }
+        addRenderableWidget(Button.builder(Component.literal("Zero"), b -> {
+            pushUndo();
+            this.offsetX = 0.0F;
+            this.offsetY = 0.0F;
+            this.offsetZ = 0.0F;
+            refresh();
+        }).bounds(gx + modes.length * (gBtnW + 2) + 4, 6, 42, 16).build());
+        updateGizmoButtonLabels();
+
+        // Right panel tabs
         String[] labels = { "Look", "Move", "FX", "Parts", "Share" };
         int tabWidth = tabWidth();
         for (int i = 0; i < labels.length; i++) {
@@ -238,7 +335,7 @@ public class HologramScreen extends Screen {
         this.stepButton = addRenderableWidget(Button.builder(Component.empty(), b -> {
             this.stepIndex = (this.stepIndex + 1) % STEPS.length;
             updateLabels();
-        }).bounds(this.adjustLeft + 10, this.top + PANEL_H - 56, adjustWidth - 20, 18).build());
+        }).bounds(this.adjustLeft + 10, this.top + PANEL_H - 50, adjustWidth - 20, 18).build());
 
         int half = (adjustWidth - 20 - 4) / 2;
         addRenderableWidget(Button.builder(Component.literal("Done"), b -> saveAndClose())
@@ -246,9 +343,50 @@ public class HologramScreen extends Screen {
         addRenderableWidget(Button.builder(Component.literal("Delete"), b -> deleteAndClose())
                 .bounds(this.adjustLeft + 10 + half + 4, this.top + PANEL_H - 26, half, 20).build());
 
+        if (this.selectedEntityId.isEmpty() && !allEntities().isEmpty())
+            this.selectedEntityId = allEntities().get(0).id();
+
         refreshFilter();
         rebuildRows();
         refresh();
+    }
+
+    private void setLeftMode(int mode) {
+        this.leftMode = Mth.clamp(mode, LEFT_BLOCKS, LEFT_PARTICLES);
+        this.scroll = 0;
+        this.draggingScrollbar = false;
+        if (this.search != null) {
+            this.search.setValue("");
+            updateSearchHint();
+        }
+        if (this.leftMode == LEFT_ENTITIES)
+            this.addKind = 1;
+        else if (this.leftMode == LEFT_PARTICLES)
+            this.addKind = 2;
+        refreshFilter();
+        rebuildRows();
+    }
+
+    private void updateSearchHint() {
+        if (this.search == null)
+            return;
+        String hint = switch (this.leftMode) {
+            case LEFT_ENTITIES -> "search entities...";
+            case LEFT_PARTICLES -> "search particles...";
+            default -> "search blocks...";
+        };
+        this.search.setHint(Component.literal(hint).withStyle(style -> style.withColor(MUTED)));
+    }
+
+    private void updateGizmoButtonLabels() {
+        if (this.gizmoButtons == null)
+            return;
+        HologramGizmo.Mode[] modes = HologramGizmo.Mode.values();
+        for (int i = 0; i < modes.length; i++) {
+            boolean active = this.gizmo.mode() == modes[i];
+            String text = active ? "[" + modes[i].label + "]" : modes[i].label;
+            this.gizmoButtons[i].setMessage(Component.literal(text));
+        }
     }
 
     private void rebuildRows() {
@@ -256,9 +394,12 @@ public class HologramScreen extends Screen {
         if (this.tab == TAB_LOOK) {
             built.add(new NumRow("Size", () -> this.scale, v -> this.scale = (float) clamp(v, 0.25, 8.0), 0.25,
                     v -> String.format(Locale.ROOT, "%.2fx", v)));
-            built.add(new NumRow("Yaw", () -> this.yaw, v -> this.yaw = wrap(v), 15.0, v -> fmtDegrees(v)));
-            built.add(new NumRow("Pitch", () -> this.pitch, v -> this.pitch = wrap(v), 15.0, v -> fmtDegrees(v)));
-            built.add(new NumRow("Roll", () -> this.roll, v -> this.roll = wrap(v), 15.0, v -> fmtDegrees(v)));
+            built.add(new NumRow("Yaw", () -> this.yaw, v -> this.yaw = wrap(v), 15.0, HologramScreen::fmtDegrees,
+                    () -> this.yaw = 0.0F));
+            built.add(new NumRow("Pitch", () -> this.pitch, v -> this.pitch = wrap(v), 15.0, HologramScreen::fmtDegrees,
+                    () -> this.pitch = 0.0F));
+            built.add(new NumRow("Roll", () -> this.roll, v -> this.roll = wrap(v), 15.0, HologramScreen::fmtDegrees,
+                    () -> this.roll = 0.0F));
             built.add(new ToggleRow("Glow", () -> this.fullbright, () -> {
                 this.fullbright = !this.fullbright;
                 refresh();
@@ -267,8 +408,15 @@ public class HologramScreen extends Screen {
                     v -> this.renderDistance = (int) clamp(Math.round(v), 8, this.maxRenderDistance), 8.0,
                     v -> (int) v + " blocks"));
         } else if (this.tab == TAB_MOVE) {
+            built.add(new NumRow("Offset X", () -> this.offsetX, v -> this.offsetX = (float) clamp(v, -16.0, 16.0),
+                    0.25, v -> String.format(Locale.ROOT, "%.2f", v), () -> this.offsetX = 0.0F));
+            built.add(new NumRow("Offset Y", () -> this.offsetY, v -> this.offsetY = (float) clamp(v, -16.0, 16.0),
+                    0.25, v -> String.format(Locale.ROOT, "%.2f", v), () -> this.offsetY = 0.0F));
+            built.add(new NumRow("Offset Z", () -> this.offsetZ, v -> this.offsetZ = (float) clamp(v, -16.0, 16.0),
+                    0.25, v -> String.format(Locale.ROOT, "%.2f", v), () -> this.offsetZ = 0.0F));
             built.add(new NumRow("Spin", () -> this.spin, v -> this.spin = (float) clamp(v, -360.0, 360.0),
-                    15.0, v -> v == 0.0 ? "off" : String.format(Locale.ROOT, "%.0f deg/s", v)));
+                    15.0, v -> v == 0.0 ? "off" : String.format(Locale.ROOT, "%.0f deg/s", v),
+                    () -> this.spin = 0.0F));
             built.add(new NumRow("Axis", () -> this.spinAxis,
                     v -> this.spinAxis = (int) Mth.clamp(Math.round(v), 0L, 2L), 1.0,
                     v -> switch ((int) v) {
@@ -277,7 +425,8 @@ public class HologramScreen extends Screen {
                         default -> "Y";
                     }));
             built.add(new NumRow("Hover", () -> this.hover, v -> this.hover = (float) clamp(v, 0.0, 4.0),
-                    0.25, v -> v <= 0.0 ? "off" : String.format(Locale.ROOT, "%.2f", v)));
+                    0.25, v -> v <= 0.0 ? "off" : String.format(Locale.ROOT, "%.2f", v),
+                    () -> this.hover = 0.0F));
             built.add(new NumRow("Period", () -> this.hoverPeriod,
                     v -> this.hoverPeriod = (float) clamp(v, 0.5, 120.0), 1.0,
                     v -> String.format(Locale.ROOT, "%.1f s", v)));
@@ -285,6 +434,8 @@ public class HologramScreen extends Screen {
             built.add(new AddRow());
             for (int i = 0; i < this.parts.size(); i++)
                 built.add(new PartRow(i, this.parts.get(i)));
+            if (this.selectedPart >= this.parts.size())
+                this.selectedPart = this.parts.size() - 1;
         } else if (this.tab == TAB_FX) {
             built.add(new ActionRow("Add effect", this::addEffect, () -> this.effects.size() < MAX_EFFECTS,
                     () -> this.effects.size() < MAX_EFFECTS ? "layer" : "max " + MAX_EFFECTS));
@@ -292,7 +443,8 @@ public class HologramScreen extends Screen {
                 built.add(new EffectRow(i, this.effects.get(i)));
             built.add(new NumRow("Appear radius", () -> this.appearRadius,
                     v -> this.appearRadius = (float) clamp(v, 0.0, 64.0), 2.0,
-                    v -> v <= 0.0 ? "always on" : String.format(Locale.ROOT, "%.0f blocks", v)));
+                    v -> v <= 0.0 ? "always on" : String.format(Locale.ROOT, "%.0f blocks", v),
+                    () -> this.appearRadius = 0.0F));
         } else {
             built.add(new ActionRow("Copy settings", () -> HologramClipboard.copy(buildSpec()), () -> true,
                     () -> "to clipboard"));
@@ -304,6 +456,13 @@ public class HologramScreen extends Screen {
                 HologramClient.setPreviewAnchored(!HologramClient.previewAnchored());
                 refresh();
             }));
+            built.add(new ActionRow("Re-capture BE data", () -> HologramNetwork.sendRecapture(this.id), () -> true,
+                    () -> this.data.isEmpty() ? "none" : this.data.sizeInBytes() + " B"));
+            built.add(new ActionRow("Clear BE data", () -> {
+                this.data = new CompoundTag();
+                rebuildRows();
+                refresh();
+            }, () -> !this.data.isEmpty(), () -> this.data.isEmpty() ? "empty" : "clear"));
         }
         this.rows = List.copyOf(built);
         updateLabels();
@@ -318,7 +477,8 @@ public class HologramScreen extends Screen {
         refresh();
     }
 
-    private void removeEffect(int index) {        if (index < 0 || index >= this.effects.size())
+    private void removeEffect(int index) {
+        if (index < 0 || index >= this.effects.size())
             return;
         List<HologramEffect> next = new ArrayList<>(this.effects);
         next.remove(index);
@@ -340,57 +500,81 @@ public class HologramScreen extends Screen {
     // ---------------------------------------------------------------- content parts
 
     private static final String[] ADD_KINDS = { "block", "entity", "particle" };
-    private static List<String> ENTITY_IDS;
-    private static List<String> PARTICLE_IDS;
 
-    private static List<String> entityIds() {
-        if (ENTITY_IDS == null) {
-            ENTITY_IDS = BuiltInRegistries.ENTITY_TYPE.keySet().stream()
-                    .map(ResourceLocation::toString).sorted().toList();
+    private static List<EntityEntry> allEntities() {
+        if (ALL_ENTITIES == null) {
+            List<EntityEntry> list = new ArrayList<>();
+            for (var entry : BuiltInRegistries.ENTITY_TYPE.entrySet()) {
+                ResourceLocation key = entry.getKey().location();
+                EntityType<?> type = entry.getValue();
+                String id = key.toString();
+                String name = type.getDescription().getString();
+                Item egg = SpawnEggItem.byId(type);
+                ItemStack icon = egg != null ? new ItemStack(egg) : ItemStack.EMPTY;
+                list.add(new EntityEntry(id, name, icon));
+            }
+            list.sort(Comparator.comparing(EntityEntry::id));
+            ALL_ENTITIES = List.copyOf(list);
         }
-        return ENTITY_IDS;
+        return ALL_ENTITIES;
     }
 
-    private static List<String> particleIds() {
-        if (PARTICLE_IDS == null) {
-            // Only particles that stand on their own: block/item particles need an options object the
-            // editor has no way to fill in yet.
-            PARTICLE_IDS = BuiltInRegistries.PARTICLE_TYPE.entrySet().stream()
+    private static List<String> allParticles() {
+        if (ALL_PARTICLES == null) {
+            ALL_PARTICLES = BuiltInRegistries.PARTICLE_TYPE.entrySet().stream()
                     .filter(entry -> entry.getValue() instanceof SimpleParticleType)
                     .map(entry -> entry.getKey().location().toString())
                     .sorted().toList();
         }
-        return PARTICLE_IDS;
+        return ALL_PARTICLES;
     }
 
     private String pickedEntity() {
-        List<String> ids = entityIds();
-        return ids.isEmpty() ? "" : ids.get(Math.floorMod(this.pickIndex, ids.size()));
+        if (!this.selectedEntityId.isEmpty())
+            return this.selectedEntityId;
+        List<EntityEntry> ids = allEntities();
+        return ids.isEmpty() ? "" : ids.get(Math.floorMod(this.pickIndex, ids.size())).id();
     }
 
     private String pickedParticle() {
-        List<String> ids = particleIds();
+        if (!this.selectedParticleId.isEmpty())
+            return this.selectedParticleId;
+        List<String> ids = allParticles();
         return ids.isEmpty() ? "minecraft:crit" : ids.get(Math.floorMod(this.pickIndex, ids.size()));
     }
 
     private String addDescription() {
         return switch (this.addKind) {
-            case 1 -> "entity " + pickedEntity();
-            case 2 -> "particle " + pickedParticle();
-            default -> "block " + this.block;
+            case 1 -> "entity " + shortId(pickedEntity());
+            case 2 -> "particle " + shortId(pickedParticle());
+            default -> "block " + shortId(this.block);
         };
+    }
+
+    private static String shortId(String id) {
+        int colon = id.indexOf(':');
+        return colon >= 0 ? id.substring(colon + 1) : id;
     }
 
     private void cycleAddKind() {
         this.addKind = (this.addKind + 1) % ADD_KINDS.length;
-        this.pickIndex = 0;
         rebuildRows();
     }
 
     private void cyclePick(int direction) {
-        if (this.addKind == 0)
-            return;
-        this.pickIndex += direction;
+        if (this.addKind == 1) {
+            List<EntityEntry> ids = allEntities();
+            if (!ids.isEmpty()) {
+                this.pickIndex = Math.floorMod(this.pickIndex + direction, ids.size());
+                this.selectedEntityId = ids.get(this.pickIndex).id();
+            }
+        } else if (this.addKind == 2) {
+            List<String> ids = allParticles();
+            if (!ids.isEmpty()) {
+                this.pickIndex = Math.floorMod(this.pickIndex + direction, ids.size());
+                this.selectedParticleId = ids.get(this.pickIndex);
+            }
+        }
         rebuildRows();
     }
 
@@ -398,49 +582,44 @@ public class HologramScreen extends Screen {
         if (this.parts.size() >= HologramPart.MAX_PARTS)
             return;
 
-        // New parts start on top of the base, not inside it: a 2.5x hologram swallows anything placed
-        // at y=1.
-        float top = this.scale;
+        // New parts start on top of the base, not inside it: a 2.5x hologram swallows anything placed at y=1.
+        float topY = this.scale;
         HologramPart part = switch (this.addKind) {
-            case 1 -> HologramPart.entity(pickedEntity(), top);
-            case 2 -> HologramPart.particle(pickedParticle(), top);
-            default -> HologramPart.block(this.block, this.props, top);
+            case 1 -> HologramPart.entity(pickedEntity(), topY);
+            case 2 -> HologramPart.particle(pickedParticle(), topY);
+            default -> HologramPart.block(this.block, this.props, topY);
         };
 
         List<HologramPart> next = new ArrayList<>(this.parts);
         next.add(part);
         this.parts = next;
+        this.selectedPart = next.size() - 1;
         rebuildRows();
         refresh();
     }
 
-    private void movePart(int index, float deltaY) {
+    private void addSpecificPart(HologramPart part) {
+        if (this.parts.size() >= HologramPart.MAX_PARTS)
+            return;
+        List<HologramPart> next = new ArrayList<>(this.parts);
+        next.add(part);
+        this.parts = next;
+        this.selectedPart = next.size() - 1;
+        this.tab = TAB_PARTS;
+        rebuildRows();
+        refresh();
+    }
+
+    private void adjustPart(int index, float dx, float dy, float dz, float dScale) {
         if (index < 0 || index >= this.parts.size())
             return;
         HologramPart old = this.parts.get(index);
         List<HologramPart> next = new ArrayList<>(this.parts);
-        next.set(index, new HologramPart(old.kind(), old.id(), old.props(), old.offsetX(),
-                old.offsetY() + deltaY, old.offsetZ(), old.scale(), old.yaw()));
+        next.set(index, new HologramPart(old.kind(), old.id(), old.props(),
+                old.offsetX() + dx, old.offsetY() + dy, old.offsetZ() + dz,
+                old.scale() + dScale, old.yaw()));
         this.parts = next;
-        refresh();
-    }
-
-    /** Left-click cycles a part around the parent: centre, then the four sides. */
-    private void cyclePartSide(int index) {
-        if (index < 0 || index >= this.parts.size())
-            return;
-        HologramPart old = this.parts.get(index);
-        float[][] spots = { { 0.0F, 0.0F }, { 1.0F, 0.0F }, { -1.0F, 0.0F }, { 0.0F, 1.0F }, { 0.0F, -1.0F } };
-        int current = 0;
-        for (int i = 0; i < spots.length; i++) {
-            if (Math.abs(spots[i][0] - old.offsetX()) < 0.01F && Math.abs(spots[i][1] - old.offsetZ()) < 0.01F)
-                current = i;
-        }
-        int next = (current + 1) % spots.length;
-        List<HologramPart> list = new ArrayList<>(this.parts);
-        list.set(index, new HologramPart(old.kind(), old.id(), old.props(), spots[next][0], old.offsetY(),
-                spots[next][1], old.scale(), old.yaw()));
-        this.parts = list;
+        rebuildRows();
         refresh();
     }
 
@@ -450,29 +629,52 @@ public class HologramScreen extends Screen {
         List<HologramPart> next = new ArrayList<>(this.parts);
         next.remove(index);
         this.parts = next;
+        if (this.selectedPart >= next.size())
+            this.selectedPart = next.size() - 1;
         rebuildRows();
         refresh();
     }
 
-    private void updateLabels() {        if (this.stepButton == null)
+    private void updateLabels() {
+        if (this.stepButton == null)
             return;
         this.stepButton.setMessage(Component.literal(String.format(Locale.ROOT,
                 "Step  x%.0f  (wheel / - +)", STEPS[this.stepIndex])));
     }
 
     private int rowY(int index) {
-        return this.top + 44 + index * ROW_H;
+        return this.top + 42 + index * ROW_H;
     }
 
-    private int gridWidth() {
-        return this.gridCols * CELL;
+    // ---------------------------------------------------------------- state & undo
+
+    private void pushUndo() {
+        this.undoStack.push(new TransformSnapshot(
+                this.offsetX, this.offsetY, this.offsetZ, this.yaw, this.pitch, this.roll, this.scale));
+        while (this.undoStack.size() > 32)
+            this.undoStack.removeLast();
     }
 
-    private int gridTop() {
-        return this.top + 44;
+    private void undoTransform() {
+        TransformSnapshot snap = this.undoStack.poll();
+        if (snap == null)
+            return;
+        this.offsetX = snap.ox();
+        this.offsetY = snap.oy();
+        this.offsetZ = snap.oz();
+        this.yaw = snap.yaw();
+        this.pitch = snap.pitch();
+        this.roll = snap.roll();
+        this.scale = snap.scale();
+        refresh();
     }
 
-    // ---------------------------------------------------------------- state
+    private Vec3 hologramWorldCenter() {
+        return new Vec3(
+                this.pos.getX() + this.offsetX + 0.5,
+                this.pos.getY() + this.offsetY + 0.5 * this.scale,
+                this.pos.getZ() + this.offsetZ + 0.5);
+    }
 
     private static float wrap(double degrees) {
         return Mth.wrapDegrees((float) degrees);
@@ -492,7 +694,8 @@ public class HologramScreen extends Screen {
     }
 
     private HologramSpec buildSpec() {
-        return new HologramSpec(this.id, this.pos, this.block, this.props, this.scale, this.yaw, this.pitch,
+        return new HologramSpec(this.id, this.pos, this.offsetX, this.offsetY, this.offsetZ,
+                this.block, this.props, this.scale, this.yaw, this.pitch,
                 this.roll, this.spin, this.spinAxis, this.hover, this.hoverPeriod, this.fullbright, true,
                 this.renderDistance, this.owner, this.ownerName, this.effects, this.appearRadius,
                 this.appearSeconds, this.parts, this.data);
@@ -505,28 +708,77 @@ public class HologramScreen extends Screen {
 
     private void refreshFilter() {
         String query = this.search == null ? "" : this.search.getValue().trim().toLowerCase(Locale.ROOT);
-        List<Block> blocks = allBlocks();
-        if (query.isEmpty()) {
-            this.filtered = blocks;
-        } else {
-            List<Block> matches = new ArrayList<>();
-            for (Block block : blocks) {
-                if (BuiltInRegistries.BLOCK.getKey(block).toString().contains(query)
-                        || block.getName().getString().toLowerCase(Locale.ROOT).contains(query))
-                    matches.add(block);
+        if (this.leftMode == LEFT_BLOCKS) {
+            List<Block> blocks = allBlocks();
+            if (query.isEmpty()) {
+                this.filteredBlocks = blocks;
+            } else {
+                List<Block> matches = new ArrayList<>();
+                for (Block b : blocks) {
+                    if (BuiltInRegistries.BLOCK.getKey(b).toString().contains(query)
+                            || b.getName().getString().toLowerCase(Locale.ROOT).contains(query))
+                        matches.add(b);
+                }
+                this.filteredBlocks = matches;
             }
-            this.filtered = matches;
+        } else if (this.leftMode == LEFT_ENTITIES) {
+            List<EntityEntry> entities = allEntities();
+            if (query.isEmpty()) {
+                this.filteredEntities = entities;
+            } else {
+                List<EntityEntry> matches = new ArrayList<>();
+                for (EntityEntry e : entities) {
+                    if (e.id().contains(query) || e.displayName().toLowerCase(Locale.ROOT).contains(query))
+                        matches.add(e);
+                }
+                this.filteredEntities = matches;
+            }
+        } else {
+            List<String> particles = allParticles();
+            if (query.isEmpty()) {
+                this.filteredParticles = particles;
+            } else {
+                List<String> matches = new ArrayList<>();
+                for (String p : particles) {
+                    if (p.contains(query))
+                        matches.add(p);
+                }
+                this.filteredParticles = matches;
+            }
         }
+        this.scroll = Mth.clamp(this.scroll, 0, maxLeftScroll());
+    }
+
+    private int maxLeftScroll() {
+        if (this.leftMode == LEFT_BLOCKS)
+            return Math.max(0, (this.filteredBlocks.size() + this.gridCols - 1) / this.gridCols - GRID_ROWS);
+        if (this.leftMode == LEFT_ENTITIES)
+            return Math.max(0, this.filteredEntities.size() - LIST_VISIBLE);
+        return Math.max(0, this.filteredParticles.size() - LIST_VISIBLE);
+    }
+
+    private int leftTotalRows() {
+        if (this.leftMode == LEFT_BLOCKS)
+            return Math.max(1, (this.filteredBlocks.size() + this.gridCols - 1) / this.gridCols);
+        if (this.leftMode == LEFT_ENTITIES)
+            return Math.max(1, this.filteredEntities.size());
+        return Math.max(1, this.filteredParticles.size());
+    }
+
+    private int leftVisibleRows() {
+        return this.leftMode == LEFT_BLOCKS ? GRID_ROWS : LIST_VISIBLE;
     }
 
     private static List<Block> allBlocks() {
         if (ALL_BLOCKS == null) {
             ALL_BLOCKS = BuiltInRegistries.BLOCK.stream()
                     .filter(block -> block.asItem() != Items.AIR)
-                    // Only blocks with a real model: a block whose look is a block entity renderer
-                    // would draw nothing here, and a picker full of invisible entries is worse than
-                    // a short one. Tier 2 (BER blocks) is a later phase.
-                    // ENTITYBLOCK_ANIMATED blocks (chests, signs, beds, shulker boxes) have no model at\n                    // all: they draw from a block entity, which a hologram now carries the data for.\n                    .filter(block -> block.defaultBlockState().getRenderShape() == RenderShape.MODEL\n                            || block.defaultBlockState().getRenderShape() == RenderShape.ENTITYBLOCK_ANIMATED)
+                    // Include MODEL, ENTITYBLOCK_ANIMATED, and any EntityBlock (e.g. flags, sliding
+                    // doors, banners, beds, modded machines whose RenderShape is INVISIBLE because
+                    // they draw entirely through a BlockEntityRenderer).
+                    .filter(block -> block.defaultBlockState().getRenderShape() == RenderShape.MODEL
+                            || block.defaultBlockState().getRenderShape() == RenderShape.ENTITYBLOCK_ANIMATED
+                            || block instanceof EntityBlock)
                     .sorted(Comparator.comparing(block -> BuiltInRegistries.BLOCK.getKey(block).toString()))
                     .toList();
         }
@@ -546,8 +798,20 @@ public class HologramScreen extends Screen {
     public void render(GuiGraphics graphics, int mouseX, int mouseY, float partialTick) {
         renderBackground(graphics, mouseX, mouseY, partialTick);
 
-        renderBlockPanel(graphics, mouseX, mouseY);
+        if (!HologramClient.previewAnchored())
+            this.gizmo.render(graphics, this.font, mouseX, mouseY, this.width, this.height,
+                    hologramWorldCenter(), this.scale);
+
+        renderLeftPanel(graphics, mouseX, mouseY);
         renderAdjustPanel(graphics, mouseX, mouseY);
+
+        // Subtle viewport hint at bottom-center
+        String hint = "Right-drag: look  |  G Move  R Rotate  S Scale  |  Shift: free";
+        int hintW = this.font.width(hint);
+        int hintX = (this.width - hintW) / 2;
+        int hintY = this.height - 14;
+        graphics.fill(hintX - 6, hintY - 2, hintX + hintW + 6, hintY + 10, 0xAA0B0D12);
+        graphics.drawString(this.font, hint, hintX, hintY, MUTED, false);
 
         super.render(graphics, mouseX, mouseY, partialTick);
     }
@@ -555,68 +819,147 @@ public class HologramScreen extends Screen {
     private void panel(GuiGraphics graphics, int x, int y, int width, String title) {
         graphics.fill(x, y, x + width, y + PANEL_H, BG);
         graphics.renderOutline(x, y, width, PANEL_H, BORDER);
-        graphics.drawString(this.font, title, x + 10, y + 7, ACCENT, false);
+        graphics.drawString(this.font, title, x + 10, y + 6, ACCENT, false);
     }
 
-    private void renderBlockPanel(GuiGraphics graphics, int mouseX, int mouseY) {
+    private void renderLeftPanel(GuiGraphics graphics, int mouseX, int mouseY) {
         int width = blockWidth();
-        panel(graphics, this.blockLeft, this.top, width, "Block");
+        String title = switch (this.leftMode) {
+            case LEFT_ENTITIES -> "Entities";
+            case LEFT_PARTICLES -> "Particles";
+            default -> "Block";
+        };
+        panel(graphics, this.blockLeft, this.top, width, title);
+
+        // Active mode underline
+        int leftTabW = (width - 20 - 6) / 3;
+        int activeX = this.blockLeft + 10 + this.leftMode * (leftTabW + 3);
+        graphics.fill(activeX, this.top + 33, activeX + leftTabW, this.top + 35, ACCENT);
 
         int gridX = this.blockLeft + 10;
         int gridY = gridTop();
         int gridW = gridWidth();
-        int maxScroll = Math.max(0, (this.filtered.size() + this.gridCols - 1) / this.gridCols - GRID_ROWS);
+        int gridH = gridHeight();
+        int maxScroll = maxLeftScroll();
         this.scroll = Mth.clamp(this.scroll, 0, maxScroll);
 
-        int first = this.scroll * this.gridCols;
-        for (int index = 0; index < this.gridCols * GRID_ROWS; index++) {
-            int entry = first + index;
-            if (entry >= this.filtered.size())
-                break;
-            Block entryBlock = this.filtered.get(entry);
-            int x = gridX + (index % this.gridCols) * CELL;
-            int y = gridY + (index / this.gridCols) * CELL;
+        if (this.leftMode == LEFT_BLOCKS) {
+            int first = this.scroll * this.gridCols;
+            for (int index = 0; index < this.gridCols * GRID_ROWS; index++) {
+                int entry = first + index;
+                if (entry >= this.filteredBlocks.size())
+                    break;
+                Block entryBlock = this.filteredBlocks.get(entry);
+                int x = gridX + (index % this.gridCols) * CELL;
+                int y = gridY + (index / this.gridCols) * CELL;
 
-            boolean hover = mouseX >= x && mouseX < x + CELL && mouseY >= y && mouseY < y + CELL;
-            boolean selected = BuiltInRegistries.BLOCK.getKey(entryBlock).toString().equals(this.block);
-            if (selected)
-                graphics.fill(x, y, x + CELL, y + CELL, 0x80406A80);
-            else if (hover)
-                graphics.fill(x, y, x + CELL, y + CELL, ROW_BG);
+                boolean hot = mouseX >= x && mouseX < x + CELL && mouseY >= y && mouseY < y + CELL;
+                boolean selected = BuiltInRegistries.BLOCK.getKey(entryBlock).toString().equals(this.block);
+                if (selected)
+                    graphics.fill(x, y, x + CELL, y + CELL, 0x80406A80);
+                else if (hot)
+                    graphics.fill(x, y, x + CELL, y + CELL, ROW_BG);
 
-            graphics.renderItem(new ItemStack(entryBlock.asItem()), x + 1, y + 1);
+                graphics.renderItem(new ItemStack(entryBlock.asItem()), x + 1, y + 1);
+            }
+        } else if (this.leftMode == LEFT_ENTITIES) {
+            for (int row = 0; row < LIST_VISIBLE; row++) {
+                int entryIdx = this.scroll + row;
+                if (entryIdx >= this.filteredEntities.size())
+                    break;
+                EntityEntry e = this.filteredEntities.get(entryIdx);
+                int y = gridY + row * LIST_ROW_H;
+                boolean hot = mouseX >= gridX && mouseX < gridX + gridW && mouseY >= y && mouseY < y + LIST_ROW_H - 1;
+                boolean selected = e.id().equals(this.selectedEntityId);
+                graphics.fill(gridX, y, gridX + gridW, y + LIST_ROW_H - 1,
+                        selected ? 0x80406A80 : (hot ? ROW_BG_HOT : ROW_BG));
+                int textX = gridX + 3;
+                if (!e.icon().isEmpty()) {
+                    graphics.pose().pushPose();
+                    graphics.pose().translate(gridX + 1, y + 1, 0);
+                    graphics.pose().scale(0.75F, 0.75F, 1.0F);
+                    graphics.renderItem(e.icon(), 0, 0);
+                    graphics.pose().popPose();
+                    textX = gridX + 15;
+                }
+                String label = this.font.plainSubstrByWidth(e.displayName(), gridW - (textX - gridX) - 2);
+                graphics.drawString(this.font, label, textX, y + 3, selected ? ACCENT : TEXT, false);
+            }
+        } else {
+            for (int row = 0; row < LIST_VISIBLE; row++) {
+                int entryIdx = this.scroll + row;
+                if (entryIdx >= this.filteredParticles.size())
+                    break;
+                String p = this.filteredParticles.get(entryIdx);
+                int y = gridY + row * LIST_ROW_H;
+                boolean hot = mouseX >= gridX && mouseX < gridX + gridW && mouseY >= y && mouseY < y + LIST_ROW_H - 1;
+                boolean selected = p.equals(this.selectedParticleId);
+                graphics.fill(gridX, y, gridX + gridW, y + LIST_ROW_H - 1,
+                        selected ? 0x80406A80 : (hot ? ROW_BG_HOT : ROW_BG));
+                String label = this.font.plainSubstrByWidth(shortId(p), gridW - 6);
+                graphics.drawString(this.font, label, gridX + 3, y + 3, selected ? ACCENT : TEXT, false);
+            }
         }
 
+        // Draggable scrollbar
         if (maxScroll > 0) {
-            int barHeight = Math.max(12, GRID_ROWS * CELL * GRID_ROWS
-                    / Math.max(1, (this.filtered.size() + this.gridCols - 1) / this.gridCols));
-            int barY = gridY + (GRID_ROWS * CELL - barHeight) * this.scroll / maxScroll;
-            graphics.fill(gridX + gridW + 2, gridY, gridX + gridW + 4, gridY + GRID_ROWS * CELL, 0x30FFFFFF);
-            graphics.fill(gridX + gridW + 2, barY, gridX + gridW + 4, barY + barHeight, 0xAA66E0FF);
+            int barX = scrollbarX();
+            int barHeight = Math.max(14, gridH * leftVisibleRows() / leftTotalRows());
+            int barY = gridY + (gridH - barHeight) * this.scroll / maxScroll;
+            boolean barHot = this.draggingScrollbar
+                    || (mouseX >= barX - 2 && mouseX <= barX + 6 && mouseY >= gridY && mouseY < gridY + gridH);
+            graphics.fill(barX, gridY, barX + 4, gridY + gridH, 0x35FFFFFF);
+            graphics.fill(barX, barY, barX + 4, barY + barHeight, barHot ? 0xFF66E0FF : 0xAA66E0FF);
         }
 
-        int infoY = gridY + GRID_ROWS * CELL + 8;
-        Block block = HologramStates.blockOf(this.block);
-        String name = block == null ? "missing block" : block.getName().getString();
-        graphics.drawString(this.font, this.font.plainSubstrByWidth(name, width - 20), this.blockLeft + 10, infoY,
-                TEXT, false);
+        int infoY = gridY + gridH + 6;
+        if (this.leftMode == LEFT_BLOCKS) {
+            Block currentBlock = HologramStates.blockOf(this.block);
+            String name = currentBlock == null ? "missing block" : currentBlock.getName().getString();
+            graphics.drawString(this.font, this.font.plainSubstrByWidth(name, width - 20), this.blockLeft + 10, infoY,
+                    TEXT, false);
 
-        BlockState state = currentState();
-        if (state == null)
-            return;
+            BlockState state = currentState();
+            if (state == null)
+                return;
 
-        List<Property<?>> properties = HologramStates.properties(state);
-        for (int i = 0; i < Math.min(properties.size(), PROP_ROWS); i++) {
-            Property<?> property = properties.get(i);
-            int y = infoY + 14 + i * PROP_PITCH;
-            boolean hot = mouseX >= this.blockLeft + 8 && mouseX < this.blockLeft + width - 8
-                    && mouseY >= y && mouseY < y + PROP_PITCH - 2;
-            graphics.fill(this.blockLeft + 8, y, this.blockLeft + width - 8, y + PROP_PITCH - 2,
-                    hot ? ROW_BG_HOT : ROW_BG);
-            graphics.drawString(this.font, property.getName(), this.blockLeft + 12, y + 4, MUTED, false);
-            String value = HologramStates.valueOf(state, property);
-            int valueWidth = this.font.width(value);
-            graphics.drawString(this.font, value, this.blockLeft + width - 12 - valueWidth, y + 4, ACCENT, false);
+            List<Property<?>> properties = HologramStates.properties(state);
+            for (int i = 0; i < Math.min(properties.size(), PROP_ROWS); i++) {
+                Property<?> property = properties.get(i);
+                int y = infoY + 13 + i * PROP_PITCH;
+                boolean hot = mouseX >= this.blockLeft + 8 && mouseX < this.blockLeft + width - 8
+                        && mouseY >= y && mouseY < y + PROP_PITCH - 2;
+                graphics.fill(this.blockLeft + 8, y, this.blockLeft + width - 8, y + PROP_PITCH - 2,
+                        hot ? ROW_BG_HOT : ROW_BG);
+                graphics.drawString(this.font, property.getName(), this.blockLeft + 12, y + 4, MUTED, false);
+                String value = HologramStates.valueOf(state, property);
+                int valueWidth = this.font.width(value);
+                graphics.drawString(this.font, value, this.blockLeft + width - 12 - valueWidth, y + 4, ACCENT, false);
+            }
+        } else {
+            String picked = this.leftMode == LEFT_ENTITIES ? this.selectedEntityId : this.selectedParticleId;
+            graphics.drawString(this.font, this.font.plainSubstrByWidth(picked, width - 20),
+                    this.blockLeft + 10, infoY, MUTED, false);
+
+            int btnY = infoY + 14;
+            int btnH = 20;
+            boolean canAdd = this.parts.size() < HologramPart.MAX_PARTS && !picked.isEmpty();
+            boolean hot = canAdd && mouseX >= this.blockLeft + 10 && mouseX < this.blockLeft + width - 10
+                    && mouseY >= btnY && mouseY < btnY + btnH;
+            graphics.fill(this.blockLeft + 10, btnY, this.blockLeft + width - 10, btnY + btnH,
+                    canAdd ? (hot ? ROW_BG_HOT : ROW_BG) : 0x25203A4A);
+            graphics.renderOutline(this.blockLeft + 10, btnY, width - 20, btnH, canAdd ? ACCENT : 0x44FFFFFF);
+            String addLabel = canAdd
+                    ? (this.leftMode == LEFT_ENTITIES ? "+ Add Entity Part" : "+ Add Particle Part")
+                    : "Max " + HologramPart.MAX_PARTS + " parts";
+            graphics.drawString(this.font, addLabel,
+                    this.blockLeft + width / 2 - this.font.width(addLabel) / 2, btnY + 6,
+                    canAdd ? TEXT : MUTED, false);
+
+            graphics.drawString(this.font, "Double-click entry to add",
+                    this.blockLeft + 10, btnY + 26, MUTED, false);
+            graphics.drawString(this.font, "Parts: " + this.parts.size() + " / " + HologramPart.MAX_PARTS,
+                    this.blockLeft + 10, btnY + 38, MUTED, false);
         }
     }
 
@@ -630,44 +973,70 @@ public class HologramScreen extends Screen {
         for (int i = 0; i < this.rows.size(); i++) {
             int y = rowY(i);
             boolean hot = isRowHot(mouseX, mouseY, i);
-            graphics.fill(this.adjustLeft + 10, y, this.adjustLeft + width - 10, y + ROW_H - 2,
-                    hot ? ROW_BG_HOT : ROW_BG);
-
             Object row = this.rows.get(i);
+            boolean selectedPartRow = row instanceof PartRow pr && pr.index() == this.selectedPart;
+            graphics.fill(this.adjustLeft + 10, y, this.adjustLeft + width - 10, y + ROW_H - 2,
+                    selectedPartRow ? 0x7030607A : (hot ? ROW_BG_HOT : ROW_BG));
+
             int right = this.adjustLeft + width - 10;
             if (row instanceof NumRow num) {
-                graphics.drawString(this.font, num.label(), this.adjustLeft + 15, y + 8, TEXT, false);
+                graphics.drawString(this.font, num.label(), this.adjustLeft + 15, y + 7, TEXT, false);
                 String value = num.format().apply(num.get().getAsDouble());
-                graphics.drawString(this.font, value, right - 56 - this.font.width(value), y + 8, ACCENT, false);
-                drawSmallButton(graphics, right - 50, y + 3, "-", mouseX, mouseY);
-                drawSmallButton(graphics, right - 25, y + 3, "+", mouseX, mouseY);
+                graphics.drawString(this.font, value, right - 54 - this.font.width(value), y + 7, ACCENT, false);
+                drawSmallButton(graphics, right - 48, y + 2, "-", mouseX, mouseY);
+                drawSmallButton(graphics, right - 24, y + 2, "+", mouseX, mouseY);
             } else if (row instanceof ToggleRow toggle) {
                 boolean on = toggle.get().getAsBoolean();
-                graphics.drawString(this.font, toggle.label(), this.adjustLeft + 15, y + 8, TEXT, false);
+                graphics.drawString(this.font, toggle.label(), this.adjustLeft + 15, y + 7, TEXT, false);
                 String value = on ? "on" : "off";
-                graphics.drawString(this.font, value, right - 5 - this.font.width(value), y + 8,
+                graphics.drawString(this.font, value, right - 5 - this.font.width(value), y + 7,
                         on ? ACCENT : MUTED, false);
             } else if (row instanceof ActionRow action) {
                 boolean available = action.available().getAsBoolean();
-                graphics.drawString(this.font, action.label(), this.adjustLeft + 15, y + 8,
+                graphics.drawString(this.font, action.label(), this.adjustLeft + 15, y + 7,
                         available ? TEXT : MUTED, false);
                 String hint = action.hint().get();
-                graphics.drawString(this.font, hint, right - 5 - this.font.width(hint), y + 8,
+                graphics.drawString(this.font, hint, right - 5 - this.font.width(hint), y + 7,
                         available ? ACCENT : MUTED, false);
             } else if (row instanceof EffectRow effectRow) {
                 String label = effectRow.effect().label();
-                graphics.drawString(this.font, label, this.adjustLeft + 15, y + 8, TEXT, false);
+                graphics.drawString(this.font, label, this.adjustLeft + 15, y + 7, TEXT, false);
                 String value = String.format(Locale.ROOT, "%.2f", effectRow.effect().strength());
-                graphics.drawString(this.font, value, right - 5 - this.font.width(value), y + 8, ACCENT, false);
+                graphics.drawString(this.font, value, right - 5 - this.font.width(value), y + 7, ACCENT, false);
             } else if (row instanceof AddRow) {
-                graphics.drawString(this.font, "Add " + addDescription(), this.adjustLeft + 15, y + 8, TEXT, false);
+                String label = this.font.plainSubstrByWidth("Add " + addDescription(), width - 64);
+                graphics.drawString(this.font, label, this.adjustLeft + 15, y + 7, TEXT, false);
                 String hint = this.parts.size() >= HologramPart.MAX_PARTS ? "max" : "click";
-                graphics.drawString(this.font, hint, right - 5 - this.font.width(hint), y + 8,
+                graphics.drawString(this.font, hint, right - 5 - this.font.width(hint), y + 7,
                         this.parts.size() >= HologramPart.MAX_PARTS ? MUTED : ACCENT, false);
             } else if (row instanceof PartRow partRow) {
-                graphics.drawString(this.font, partRow.part().label(), this.adjustLeft + 15, y + 8, TEXT, false);
-                String value = String.format(Locale.ROOT, "y %.2f", partRow.part().offsetY());
-                graphics.drawString(this.font, value, right - 5 - this.font.width(value), y + 8, ACCENT, false);
+                String label = this.font.plainSubstrByWidth(partRow.part().label(), width - 86);
+                graphics.drawString(this.font, label, this.adjustLeft + 15, y + 7, TEXT, false);
+                String value = String.format(Locale.ROOT, "%.1f,%.1f,%.1f",
+                        partRow.part().offsetX(), partRow.part().offsetY(), partRow.part().offsetZ());
+                graphics.drawString(this.font, value, right - 5 - this.font.width(value), y + 7, ACCENT, false);
+            }
+        }
+
+        // Inline X / Y / Z / Size fine-adjust strip for the selected part on the Parts tab
+        if (this.tab == TAB_PARTS && this.selectedPart >= 0 && this.selectedPart < this.parts.size()) {
+            HologramPart p = this.parts.get(this.selectedPart);
+            int stripY = this.top + PANEL_H - 96;
+            graphics.drawString(this.font, "Selected part (wheel / click):", this.adjustLeft + 12, stripY, MUTED, false);
+            int boxY = stripY + 12;
+            int boxW = (width - 20 - 9) / 4;
+            String[] labels = {
+                    String.format(Locale.ROOT, "X %.2f", p.offsetX()),
+                    String.format(Locale.ROOT, "Y %.2f", p.offsetY()),
+                    String.format(Locale.ROOT, "Z %.2f", p.offsetZ()),
+                    String.format(Locale.ROOT, "S %.2f", p.scale())
+            };
+            for (int c = 0; c < 4; c++) {
+                int bx = this.adjustLeft + 10 + c * (boxW + 3);
+                boolean hot = mouseX >= bx && mouseX < bx + boxW && mouseY >= boxY && mouseY < boxY + 20;
+                graphics.fill(bx, boxY, bx + boxW, boxY + 20, hot ? ROW_BG_HOT : ROW_BG);
+                graphics.drawString(this.font, this.font.plainSubstrByWidth(labels[c], boxW - 4),
+                        bx + 3, boxY + 6, ACCENT, false);
             }
         }
 
@@ -676,12 +1045,20 @@ public class HologramScreen extends Screen {
     }
 
     private void drawSmallButton(GuiGraphics graphics, int x, int y, String label, int mouseX, int mouseY) {
-        boolean hot = mouseX >= x && mouseX < x + 21 && mouseY >= y && mouseY < y + 20;
-        graphics.fill(x, y, x + 21, y + 20, hot ? 0x80FFFFFF : 0x40FFFFFF);
-        graphics.drawString(this.font, label, x + 11 - this.font.width(label) / 2, y + 6, TEXT, false);
+        boolean hot = mouseX >= x && mouseX < x + 20 && mouseY >= y && mouseY < y + 18;
+        graphics.fill(x, y, x + 20, y + 18, hot ? 0x80FFFFFF : 0x40FFFFFF);
+        graphics.drawString(this.font, label, x + 10 - this.font.width(label) / 2, y + 5, TEXT, false);
     }
 
     // ---------------------------------------------------------------- input
+
+    private boolean isInsidePanel(double mouseX, double mouseY) {
+        boolean inLeft = mouseX >= this.blockLeft && mouseX < this.blockLeft + blockWidth()
+                && mouseY >= this.top && mouseY < this.top + PANEL_H;
+        boolean inRight = mouseX >= this.adjustLeft && mouseX < this.adjustLeft + adjustWidth()
+                && mouseY >= this.top && mouseY < this.top + PANEL_H;
+        return inLeft || inRight;
+    }
 
     private boolean isRowHot(int mouseX, int mouseY, int index) {
         int width = adjustWidth();
@@ -690,12 +1067,27 @@ public class HologramScreen extends Screen {
                 && mouseY >= y && mouseY < y + ROW_H - 2;
     }
 
+    private void updateScrollFromMouseY(double mouseY) {
+        int maxScroll = maxLeftScroll();
+        if (maxScroll <= 0)
+            return;
+        int gridY = gridTop();
+        int gridH = gridHeight();
+        int barHeight = Math.max(14, gridH * leftVisibleRows() / leftTotalRows());
+        int track = Math.max(1, gridH - barHeight);
+        double frac = Mth.clamp((mouseY - gridY - barHeight * 0.5) / track, 0.0, 1.0);
+        this.scroll = (int) Math.round(frac * maxScroll);
+    }
+
     @Override
     public boolean mouseClicked(double mouseX, double mouseY, int button) {
         if (super.mouseClicked(mouseX, mouseY, button))
             return true;
 
-        if (clickBlockPanel(mouseX, mouseY, button))
+        if (clickLeftPanel(mouseX, mouseY, button))
+            return true;
+
+        if (clickSelectedPartStrip(mouseX, mouseY, button))
             return true;
 
         for (int i = 0; i < this.rows.size(); i++) {
@@ -731,52 +1123,244 @@ public class HologramScreen extends Screen {
                 if (button == 1)
                     removePart(partRow.index());
                 else
-                    cyclePartSide(partRow.index());
+                    this.selectedPart = partRow.index();
                 return true;
             }
             if (row instanceof NumRow num) {
+                if (button == 1 && num.reset() != null) {
+                    num.reset().run();
+                    refresh();
+                    return true;
+                }
                 int right = this.adjustLeft + adjustWidth() - 10;
                 int y = rowY(i);
-                boolean minus = mouseX >= right - 50 && mouseX < right - 29 && mouseY >= y + 3 && mouseY < y + 23;
+                boolean minus = mouseX >= right - 48 && mouseX < right - 28 && mouseY >= y + 2 && mouseY < y + 20;
                 adjust(num, minus ? -1 : 1);
+                return true;
+            }
+        }
+
+        // Open 3D viewport interactions (outside both panels)
+        if (!isInsidePanel(mouseX, mouseY)) {
+            setFocused(null);
+            if (button == 1) {
+                this.orbiting = true;
+                return true;
+            }
+            if (button == 0) {
+                if (!HologramClient.previewAnchored()
+                        && this.gizmo.beginDrag(mouseX, mouseY, this.width, this.height, hologramWorldCenter(),
+                        this.offsetX, this.offsetY, this.offsetZ, this.yaw, this.pitch, this.roll, this.scale)) {
+                    pushUndo();
+                    return true;
+                }
+                this.orbiting = true;
                 return true;
             }
         }
         return false;
     }
 
-    private boolean clickBlockPanel(double mouseX, double mouseY, int button) {
-        int gridX = this.blockLeft + 10;
-        int gridY = gridTop();
-
-        if (mouseX >= gridX && mouseX < gridX + gridWidth()
-                && mouseY >= gridY && mouseY < gridY + GRID_ROWS * CELL) {
-            int col = (int) ((mouseX - gridX) / CELL);
-            int row = (int) ((mouseY - gridY) / CELL);
-            int entry = (this.scroll + row) * this.gridCols + col;
-            if (entry >= 0 && entry < this.filtered.size()) {
-                pickBlock(this.filtered.get(entry));
-                return true;
-            }
+    private boolean clickSelectedPartStrip(double mouseX, double mouseY, int button) {
+        if (this.tab != TAB_PARTS || this.selectedPart < 0 || this.selectedPart >= this.parts.size())
             return false;
-        }
-
-        BlockState state = currentState();
-        if (state == null)
-            return false;
-
-        List<Property<?>> properties = HologramStates.properties(state);
-        int infoY = gridY + GRID_ROWS * CELL + 8;
-        int width = blockWidth();
-        for (int i = 0; i < Math.min(properties.size(), PROP_ROWS); i++) {
-            int y = infoY + 14 + i * PROP_PITCH;
-            if (mouseX >= this.blockLeft + 8 && mouseX < this.blockLeft + width - 8
-                    && mouseY >= y && mouseY < y + PROP_PITCH - 2) {
-                cycleProperty(properties.get(i), state, button == 1 ? -1 : 1);
+        int width = adjustWidth();
+        int boxY = this.top + PANEL_H - 84;
+        int boxW = (width - 20 - 9) / 4;
+        for (int c = 0; c < 4; c++) {
+            int bx = this.adjustLeft + 10 + c * (boxW + 3);
+            if (mouseX >= bx && mouseX < bx + boxW && mouseY >= boxY && mouseY < boxY + 20) {
+                int dir = button == 1 ? -1 : 1;
+                float step = 0.25F * STEPS[this.stepIndex] * dir;
+                adjustPart(this.selectedPart,
+                        c == 0 ? step : 0.0F,
+                        c == 1 ? step : 0.0F,
+                        c == 2 ? step : 0.0F,
+                        c == 3 ? 0.1F * STEPS[this.stepIndex] * dir : 0.0F);
                 return true;
             }
         }
         return false;
+    }
+
+    private boolean clickLeftPanel(double mouseX, double mouseY, int button) {
+        int gridX = this.blockLeft + 10;
+        int gridY = gridTop();
+        int gridW = gridWidth();
+        int gridH = gridHeight();
+        int barX = scrollbarX();
+
+        // Scrollbar click / drag
+        if (maxLeftScroll() > 0 && mouseX >= barX - 2 && mouseX <= barX + 8
+                && mouseY >= gridY && mouseY < gridY + gridH) {
+            this.draggingScrollbar = true;
+            updateScrollFromMouseY(mouseY);
+            return true;
+        }
+
+        if (this.leftMode == LEFT_BLOCKS) {
+            if (mouseX >= gridX && mouseX < gridX + gridW && mouseY >= gridY && mouseY < gridY + gridH) {
+                int col = (int) ((mouseX - gridX) / CELL);
+                int row = (int) ((mouseY - gridY) / CELL);
+                int entry = (this.scroll + row) * this.gridCols + col;
+                if (entry >= 0 && entry < this.filteredBlocks.size()) {
+                    pickBlock(this.filteredBlocks.get(entry));
+                    return true;
+                }
+                return false;
+            }
+
+            BlockState state = currentState();
+            if (state == null)
+                return false;
+
+            List<Property<?>> properties = HologramStates.properties(state);
+            int infoY = gridY + gridH + 6;
+            int width = blockWidth();
+            for (int i = 0; i < Math.min(properties.size(), PROP_ROWS); i++) {
+                int y = infoY + 13 + i * PROP_PITCH;
+                if (mouseX >= this.blockLeft + 8 && mouseX < this.blockLeft + width - 8
+                        && mouseY >= y && mouseY < y + PROP_PITCH - 2) {
+                    cycleProperty(properties.get(i), state, button == 1 ? -1 : 1);
+                    return true;
+                }
+            }
+            return false;
+        }
+
+        // Entity or Particle list click
+        if (mouseX >= gridX && mouseX < gridX + gridW && mouseY >= gridY && mouseY < gridY + gridH) {
+            int row = (int) ((mouseY - gridY) / LIST_ROW_H);
+            int entryIdx = this.scroll + row;
+            long now = System.currentTimeMillis();
+            if (this.leftMode == LEFT_ENTITIES && entryIdx >= 0 && entryIdx < this.filteredEntities.size()) {
+                String pickedId = this.filteredEntities.get(entryIdx).id();
+                boolean doubleClick = pickedId.equals(this.lastListClickId) && (now - this.lastListClickTime) < 350L;
+                this.selectedEntityId = pickedId;
+                this.addKind = 1;
+                this.lastListClickId = pickedId;
+                this.lastListClickTime = now;
+                if (doubleClick)
+                    addSpecificPart(HologramPart.entity(pickedId, this.scale));
+                else
+                    rebuildRows();
+                return true;
+            }
+            if (this.leftMode == LEFT_PARTICLES && entryIdx >= 0 && entryIdx < this.filteredParticles.size()) {
+                String pickedId = this.filteredParticles.get(entryIdx);
+                boolean doubleClick = pickedId.equals(this.lastListClickId) && (now - this.lastListClickTime) < 350L;
+                this.selectedParticleId = pickedId;
+                this.addKind = 2;
+                this.lastListClickId = pickedId;
+                this.lastListClickTime = now;
+                if (doubleClick)
+                    addSpecificPart(HologramPart.particle(pickedId, this.scale));
+                else
+                    rebuildRows();
+                return true;
+            }
+            return false;
+        }
+
+        // "+ Add Entity Part" / "+ Add Particle Part" button
+        int infoY = gridY + gridH + 6;
+        int btnY = infoY + 14;
+        int width = blockWidth();
+        if (mouseX >= this.blockLeft + 10 && mouseX < this.blockLeft + width - 10
+                && mouseY >= btnY && mouseY < btnY + 20) {
+            if (this.leftMode == LEFT_ENTITIES && !this.selectedEntityId.isEmpty()) {
+                addSpecificPart(HologramPart.entity(this.selectedEntityId, this.scale));
+                return true;
+            }
+            if (this.leftMode == LEFT_PARTICLES && !this.selectedParticleId.isEmpty()) {
+                addSpecificPart(HologramPart.particle(this.selectedParticleId, this.scale));
+                return true;
+            }
+        }
+        return false;
+    }
+
+    @Override
+    public boolean mouseDragged(double mouseX, double mouseY, int button, double dragX, double dragY) {
+        if (this.draggingScrollbar) {
+            updateScrollFromMouseY(mouseY);
+            return true;
+        }
+        if (this.orbiting) {
+            if (this.minecraft != null && this.minecraft.player != null)
+                this.minecraft.player.turn(dragX * 4.0, dragY * 4.0);
+            return true;
+        }
+        if (this.gizmo.isDragging()) {
+            this.gizmo.updateDrag(mouseX, mouseY, this.width, this.height,
+                    STEPS[this.stepIndex], hasShiftDown(), new HologramGizmo.Target() {
+                        @Override
+                        public void setOffset(float x, float y, float z) {
+                            HologramScreen.this.offsetX = x;
+                            HologramScreen.this.offsetY = y;
+                            HologramScreen.this.offsetZ = z;
+                            refresh();
+                        }
+
+                        @Override
+                        public void setRotation(float y, float p, float r) {
+                            HologramScreen.this.yaw = y;
+                            HologramScreen.this.pitch = p;
+                            HologramScreen.this.roll = r;
+                            refresh();
+                        }
+
+                        @Override
+                        public void setScale(float s) {
+                            HologramScreen.this.scale = s;
+                            refresh();
+                        }
+                    });
+            return true;
+        }
+        return super.mouseDragged(mouseX, mouseY, button, dragX, dragY);
+    }
+
+    @Override
+    public boolean mouseReleased(double mouseX, double mouseY, int button) {
+        this.draggingScrollbar = false;
+        this.orbiting = false;
+        if (this.gizmo.isDragging()) {
+            this.gizmo.cancelDrag();
+            return true;
+        }
+        return super.mouseReleased(mouseX, mouseY, button);
+    }
+
+    @Override
+    public boolean keyPressed(int keyCode, int scanCode, int modifiers) {
+        if (keyCode == GLFW.GLFW_KEY_ESCAPE && this.gizmo.isDragging()) {
+            this.gizmo.cancelDrag();
+            undoTransform();
+            return true;
+        }
+        if (!(getFocused() instanceof EditBox)) {
+            if (keyCode == GLFW.GLFW_KEY_G) {
+                this.gizmo.setMode(HologramGizmo.Mode.MOVE);
+                updateGizmoButtonLabels();
+                return true;
+            }
+            if (keyCode == GLFW.GLFW_KEY_R) {
+                this.gizmo.setMode(HologramGizmo.Mode.ROTATE);
+                updateGizmoButtonLabels();
+                return true;
+            }
+            if (keyCode == GLFW.GLFW_KEY_S) {
+                this.gizmo.setMode(HologramGizmo.Mode.SCALE);
+                updateGizmoButtonLabels();
+                return true;
+            }
+            if (keyCode == GLFW.GLFW_KEY_Z && hasControlDown()) {
+                undoTransform();
+                return true;
+            }
+        }
+        return super.keyPressed(keyCode, scanCode, modifiers);
     }
 
     @Override
@@ -785,29 +1369,50 @@ public class HologramScreen extends Screen {
         if (direction == 0)
             return false;
 
-        // A property row cycles its value under the wheel, same as clicking it.
-        BlockState state = currentState();
-        if (state != null) {
-            List<Property<?>> properties = HologramStates.properties(state);
-            int infoY = gridTop() + GRID_ROWS * CELL + 8;
-            int width = blockWidth();
-            for (int i = 0; i < Math.min(properties.size(), PROP_ROWS); i++) {
-                int y = infoY + 14 + i * PROP_PITCH;
-                if (mouseX >= this.blockLeft + 8 && mouseX < this.blockLeft + width - 8
-                        && mouseY >= y && mouseY < y + PROP_PITCH - 2) {
-                    cycleProperty(properties.get(i), state, direction);
-                    return true;
+        // Property rows cycle under the wheel in Block mode
+        if (this.leftMode == LEFT_BLOCKS) {
+            BlockState state = currentState();
+            if (state != null) {
+                List<Property<?>> properties = HologramStates.properties(state);
+                int infoY = gridTop() + gridHeight() + 6;
+                int width = blockWidth();
+                for (int i = 0; i < Math.min(properties.size(), PROP_ROWS); i++) {
+                    int y = infoY + 13 + i * PROP_PITCH;
+                    if (mouseX >= this.blockLeft + 8 && mouseX < this.blockLeft + width - 8
+                            && mouseY >= y && mouseY < y + PROP_PITCH - 2) {
+                        cycleProperty(properties.get(i), state, direction);
+                        return true;
+                    }
                 }
             }
         }
 
+        // Scrollable grid/list + scrollbar track area
         int gridX = this.blockLeft + 10;
         int gridY = gridTop();
-        if (mouseX >= gridX && mouseX < gridX + gridWidth()
-                && mouseY >= gridY && mouseY < gridY + GRID_ROWS * CELL) {
-            int maxScroll = Math.max(0, (this.filtered.size() + this.gridCols - 1) / this.gridCols - GRID_ROWS);
-            this.scroll = Mth.clamp(this.scroll - direction, 0, maxScroll);
+        if (mouseX >= gridX && mouseX < scrollbarX() + 8
+                && mouseY >= gridY && mouseY < gridY + gridHeight()) {
+            this.scroll = Mth.clamp(this.scroll - direction, 0, maxLeftScroll());
             return true;
+        }
+
+        // Selected part fine-adjust strip
+        if (this.tab == TAB_PARTS && this.selectedPart >= 0 && this.selectedPart < this.parts.size()) {
+            int width = adjustWidth();
+            int boxY = this.top + PANEL_H - 84;
+            int boxW = (width - 20 - 9) / 4;
+            for (int c = 0; c < 4; c++) {
+                int bx = this.adjustLeft + 10 + c * (boxW + 3);
+                if (mouseX >= bx && mouseX < bx + boxW && mouseY >= boxY && mouseY < boxY + 20) {
+                    float step = 0.25F * STEPS[this.stepIndex] * direction;
+                    adjustPart(this.selectedPart,
+                            c == 0 ? step : 0.0F,
+                            c == 1 ? step : 0.0F,
+                            c == 2 ? step : 0.0F,
+                            c == 3 ? 0.1F * STEPS[this.stepIndex] * direction : 0.0F);
+                    return true;
+                }
+            }
         }
 
         for (int i = 0; i < this.rows.size(); i++) {
@@ -824,7 +1429,7 @@ public class HologramScreen extends Screen {
             else if (row instanceof AddRow)
                 cyclePick(direction);
             else if (row instanceof PartRow partRow)
-                movePart(partRow.index(), direction * 0.25F * STEPS[this.stepIndex]);
+                adjustPart(partRow.index(), 0.0F, direction * 0.25F * STEPS[this.stepIndex], 0.0F, 0.0F);
             return true;
         }
         return false;
@@ -841,6 +1446,9 @@ public class HologramScreen extends Screen {
         if (clip == null)
             return;
 
+        this.offsetX = clip.offsetX();
+        this.offsetY = clip.offsetY();
+        this.offsetZ = clip.offsetZ();
         this.block = clip.block();
         this.props = new LinkedHashMap<>(clip.props());
         this.scale = clip.scale();
@@ -954,6 +1562,34 @@ public class HologramScreen extends Screen {
         refresh();
     }
 
+    /** Dev-check hook: origin offset control. */
+    public void devSetOffset(float x, float y, float z) {
+        this.offsetX = (float) clamp(x, -16.0, 16.0);
+        this.offsetY = (float) clamp(y, -16.0, 16.0);
+        this.offsetZ = (float) clamp(z, -16.0, 16.0);
+        refresh();
+    }
+
+    /** Dev-check hook: switches left picker mode (0=Block, 1=Entity, 2=Particle). */
+    public void devLeftMode(int mode) {
+        setLeftMode(mode);
+    }
+
+    /** Dev-check hook: current left picker scroll row. */
+    public int devScroll() {
+        return this.scroll;
+    }
+
+    /** Dev-check hook: simulates dragging the scrollbar to a 0..1 fraction. */
+    public void devDragScrollbar(double fraction) {
+        int gridY = gridTop();
+        int gridH = gridHeight();
+        double y = gridY + Mth.clamp(fraction, 0.0, 1.0) * gridH;
+        this.draggingScrollbar = true;
+        updateScrollFromMouseY(y);
+        this.draggingScrollbar = false;
+    }
+
     /** Dev-check hook: which tab is showing. */
     public int devTab() {
         return this.tab;
@@ -993,7 +1629,7 @@ public class HologramScreen extends Screen {
         else if (row instanceof AddRow)
             cyclePick(direction);
         else if (row instanceof PartRow partRow)
-            movePart(partRow.index(), direction * 0.25F * STEPS[this.stepIndex]);
+            adjustPart(partRow.index(), 0.0F, direction * 0.25F * STEPS[this.stepIndex], 0.0F, 0.0F);
         return true;
     }
 
@@ -1007,15 +1643,16 @@ public class HologramScreen extends Screen {
     public void devAddPart(int kind, String id) {
         if (this.parts.size() >= HologramPart.MAX_PARTS)
             return;
-        float top = this.scale;
+        float topY = this.scale;
         HologramPart part = switch (Mth.clamp(kind, 0, ADD_KINDS.length - 1)) {
-            case 1 -> HologramPart.entity(id, top);
-            case 2 -> HologramPart.particle(id, top * 0.5F);
-            default -> HologramPart.block(id, Map.of(), top);
+            case 1 -> HologramPart.entity(id, topY);
+            case 2 -> HologramPart.particle(id, topY * 0.5F);
+            default -> HologramPart.block(id, Map.of(), topY);
         };
         List<HologramPart> next = new ArrayList<>(this.parts);
         next.add(part);
         this.parts = next;
+        this.selectedPart = next.size() - 1;
         rebuildRows();
         refresh();
     }

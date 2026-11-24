@@ -68,6 +68,19 @@ public final class HologramNetwork {
             return;
         }
 
+        if (payload.action() == HologramActionPayload.Action.RECAPTURE) {
+            BlockPos source = findBlockEntityNear(level, stored.pos());
+            if (source == null)
+                return;
+            CompoundTag captured = Holograms.capture(level, source);
+            if (captured == null)
+                return;
+            HologramSpec updated = stored.withData(captured);
+            Holograms.save(level, updated);
+            openEditor(player, updated);
+            return;
+        }
+
         HologramSpec incoming = HologramSpec.fromTag(payload.spec());
         if (incoming == null)
             return;
@@ -115,6 +128,21 @@ public final class HologramNetwork {
         openEditor(player, created);
     }
 
+    @javax.annotation.Nullable
+    private static BlockPos findBlockEntityNear(ServerLevel level, BlockPos pos) {
+        if (level.getBlockEntity(pos) != null)
+            return pos;
+        for (var dir : new net.minecraft.core.Direction[] {
+                net.minecraft.core.Direction.DOWN, net.minecraft.core.Direction.UP,
+                net.minecraft.core.Direction.NORTH, net.minecraft.core.Direction.SOUTH,
+                net.minecraft.core.Direction.WEST, net.minecraft.core.Direction.EAST }) {
+            BlockPos adj = pos.relative(dir);
+            if (level.getBlockEntity(adj) != null)
+                return adj;
+        }
+        return null;
+    }
+
     private static double square(double value) {
         return value * value;
     }
@@ -134,5 +162,9 @@ public final class HologramNetwork {
 
     public static void sendCreate(BlockPos pos, HologramSpec style) {
         PacketDistributor.sendToServer(HologramActionPayload.create(pos, style));
+    }
+
+    public static void sendRecapture(String id) {
+        PacketDistributor.sendToServer(HologramActionPayload.recapture(id));
     }
 }

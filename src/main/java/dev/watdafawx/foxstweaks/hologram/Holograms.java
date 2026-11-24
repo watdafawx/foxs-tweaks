@@ -68,6 +68,10 @@ public final class Holograms {
     /**
      * The block entity's own data, so a hologram of a chest/sign/machine can render its real state
      * instead of nothing (those blocks have no model at all).
+     *
+     * <p>Also captures {@link BlockEntity#getUpdateTag} under {@code _ft_update} when non-empty:
+     * mods like AE2 only serialize client visual state (drive cell models, powered LEDs) into the
+     * update tag rather than {@code saveWithoutMetadata}.
      */
     @Nullable
     public static CompoundTag capture(ServerLevel level, BlockPos source) {
@@ -75,6 +79,9 @@ public final class Holograms {
         if (blockEntity == null)
             return null;
         CompoundTag tag = blockEntity.saveWithoutMetadata(level.registryAccess());
+        CompoundTag update = blockEntity.getUpdateTag(level.registryAccess());
+        if (!update.isEmpty())
+            tag.put("_ft_update", update);
         if (tag.isEmpty() || tag.sizeInBytes() > MAX_DATA_BYTES)
             return null;
         return tag;
@@ -96,6 +103,13 @@ public final class Holograms {
         HologramSpec spec = HologramSpec.create(newId(level, block), pos, block,
                 placer == null ? null : placer.getUUID(),
                 placer == null ? "" : placer.getGameProfile().getName());
+
+        if (!state.getProperties().isEmpty()) {
+            java.util.Map<String, String> props = new java.util.LinkedHashMap<>();
+            for (var property : HologramStates.properties(state))
+                props.put(property.getName(), HologramStates.valueOf(state, property));
+            spec = spec.withProps(props);
+        }
 
         if (dataSource != null) {
             CompoundTag data = capture(level, dataSource);

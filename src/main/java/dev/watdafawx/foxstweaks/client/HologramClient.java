@@ -125,6 +125,7 @@ public final class HologramClient {
             return;
         }
         updateAppear(mc);
+        HologramBlockEntities.tick(mc);
         emitParticles(mc);
         if (!holdingWand(mc)) {
             HologramClient.hovered = null;

@@ -253,9 +253,23 @@ public final class HologramCheck {
 
             screen.devSetScale(2.5F);
             screen.devSetSpin(45.0F);
+            screen.devSetOffset(0.5F, 1.0F, -0.25F);
             check("editor preview follows the edit immediately",
                     HologramClient.specs().stream().anyMatch(spec -> spec.id().equals(hologramId) && spec.scale() == 2.5F),
                     "preview=" + HologramClient.specs());
+
+            // Scrollbar drag + Entity/Particle pickers
+            screen.devLeftMode(0);
+            screen.devDragScrollbar(0.5);
+            check("block picker scrollbar drags", screen.devScroll() > 0, "scroll=" + screen.devScroll());
+            screen.devLeftMode(1);
+            screen.devDragScrollbar(0.5);
+            check("entity picker scrollbar drags", screen.devScroll() > 0, "scroll=" + screen.devScroll());
+            screen.devLeftMode(2);
+            screen.devDragScrollbar(0.5);
+            check("particle picker scrollbar drags", screen.devScroll() > 0, "scroll=" + screen.devScroll());
+            screen.devLeftMode(0);
+
             screen.saveAndClose();
         });
 
@@ -268,6 +282,24 @@ public final class HologramCheck {
             check("save kept the cycled property", !saved.props().isEmpty(), "props=" + saved.props());
             check("save kept the new scale", Math.abs(saved.scale() - 2.5F) < 0.001F, "scale=" + saved.scale());
             check("save kept the spin", Math.abs(saved.spin() - 45.0F) < 0.001F, "spin=" + saved.spin());
+            check("save kept the origin offset",
+                    Math.abs(saved.offsetX() - 0.5F) < 0.001F
+                            && Math.abs(saved.offsetY() - 1.0F) < 0.001F
+                            && Math.abs(saved.offsetZ() + 0.25F) < 0.001F,
+                    "offset=(" + saved.offsetX() + "," + saved.offsetY() + "," + saved.offsetZ() + ")");
+            // Reset offset back to 0 so downstream screenshots stay centred in frame.
+            onServer(player -> {
+                var cur = Holograms.get(player.serverLevel(), hologramId);
+                if (cur != null) {
+                    var zeroed = new HologramSpec(cur.id(), cur.pos(), 0.0F, 0.0F, 0.0F, cur.block(), cur.props(),
+                            cur.scale(), cur.yaw(), cur.pitch(), cur.roll(), cur.spin(), cur.spinAxis(),
+                            cur.hover(), cur.hoverPeriod(), cur.fullbright(), cur.enabled(), cur.renderDistance(),
+                            cur.owner(), cur.ownerName(), cur.effects(), cur.appearRadius(), cur.appearSeconds(),
+                            cur.parts(), cur.data());
+                    Holograms.save(player.serverLevel(), zeroed);
+                }
+                return null;
+            });
             log("saved spec: block=" + saved.block() + " props=" + saved.props() + " scale=" + saved.scale()
                     + " spin=" + saved.spin() + " range=" + saved.renderDistance());
         });
@@ -619,6 +651,13 @@ public final class HologramCheck {
                 return;
             check("block entity has a renderer", HologramBlockEntities.renderer(blockEntity) != null,
                     "no renderer");
+
+            // Also verify an EntityBlock with empty NBT (picked fresh from picker) still builds a BER.
+            var emptyChest = HologramSpec.create("dev_empty_chest", spec.pos(), "minecraft:chest", null, "");
+            var emptyBe = HologramBlockEntities.get(emptyChest);
+            check("empty-data EntityBlock still builds a block entity for BER",
+                    emptyBe != null && HologramBlockEntities.renderer(emptyBe) != null,
+                    "emptyBe=" + emptyBe);
         });
 
         add(10, () -> {
@@ -627,18 +666,22 @@ public final class HologramCheck {
             shoot("hologram-block-entity.png");
         });
 
-        // ---- AE2 drive: the case that may need per-mod work, because its LEDs are capability-backed ----
+        // ---- AE2 drive: powered with a creative energy cell + storage cell -> LEDs & ModelData ----
         add(10, () -> {
             if (!AE2) {
                 log("SKIP ae2 drive (AE2 not installed)");
                 return;
             }
-            driveId = onServer(player -> {
+            onServer(player -> {
                 var level = player.serverLevel();
                 var drivePos = new BlockPos(10, -60, 2);
+                var energyPos = new BlockPos(9, -60, 2);
                 var drive = HologramStates.blockOf("ae2:drive");
+                var energy = HologramStates.blockOf("ae2:creative_energy_cell");
                 if (drive == null)
-                    return "";
+                    return null;
+                if (energy != null)
+                    level.setBlockAndUpdate(energyPos, energy.defaultBlockState());
                 level.setBlockAndUpdate(drivePos, drive.defaultBlockState());
 
                 // A cell, so the drive has something to report. Generic capability call: no AE2 type here.
@@ -648,9 +691,22 @@ public final class HologramCheck {
                 if (handler != null && cell != null)
                     handler.insertItem(0, new ItemStack(cell), false);
 
-                player.teleportTo(level, 11.5, -60.0, 8.5, 180.0F, 0.0F);
-                var spec = Holograms.create(level, new BlockPos(12, -60, 2), drive.defaultBlockState(),
-                        drivePos, player);
+                player.teleportTo(level, 11.0, -60.0, 6.5, 180.0F, 0.0F);
+                return null;
+            });
+        });
+
+        // Give AE2's grid a few ticks to boot and power the drive before capturing its visual state.
+        add(20, () -> {
+            if (!AE2)
+                return;
+            driveId = onServer(player -> {
+                var level = player.serverLevel();
+                var drivePos = new BlockPos(10, -60, 2);
+                var state = level.getBlockState(drivePos);
+                if (HologramStates.nameOf(state).isEmpty())
+                    return "";
+                var spec = Holograms.create(level, new BlockPos(12, -60, 2), state, drivePos, player);
                 return spec.id();
             });
             check("ae2 drive hologram created", !driveId.isEmpty(), "id=" + driveId);
@@ -666,10 +722,20 @@ public final class HologramCheck {
                 return;
             }
             log("ae2 drive captured keys: " + spec.data().getAllKeys());
+            check("ae2 drive captured update tag (_ft_update)", spec.data().contains("_ft_update"),
+                    "keys=" + spec.data().getAllKeys());
             var blockEntity = HologramBlockEntities.get(spec);
             check("ae2 drive block entity was built", blockEntity != null, "null entity");
             check("ae2 drive has a renderer",
                     blockEntity != null && HologramBlockEntities.renderer(blockEntity) != null, "no renderer");
+            check("ae2 drive provides non-empty ModelData (cells)",
+                    blockEntity != null
+                            && blockEntity.getModelData() != net.neoforged.neoforge.client.model.data.ModelData.EMPTY,
+                    "modelData=" + (blockEntity == null ? "null" : blockEntity.getModelData()));
+            // Verify Paste-as-new (at()) preserves BER data
+            var pasted = spec.at("dev_pasted_drive", spec.pos().east(), spec.owner(), spec.ownerName());
+            check("Paste-as-new keeps BER data", !pasted.data().isEmpty() && pasted.data().contains("_ft_update"),
+                    "data=" + pasted.data().getAllKeys());
             shoot("hologram-ae2-drive.png");
         });
 

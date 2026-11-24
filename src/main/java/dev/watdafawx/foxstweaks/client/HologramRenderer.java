@@ -23,6 +23,8 @@ import net.minecraft.world.phys.Vec3;
 import net.neoforged.neoforge.client.event.RenderLevelStageEvent;
 import net.neoforged.neoforge.client.model.data.ModelData;
 
+import org.joml.Matrix4f;
+
 import javax.annotation.Nullable;
 import java.util.List;
 
@@ -42,6 +44,21 @@ public final class HologramRenderer {
     private static int lastDrawn;
     private static int drawnBlockEntities;
     private static long lastPassNanos;
+    private static final Matrix4f lastView = new Matrix4f();
+    private static final Matrix4f lastProjection = new Matrix4f();
+    private static Vec3 lastCamera = Vec3.ZERO;
+
+    public static Matrix4f lastView() {
+        return lastView;
+    }
+
+    public static Matrix4f lastProjection() {
+        return lastProjection;
+    }
+
+    public static Vec3 lastCamera() {
+        return lastCamera;
+    }
 
     /** How many holograms the last frame actually drew; the dev check's benchmark reports this. */
     public static int lastDrawnCount() {
@@ -76,12 +93,16 @@ public final class HologramRenderer {
         if (mc.level == null)
             return;
 
+        Vec3 camera = event.getCamera().getPosition();
+        lastCamera = camera;
+        lastView.set(event.getModelViewMatrix());
+        lastProjection.set(event.getProjectionMatrix());
+
         List<HologramSpec> specs = HologramClient.specs();
         HologramSpec hovered = HologramClient.hovered();
         if (specs.isEmpty() && hovered == null)
             return;
 
-        Vec3 camera = event.getCamera().getPosition();
         PoseStack pose = event.getPoseStack();
         MultiBufferSource.BufferSource buffer = mc.renderBuffers().bufferSource();
         float partial = event.getPartialTick().getGameTimeDeltaPartialTick(false);
@@ -96,9 +117,9 @@ public final class HologramRenderer {
                 continue;
 
             double cap = Math.min(spec.renderDistance(), globalCap);
-            double centerX = spec.pos().getX() + 0.5;
-            double centerY = spec.pos().getY() + 0.5 * spec.scale();
-            double centerZ = spec.pos().getZ() + 0.5;
+            double centerX = spec.pos().getX() + spec.offsetX() + 0.5;
+            double centerY = spec.pos().getY() + spec.offsetY() + 0.5 * spec.scale();
+            double centerZ = spec.pos().getZ() + spec.offsetZ() + 0.5;
             if (camera.distanceToSqr(centerX, centerY, centerZ) > cap * cap)
                 continue;
 
@@ -163,7 +184,8 @@ public final class HologramRenderer {
         int light = spec.fullbright()
                 ? 0xF000F0
                 : LevelRenderer.getLightColor(Minecraft.getInstance().level, spec.pos());
-        drawAt(pose, buffer, spec, seconds, camera, Vec3.atLowerCornerOf(spec.pos()), light, override,
+        Vec3 origin = Vec3.atLowerCornerOf(spec.pos()).add(spec.offsetX(), spec.offsetY(), spec.offsetZ());
+        drawAt(pose, buffer, spec, seconds, camera, origin, light, override,
                 HologramClient.appearProgress(spec.id()), partialTick);
     }
 
@@ -224,11 +246,12 @@ public final class HologramRenderer {
         float scale = spec.scale() * settle * wobble;
 
         if (hasModel) {
+            ModelData modelData = blockEntity != null ? blockEntity.getModelData() : ModelData.EMPTY;
             pose.pushPose();
             pose.scale(scale, scale, scale);
             pose.translate(-0.5, 0.0, -0.5);
             Minecraft.getInstance().getBlockRenderer()
-                    .renderSingleBlock(state, pose, out, light, OverlayTexture.NO_OVERLAY, ModelData.EMPTY, null);
+                    .renderSingleBlock(state, pose, out, light, OverlayTexture.NO_OVERLAY, modelData, null);
             pose.popPose();
         }
 
@@ -241,8 +264,9 @@ public final class HologramRenderer {
             drawnBlockEntities++;
         }
 
-        for (HologramPart part : spec.parts())
-            drawPart(pose, out, spec, part, light, seconds, settle * wobble);
+        List<HologramPart> parts = spec.parts();
+        for (int i = 0; i < parts.size(); i++)
+            drawPart(pose, out, spec, parts.get(i), i, light, seconds, settle * wobble, partialTick);
 
         pose.popPose();
     }
@@ -253,7 +277,7 @@ public final class HologramRenderer {
      * 4x dragon head nobody asked for).
      */
     private static void drawPart(PoseStack pose, MultiBufferSource buffer, HologramSpec spec, HologramPart part,
-                                 int light, float seconds, float settle) {
+                                 int partIndex, int light, float seconds, float settle, float partialTick) {
         float partScale = part.scale() * settle;
         if (partScale <= 0.01F)
             return;
@@ -261,16 +285,25 @@ public final class HologramRenderer {
         switch (part.kind()) {
             case BLOCK -> {
                 BlockState partState = HologramStates.resolve(part.id(), part.props());
-                if (partState == null || partState.getRenderShape() != RenderShape.MODEL)
+                if (partState == null)
+                    return;
+                boolean partHasModel = partState.getRenderShape() == RenderShape.MODEL;
+                BlockEntity partBe = HologramBlockEntities.getForPart(spec.id(), partIndex, spec.pos(), partState);
+                var partBer = partBe == null ? null : HologramBlockEntities.renderer(partBe);
+                if (!partHasModel && partBer == null)
                     return;
                 pose.pushPose();
                 pose.translate(part.offsetX(), part.offsetY(), part.offsetZ());
                 pose.mulPose(Axis.YP.rotationDegrees(part.yaw()));
                 pose.scale(partScale, partScale, partScale);
                 pose.translate(-0.5, 0.0, -0.5);
-                Minecraft.getInstance().getBlockRenderer()
-                        .renderSingleBlock(partState, pose, buffer, light, OverlayTexture.NO_OVERLAY,
-                                ModelData.EMPTY, null);
+                if (partHasModel) {
+                    ModelData md = partBe != null ? partBe.getModelData() : ModelData.EMPTY;
+                    Minecraft.getInstance().getBlockRenderer()
+                            .renderSingleBlock(partState, pose, buffer, light, OverlayTexture.NO_OVERLAY, md, null);
+                }
+                if (partBer != null)
+                    renderBlockEntity(pose, buffer, partBe, partBer, partialTick, light);
                 pose.popPose();
             }
             case ENTITY -> {
@@ -298,7 +331,11 @@ public final class HologramRenderer {
                                           float partialTick, int light) {
         // The dispatcher's own render() translates by (be pos - camera), which would fight the pose we
         // already built; the renderer itself expects a pose at the block's corner, same as a model.
-        renderer.render(entity, partialTick, pose, buffer, light, OverlayTexture.NO_OVERLAY);
+        try {
+            renderer.render(entity, partialTick, pose, buffer, light, OverlayTexture.NO_OVERLAY);
+        } catch (Throwable ignored) {
+            // A modded BER that assumes the block is physically in the level must not crash the frame.
+        }
     }
 
     private static void drawOutline(PoseStack pose, MultiBufferSource.BufferSource buffer, HologramSpec spec,

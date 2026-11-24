@@ -30,45 +30,83 @@ import java.util.Map;
 public final class HologramBlockEntities {
     private static final Map<String, Cached> CACHE = new HashMap<>();
 
-    private record Cached(BlockEntity entity, int dataHash, long ticks) {
+    private record Cached(@Nullable BlockEntity entity, BlockState state, int dataHash) {
     }
 
     /**
-     * The block entity for this hologram, or null when the block has none, the data is empty, or the
-     * type refuses to exist at this position.
+     * The block entity for this hologram, or null when the block has none, has no renderer, or
+     * refuses to exist at this position.
+     *
+     * <p>Works even when {@code spec.data()} is empty: blocks picked from the block picker (like
+     * Ad Astra machines with spinning BER tops, globes, flags, chests, signs) still need a default
+     * block entity instance so their {@link BlockEntityRenderer} draws instead of half-rendering.
      */
     @Nullable
     public static BlockEntity get(HologramSpec spec) {
-        if (spec.data().isEmpty())
-            return null;
-
         Minecraft mc = Minecraft.getInstance();
         if (mc.level == null)
             return null;
 
         BlockState state = HologramStates.resolve(spec.block(), spec.props());
-        if (state == null || !(state.getBlock() instanceof EntityBlock entityBlock))
+        return getOrCreate(spec.id(), spec.pos(), state, spec.data());
+    }
+
+    /** Block entity for a block part, cached under a composite key. */
+    @Nullable
+    public static BlockEntity getForPart(String parentId, int partIndex, BlockPos pos, @Nullable BlockState state) {
+        return getOrCreate(parentId + "#part" + partIndex, pos, state, null);
+    }
+
+    @Nullable
+    private static BlockEntity getOrCreate(String key, BlockPos pos, @Nullable BlockState state,
+                                           @Nullable net.minecraft.nbt.CompoundTag data) {
+        Minecraft mc = Minecraft.getInstance();
+        if (mc.level == null || state == null || !(state.getBlock() instanceof EntityBlock entityBlock))
             return null;
 
-        int hash = spec.data().hashCode();
-        Cached cached = CACHE.get(spec.id());
-        if (cached != null && cached.dataHash() == hash && cached.entity().getType().isValid(state))
+        int hash = data == null || data.isEmpty() ? 0 : data.hashCode();
+        Cached cached = CACHE.get(key);
+        if (cached != null && cached.state() == state && cached.dataHash() == hash)
             return cached.entity();
 
-        BlockPos pos = spec.pos();
-        BlockEntity created = entityBlock.newBlockEntity(pos, state);
-        if (created == null)
-            return null;
-
+        BlockEntity created;
         try {
-            created.setLevel(mc.level);
-            created.loadWithComponents(spec.data().copy(), mc.level.registryAccess());
+            created = entityBlock.newBlockEntity(pos, state);
         } catch (Throwable t) {
-            // A tag from a build that no longer fits its block; draw nothing rather than crash the frame.
+            CACHE.put(key, new Cached(null, state, hash));
+            return null;
+        }
+        if (created == null) {
+            CACHE.put(key, new Cached(null, state, hash));
             return null;
         }
 
-        CACHE.put(spec.id(), new Cached(created, hash, 0L));
+        try {
+            created.setLevel(mc.level);
+            if (data != null && !data.isEmpty()) {
+                net.minecraft.nbt.CompoundTag copy = data.copy();
+                net.minecraft.nbt.CompoundTag update = copy.contains("_ft_update", net.minecraft.nbt.Tag.TAG_COMPOUND)
+                        ? copy.getCompound("_ft_update").copy()
+                        : null;
+                copy.remove("_ft_update");
+                if (!copy.isEmpty())
+                    created.loadWithComponents(copy, mc.level.registryAccess());
+                if (update != null && !update.isEmpty())
+                    created.handleUpdateTag(update, mc.level.registryAccess());
+            }
+        } catch (Throwable t) {
+            // A tag from a build that no longer fits its block; keep the default instance if possible.
+        }
+
+        // Only keep block entities that actually have a renderer or provide custom ModelData.
+        boolean hasRenderer = renderer(created) != null;
+        boolean hasModelData = created.getModelData() != net.neoforged.neoforge.client.model.data.ModelData.EMPTY;
+        if (!hasRenderer && !hasModelData) {
+            CACHE.put(key, new Cached(null, state, hash));
+            return null;
+        }
+
+        CACHE.put(key, new Cached(created, state, hash));
         return created;
     }
 
@@ -78,17 +116,22 @@ public final class HologramBlockEntities {
             return;
 
         for (var entry : CACHE.entrySet()) {
-            Cached cached = entry.getValue();
-            BlockEntity entity = cached.entity();
+            BlockEntity entity = entry.getValue().entity();
+            if (entity == null)
+                continue;
             BlockState state = entity.getBlockState();
             if (!(state.getBlock() instanceof EntityBlock entityBlock))
                 continue;
 
-            @SuppressWarnings("unchecked")
-            BlockEntityTicker<BlockEntity> ticker = (BlockEntityTicker<BlockEntity>) entityBlock
-                    .getTicker(mc.level, state, entity.getType());
-            if (ticker != null)
-                ticker.tick(mc.level, entity.getBlockPos(), state, entity);
+            try {
+                @SuppressWarnings("unchecked")
+                BlockEntityTicker<BlockEntity> ticker = (BlockEntityTicker<BlockEntity>) entityBlock
+                        .getTicker(mc.level, state, entity.getType());
+                if (ticker != null)
+                    ticker.tick(mc.level, entity.getBlockPos(), state, entity);
+            } catch (Throwable ignored) {
+                // Some modded tickers assume the block exists in the world; skip rather than crash.
+            }
         }
     }
 

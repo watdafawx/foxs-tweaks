@@ -19,7 +19,9 @@ public record HologramActionPayload(Action action, CompoundTag spec) implements 
         SAVE,
         DELETE,
         /** Create a new hologram at the {@code pos} in the tag, using the tag's presentation fields. */
-        CREATE
+        CREATE,
+        /** Re-capture block entity data from the block at or adjacent to the hologram's position. */
+        RECAPTURE
     }
 
     public static final Type<HologramActionPayload> TYPE =
@@ -43,6 +45,12 @@ public record HologramActionPayload(Action action, CompoundTag spec) implements 
         CompoundTag tag = style.toTag();
         tag.putLong("pos", pos.asLong());
         return new HologramActionPayload(Action.CREATE, tag);
+    }
+
+    public static HologramActionPayload recapture(String id) {
+        CompoundTag tag = new CompoundTag();
+        tag.putString("id", id);
+        return new HologramActionPayload(Action.RECAPTURE, tag);
     }
 
     private static void encode(FriendlyByteBuf buf, HologramActionPayload p) {
