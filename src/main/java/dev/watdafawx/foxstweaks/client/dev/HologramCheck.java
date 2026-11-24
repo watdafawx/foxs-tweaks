@@ -217,26 +217,25 @@ public final class HologramCheck {
             if (!(mc.screen instanceof HologramScreen screen))
                 return;
 
-            // ---- two panels, tabs, and every value takes the wheel ----
-            screen.devTab(0);
-            check("Look tab lists 6 controls", screen.devRowCount() == 6, "rows=" + screen.devRowCount());
+            // ---- two panels, 4 inspector tabs, collapsible picker ----
+            screen.devTab(HologramScreen.TAB_TRANSFORM);
+            check("Transform tab exposes Pos/Rot/Scale/Range controls", screen.devNumControlCount() == 8,
+                    "controls=" + screen.devNumControlCount());
             check("the middle of the screen stays free", screen.devFreeWidth() >= 90,
                     "free=" + screen.devFreeWidth() + "px, gridCols=" + screen.devGridCols());
 
-            screen.devStepIndex(1); // Step x2
-            float before = screen.current().scale();
-            screen.devScrollRow(0, 1);
-            float after = screen.current().scale();
-            check("wheel steps Size by the row step times Step",
-                    Math.abs((after - before) - 0.5F) < 1.0E-4F,
-                    "scale " + before + " -> " + after + " (expected +0.5)");
+            int freeExpanded = screen.devFreeWidth();
+            screen.devCollapsePicker(true);
+            check("collapsing Content Picker widens viewport", screen.devFreeWidth() > freeExpanded,
+                    freeExpanded + " -> " + screen.devFreeWidth());
+            screen.devCollapsePicker(false);
 
             boolean anchoredBefore = HologramClient.previewAnchored();
-            screen.devTab(4); // Share
-            screen.devScrollRow(3, 1); // Preview in front
-            check("Share tab toggles the in-front preview",
+            HologramClient.setPreviewAnchored(!anchoredBefore);
+            check("in-front preview toggles",
                     HologramClient.previewAnchored() != anchoredBefore,
                     "was " + anchoredBefore + ", now " + HologramClient.previewAnchored());
+            HologramClient.setPreviewAnchored(anchoredBefore);
 
             List<Property<?>> properties = screen.currentProperties();
             check("oak_stairs lists 4 properties", properties.size() == 4, "properties=" + names(properties));
@@ -470,33 +469,28 @@ public final class HologramCheck {
                 return;
             }
 
-            screen.devTab(2); // FX
+            screen.devTab(HologramScreen.TAB_FX);
             int before = screen.current().effects().size();
-            screen.devScrollRow(0, 1); // Add effect
-            screen.devScrollRow(0, 1); // Add again: FLICKER
-            check("Add effect adds layers", screen.current().effects().size() == before + 2,
+            screen.devToggleEffect(HologramEffect.Type.TINT);
+            screen.devToggleEffect(HologramEffect.Type.FLICKER);
+            check("FX pills toggle effect layers", screen.current().effects().size() == before + 2,
                     "effects=" + screen.current().effects().size());
 
-            // Row 1 is the first layer; the wheel moves its strength.
             float strengthBefore = screen.current().effects().get(0).strength();
-            screen.devScrollRow(1, 1);
+            screen.devSetEffectStrength(0, strengthBefore + 0.1F);
             float strengthAfter = screen.current().effects().get(0).strength();
-            check("wheel changes an effect's strength", strengthAfter > strengthBefore,
+            check("effect strength adjusts", strengthAfter > strengthBefore,
                     strengthBefore + " -> " + strengthAfter);
 
-            // Cycle TINT color and adjust FLICKER speed
             int colorBefore = screen.current().effects().get(0).color();
-            screen.devCycleEffectColor(0, 1);
-            check("tint color cycles", screen.current().effects().get(0).color() != colorBefore,
+            screen.devSetEffectColor(0, 0xFF4D5A);
+            check("tint color updates", screen.current().effects().get(0).color() != colorBefore,
                     Integer.toHexString(colorBefore) + " -> " + Integer.toHexString(screen.current().effects().get(0).color()));
             screen.devSetEffectSpeed(1, 4.5F);
             check("effect speed adjusts", Math.abs(screen.current().effects().get(1).speed() - 4.5F) < 0.01F,
                     "speed=" + screen.current().effects().get(1).speed());
 
-            // Last row on the FX tab is the appear radius. Several notches, so the radius covers the
-            // spot the player stands on when they come back - a 2-block radius does not.
-            for (int i = 0; i < 5; i++)
-                screen.devScrollRow(screen.devRowCount() - 1, 1);
+            screen.devSetAppearRadius(10.0F);
             check("appear radius can be raised", screen.current().appearRadius() >= 8.0F,
                     "radius=" + screen.current().appearRadius());
         });
@@ -572,13 +566,24 @@ public final class HologramCheck {
 
             // Drop the flicker layers first: they hide the whole hologram for part of every cycle, so
             // screenshots of the parts would land on empty grass about a third of the time.
-            screen.devTab(2);
+            screen.devTab(HologramScreen.TAB_FX);
             while (!screen.current().effects().isEmpty())
                 screen.devRemoveEffect(0);
 
-            screen.devTab(3); // Parts
-            check("Parts tab offers the Add row", screen.devRowCount() == 1, "rows=" + screen.devRowCount());
+            // Verify direct entity override (clicking an entity turns hologram into that entity, air base)
+            screen.devPickEntity("minecraft:creeper");
+            check("clicking an entity overrides base to air + entity",
+                    "minecraft:air".equals(screen.current().block())
+                            && screen.current().parts().size() == 1
+                            && screen.current().parts().get(0).id().equals("minecraft:creeper"),
+                    "block=" + screen.current().block() + " parts=" + screen.current().parts());
+            // Switching back to a block cleanly clears the primary entity override
+            screen.pickBlock(Blocks.OAK_STAIRS);
+            check("picking a block back clears primary entity override",
+                    "minecraft:oak_stairs".equals(screen.current().block()) && screen.current().parts().isEmpty(),
+                    "block=" + screen.current().block() + " parts=" + screen.current().parts());
 
+            screen.devTab(HologramScreen.TAB_MORE);
             screen.devAddPart(1, "minecraft:zombie");
             screen.devAddPart(2, "minecraft:end_rod");
             check("block + entity + particles live in one hologram", screen.devPartCount() == 2,
@@ -593,12 +598,10 @@ public final class HologramCheck {
             // The renderer's entity cache must hand back a real instance, or entity parts draw nothing.
             check("entity part resolves to a drawable entity",
                     HologramEntities.get(parts.get(0), 0.0, 0.0, 0.0, 0.0F, 1.0F) != null, "null entity");
-            // New parts start on top of the base; the wheel nudges them in quarter blocks.
-            screen.devScrollRow(1, 1);
+            screen.devAdjustPart(0, 0.0F, 0.25F, 0.0F, 1.0F, 45.0F);
             check("parts get fractional offsets",
                     Math.abs(screen.current().parts().get(0).offsetY() - 1.25F) < 1.0E-4F,
                     "offsetY=" + screen.current().parts().get(0).offsetY());
-            screen.devRotatePart(0, 45.0F);
             check("parts can rotate yaw",
                     Math.abs(screen.current().parts().get(0).yaw() - 45.0F) < 1.0E-4F,
                     "yaw=" + screen.current().parts().get(0).yaw());

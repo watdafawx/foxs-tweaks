@@ -211,7 +211,8 @@ public final class HologramClient {
                 double x = centre.x + part.offsetX();
                 double y = centre.y + part.offsetY();
                 double z = centre.z + part.offsetZ();
-                double spread = 0.35 * part.scale() * 4.0;
+                boolean hasBase = !spec.block().isEmpty() && !"minecraft:air".equals(spec.block());
+                double spread = 0.35 * part.scale() * (hasBase ? 1.0 : spec.scale()) * 4.0;
 
                 mc.level.addParticle(simple,
                         x + (mc.level.random.nextDouble() - 0.5) * spread,

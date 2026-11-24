@@ -265,9 +265,11 @@ public final class HologramRenderer {
             drawnBlockEntities++;
         }
 
+        boolean hasBase = hasModel || blockEntityRenderer != null;
         List<HologramPart> parts = spec.parts();
         for (int i = 0; i < parts.size(); i++)
-            drawPart(pose, out, spec, parts.get(i), i, light, seconds, settle * wobble, partialTick);
+            drawPart(pose, out, spec, parts.get(i), i, light, seconds,
+                    (hasBase ? 1.0F : spec.scale()) * settle * wobble, partialTick);
 
         pose.popPose();
     }
