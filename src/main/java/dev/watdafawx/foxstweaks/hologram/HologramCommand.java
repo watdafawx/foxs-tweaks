@@ -57,6 +57,7 @@ public final class HologramCommand {
                                                 .executes(ctx -> edit(ctx.getSource(),
                                                         StringArgumentType.getString(ctx, "id")))))
                                 .then(Commands.literal("tp")
+                                        .requires(s -> s.hasPermission(Commands.LEVEL_GAMEMASTERS))
                                         .then(Commands.argument("id", StringArgumentType.word())
                                                 .suggests((ctx, builder) -> SharedSuggestionProvider.suggest(ids(ctx.getSource()), builder))
                                                 .executes(ctx -> tp(ctx.getSource(),
@@ -110,6 +111,11 @@ public final class HologramCommand {
             source.sendFailure(Component.literal("No hologram '" + id + "'."));
             return 0;
         }
+        if (!player.hasPermissions(Commands.LEVEL_GAMEMASTERS)
+                && spec.owner() != null && !spec.owner().equals(player.getUUID())) {
+            source.sendFailure(Component.literal("You do not own hologram '" + id + "'."));
+            return 0;
+        }
         HologramNetwork.openEditor(player, spec);
         return 1;
     }
@@ -139,7 +145,7 @@ public final class HologramCommand {
             source.sendFailure(Component.literal("No hologram '" + id + "'."));
             return 0;
         }
-        Vec3 at = Vec3.atCenterOf(spec.pos()).add(0.0, 0.5, 3.0);
+        Vec3 at = spec.box().getCenter().add(0.0, 0.5, 3.0);
         player.teleportTo(player.serverLevel(), at.x, at.y, at.z, player.getYRot(), player.getXRot());
         return 1;
     }

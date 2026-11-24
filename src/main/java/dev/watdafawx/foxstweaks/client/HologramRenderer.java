@@ -181,10 +181,11 @@ public final class HologramRenderer {
      */
     public static void draw(PoseStack pose, MultiBufferSource buffer, HologramSpec spec, float seconds,
                             Vec3 camera, @Nullable BlockState override, float partialTick) {
+        Vec3 origin = Vec3.atLowerCornerOf(spec.pos()).add(spec.offsetX(), spec.offsetY(), spec.offsetZ());
         int light = spec.fullbright()
                 ? 0xF000F0
-                : LevelRenderer.getLightColor(Minecraft.getInstance().level, spec.pos());
-        Vec3 origin = Vec3.atLowerCornerOf(spec.pos()).add(spec.offsetX(), spec.offsetY(), spec.offsetZ());
+                : LevelRenderer.getLightColor(Minecraft.getInstance().level,
+                        net.minecraft.core.BlockPos.containing(origin.x + 0.5, origin.y + 0.5, origin.z + 0.5));
         drawAt(pose, buffer, spec, seconds, camera, origin, light, override,
                 HologramClient.appearProgress(spec.id()), partialTick);
     }
@@ -230,14 +231,14 @@ public final class HologramRenderer {
         float wobble = HologramAnim.wobbleScale(effects, seconds);
 
         pose.pushPose();
-        pose.translate(origin.x - camera.x,
+        // Translate to the cell's centre at its floor FIRST so yaw/pitch/roll/spin rotate in place
+        // around the hologram's centre instead of orbiting around the NW block corner.
+        pose.translate(origin.x + 0.5 - camera.x,
                 origin.y - camera.y + hoverOffset + HologramAnim.jumpOffset(effects, seconds) - drop,
-                origin.z - camera.z);
+                origin.z + 0.5 - camera.z);
         pose.mulPose(Axis.YP.rotationDegrees(angleY));
         pose.mulPose(Axis.XP.rotationDegrees(angleX));
         pose.mulPose(Axis.ZP.rotationDegrees(angleZ));
-        // The cell's centre, at its floor: every part's offset is measured from here.
-        pose.translate(0.5, 0.0, 0.5);
 
         HologramEffect tint = HologramAnim.tint(effects);
         MultiBufferSource out = tint == null ? buffer
@@ -315,7 +316,7 @@ public final class HologramRenderer {
                 pose.pushPose();
                 pose.translate(part.offsetX(), part.offsetY(), part.offsetZ());
                 pose.scale(partScale, partScale, partScale);
-                HologramEntities.render(pose, buffer, entity, 1.0F, light, 0.0, 0.0, 0.0, part.yaw());
+                HologramEntities.render(pose, buffer, entity, partialTick, light, 0.0, 0.0, 0.0, part.yaw());
                 pose.popPose();
             }
             case PARTICLE -> {

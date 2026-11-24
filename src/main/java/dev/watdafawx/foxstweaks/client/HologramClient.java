@@ -100,22 +100,26 @@ public final class HologramClient {
         HologramSpec preview = HologramClient.preview;
         if (preview == null) {
             HologramClient.visible = HologramClient.cached;
-            return;
+        } else {
+            List<HologramSpec> merged = new ArrayList<>(HologramClient.cached.size() + 1);
+            boolean replaced = false;
+            for (HologramSpec spec : HologramClient.cached) {
+                if (spec.id().equals(preview.id())) {
+                    merged.add(preview);
+                    replaced = true;
+                } else {
+                    merged.add(spec);
+                }
+            }
+            if (!replaced)
+                merged.add(preview);
+            HologramClient.visible = List.copyOf(merged);
         }
 
-        List<HologramSpec> merged = new ArrayList<>(HologramClient.cached.size() + 1);
-        boolean replaced = false;
-        for (HologramSpec spec : HologramClient.cached) {
-            if (spec.id().equals(preview.id())) {
-                merged.add(preview);
-                replaced = true;
-            } else {
-                merged.add(spec);
-            }
-        }
-        if (!replaced)
-            merged.add(preview);
-        HologramClient.visible = List.copyOf(merged);
+        Set<String> activeIds = new HashSet<>(HologramClient.visible.size());
+        for (HologramSpec spec : HologramClient.visible)
+            activeIds.add(spec.id());
+        HologramBlockEntities.prune(activeIds);
     }
 
     private static void onClientTick(ClientTickEvent.Post event) {

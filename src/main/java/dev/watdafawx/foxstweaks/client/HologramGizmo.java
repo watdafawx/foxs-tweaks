@@ -250,7 +250,7 @@ final class HologramGizmo {
     private static void drawLine(GuiGraphics graphics, double x1, double y1, double x2, double y2, int color) {
         double dx = x2 - x1;
         double dy = y2 - y1;
-        int steps = (int) Math.min(200.0, Math.max(Math.abs(dx), Math.abs(dy)));
+        int steps = (int) Math.min(600.0, Math.max(Math.abs(dx), Math.abs(dy)));
         for (int i = 0; i <= steps; i++) {
             double t = steps == 0 ? 0.0 : (double) i / steps;
             int x = (int) (x1 + dx * t);

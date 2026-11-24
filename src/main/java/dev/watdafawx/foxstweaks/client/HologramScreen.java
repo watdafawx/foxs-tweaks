@@ -199,6 +199,8 @@ public class HologramScreen extends Screen {
     private List<EntityEntry> filteredEntities = List.of();
     private List<String> filteredParticles = List.of();
     private List<Object> rows = List.of();
+    @Nullable
+    private Block hoveredGridBlock;
 
     public HologramScreen(HologramOpenPayload payload) {
         super(Component.translatable("screen.foxstweaks.hologram.title"));
@@ -856,6 +858,7 @@ public class HologramScreen extends Screen {
             this.gizmo.render(graphics, this.font, mouseX, mouseY, this.width, this.height,
                     hologramWorldCenter(), this.scale);
 
+        this.hoveredGridBlock = null;
         renderLeftPanel(graphics, mouseX, mouseY);
         renderAdjustPanel(graphics, mouseX, mouseY);
 
@@ -868,6 +871,14 @@ public class HologramScreen extends Screen {
         graphics.drawString(this.font, hint, hintX, hintY, MUTED, false);
 
         super.render(graphics, mouseX, mouseY, partialTick);
+
+        if (this.hoveredGridBlock != null) {
+            ResourceLocation key = BuiltInRegistries.BLOCK.getKey(this.hoveredGridBlock);
+            graphics.renderComponentTooltip(this.font, List.of(
+                    this.hoveredGridBlock.getName(),
+                    Component.literal(key.toString()).withStyle(s -> s.withColor(MUTED))),
+                    mouseX, mouseY);
+        }
     }
 
     private void panel(GuiGraphics graphics, int x, int y, int width, String title) {
@@ -909,6 +920,8 @@ public class HologramScreen extends Screen {
 
                 boolean hot = mouseX >= x && mouseX < x + CELL && mouseY >= y && mouseY < y + CELL;
                 boolean selected = BuiltInRegistries.BLOCK.getKey(entryBlock).toString().equals(this.block);
+                if (hot)
+                    this.hoveredGridBlock = entryBlock;
                 if (selected)
                     graphics.fill(x, y, x + CELL, y + CELL, 0x80406A80);
                 else if (hot)
@@ -970,8 +983,17 @@ public class HologramScreen extends Screen {
         if (this.leftMode == LEFT_BLOCKS) {
             Block currentBlock = HologramStates.blockOf(this.block);
             String name = currentBlock == null ? "missing block" : currentBlock.getName().getString();
-            graphics.drawString(this.font, this.font.plainSubstrByWidth(name, width - 20), this.blockLeft + 10, infoY,
-                    TEXT, false);
+            int airBtnW = 24;
+            int airBtnX = this.blockLeft + width - 10 - airBtnW;
+            boolean isAir = "minecraft:air".equals(this.block);
+            boolean airHot = mouseX >= airBtnX && mouseX < airBtnX + airBtnW
+                    && mouseY >= infoY - 1 && mouseY < infoY + 10;
+            graphics.fill(airBtnX, infoY - 1, airBtnX + airBtnW, infoY + 10,
+                    isAir ? 0x80406A80 : (airHot ? ROW_BG_HOT : ROW_BG));
+            graphics.drawString(this.font, "Air", airBtnX + 5, infoY + 1, isAir ? ACCENT : MUTED, false);
+
+            graphics.drawString(this.font, this.font.plainSubstrByWidth(name, width - 24 - airBtnW),
+                    this.blockLeft + 10, infoY, TEXT, false);
 
             BlockState state = currentState();
             if (state == null)
@@ -1329,13 +1351,20 @@ public class HologramScreen extends Screen {
                 return false;
             }
 
+            int infoY = gridY + gridH + 6;
+            int width = blockWidth();
+            int airBtnW = 24;
+            int airBtnX = this.blockLeft + width - 10 - airBtnW;
+            if (mouseX >= airBtnX && mouseX < airBtnX + airBtnW && mouseY >= infoY - 1 && mouseY < infoY + 10) {
+                pickBlock(net.minecraft.world.level.block.Blocks.AIR);
+                return true;
+            }
+
             BlockState state = currentState();
             if (state == null)
                 return false;
 
             List<Property<?>> properties = HologramStates.properties(state);
-            int infoY = gridY + gridH + 6;
-            int width = blockWidth();
             for (int i = 0; i < Math.min(properties.size(), PROP_ROWS); i++) {
                 int y = infoY + 13 + i * PROP_PITCH;
                 if (mouseX >= this.blockLeft + 8 && mouseX < this.blockLeft + width - 8
@@ -1622,11 +1651,15 @@ public class HologramScreen extends Screen {
         HologramNetwork.sendCreate(target, clip);
     }
 
-    /** Selects a block for the hologram. Property values are dropped: they belong to the old block. */
+    /** Selects a block for the hologram. Property values and stale BE data are dropped. */
     public void pickBlock(Block block) {
-        this.block = BuiltInRegistries.BLOCK.getKey(block).toString();
-        this.props = new LinkedHashMap<>();
-        refresh();
+        String next = BuiltInRegistries.BLOCK.getKey(block).toString();
+        if (!next.equals(this.block)) {
+            this.block = next;
+            this.props = new LinkedHashMap<>();
+            this.data = new CompoundTag();
+            refresh();
+        }
     }
 
     private void cycleProperty(Property<?> property, BlockState state, int direction) {

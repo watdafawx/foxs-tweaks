@@ -69,10 +69,12 @@ public record HologramSpec(
         appearRadius = Mth.clamp(appearRadius, 0.0F, 64.0F);
         appearSeconds = Mth.clamp(appearSeconds, 0.0F, 10.0F);
         props = Map.copyOf(props);
-        effects = List.copyOf(effects);
-        parts = List.copyOf(parts);
-        // Copied so a caller cannot mutate saved data through the tag it handed in.
-        data = data.copy();
+        effects = effects.size() > 4 ? List.copyOf(effects.subList(0, 4)) : List.copyOf(effects);
+        parts = parts.size() > HologramPart.MAX_PARTS
+                ? List.copyOf(parts.subList(0, HologramPart.MAX_PARTS))
+                : List.copyOf(parts);
+        // Copied and capped so a caller cannot mutate saved data or send oversized NBT payloads.
+        data = data.sizeInBytes() > Holograms.MAX_DATA_BYTES ? new CompoundTag() : data.copy();
     }
 
     public static HologramSpec create(String id, BlockPos pos, String block, @Nullable UUID owner, String ownerName) {
@@ -127,14 +129,25 @@ public record HologramSpec(
                 this.effects, this.appearRadius, this.appearSeconds, parts, this.data);
     }
 
-    /** The box the block actually occupies, used for both the selection outline and the click test. */
+    /** The box the hologram and its parts occupy, used for frustum culling, selection outline and click pick. */
     public AABB box() {
         double cx = this.pos.getX() + this.offsetX + 0.5;
         double cz = this.pos.getZ() + this.offsetZ + 0.5;
         double half = 0.5 * this.scale + 0.05;
         // The model is anchored at its bottom, so a bigger hologram grows upward from the spot.
         double cy = this.pos.getY() + this.offsetY + half;
-        return new AABB(cx - half, cy - half, cz - half, cx + half, cy + half, cz + half);
+        AABB bounds = new AABB(cx - half, cy - half, cz - half, cx + half, cy + half, cz + half);
+        if (!this.parts.isEmpty()) {
+            double baseY = this.pos.getY() + this.offsetY;
+            for (HologramPart part : this.parts) {
+                double ph = 0.5 * part.scale() + 0.05;
+                double px = cx + part.offsetX();
+                double py = baseY + part.offsetY() + ph;
+                double pz = cz + part.offsetZ();
+                bounds = bounds.minmax(new AABB(px - ph, py - ph, pz - ph, px + ph, py + ph, pz + ph));
+            }
+        }
+        return bounds;
     }
 
     public CompoundTag toTag() {
@@ -216,6 +229,6 @@ public record HologramSpec(
     /** True when this tag carries the fields the renderer needs; used to skip junk in a saved list. */
     public static boolean looksValid(Tag tag) {
         return tag instanceof CompoundTag compound && !compound.getString("id").isEmpty()
-                && !compound.getString("block").isEmpty();
+                && (!compound.getString("block").isEmpty() || !compound.getList("parts", Tag.TAG_COMPOUND).isEmpty());
     }
 }

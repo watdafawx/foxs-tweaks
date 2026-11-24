@@ -58,8 +58,11 @@ public final class HologramNetwork {
         if (stored == null || !canEdit(player, stored))
             return;
 
-        // The client can send any position it likes; only the stored one is ever trusted.
-        if (player.distanceToSqr(Vec3.atCenterOf(stored.pos())) > square(Holograms.REACH + 8.0))
+        // The client can send any position it likes; only the stored one (anchor or offset box) is trusted.
+        double distSq = Math.min(
+                player.distanceToSqr(Vec3.atCenterOf(stored.pos())),
+                player.distanceToSqr(stored.box().getCenter()));
+        if (distSq > square(Holograms.REACH + 8.0))
             return;
 
         if (payload.action() == HologramActionPayload.Action.DELETE) {

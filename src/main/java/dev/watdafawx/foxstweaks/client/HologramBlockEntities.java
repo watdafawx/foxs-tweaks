@@ -141,6 +141,17 @@ public final class HologramBlockEntities {
         return dispatcher.getRenderer(entity);
     }
 
+    /** Removes cached entries for holograms that are no longer in the active client list. */
+    public static void prune(java.util.Set<String> activeIds) {
+        if (CACHE.isEmpty())
+            return;
+        CACHE.keySet().removeIf(key -> {
+            int sep = key.indexOf("#part");
+            String ownerId = sep >= 0 ? key.substring(0, sep) : key;
+            return !activeIds.contains(ownerId);
+        });
+    }
+
     public static void clear() {
         CACHE.clear();
     }
