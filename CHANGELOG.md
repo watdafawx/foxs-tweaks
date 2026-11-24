@@ -1,5 +1,12 @@
 # Changelog
 
+## 1.38.3
+
+- **Hologram Content Picker visual previews & hover zoom**:
+  - **Live 3D entity icons** in the Entity picker list (auto-scaled to bounding box, scissored, lazily cached per visible row with crash guard and spawn-egg fallback).
+  - **Animated particle sprite icons** in the Particle picker list (lazily resolved from `particles/<id>.json` and blitted directly).
+  - **Docked hover zoom preview card** beside the left panel for Blocks (3× zoom), Entities (spinning 3D preview), and Particles (zoomed animated sprite) with name and `mod:id`.
+
 ## 1.38.2
 
 - **Holograms: smooth animation, new FX, Reveal styles, JEI/AE2 search, 16 layers**:
