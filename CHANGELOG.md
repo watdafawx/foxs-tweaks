@@ -1,5 +1,19 @@
 # Changelog
 
+## 1.38.1
+
+- **Hologram editor 3D-studio UI overhaul**:
+  - Unified flat dark-slate styling everywhere (no vanilla grey buttons), RGB axis indicators, cyan active accents, and floating top-center `Move / Rotate / Scale / Off / Undo / Zero` gizmo bar.
+  - **Collapsible Content Picker** on the left (`<` / `Content >`): single-clicking any **Block**, **Entity**, or **Particle** directly sets what the hologram shows (entity/particle holograms now inherit main `Scale`, rotation, gizmos, spin, hover, and FX directly). Hovering block grid cells shows name + `mod:id` tooltips; optional `+ Stack Layer` button stacks up to 4 extra layers.
+  - **4 clean Inspector tabs** (`Main | Animate | FX | More`): Position/Rotation/Scale/Range/Glow/Preview grouped under `Main`; Spin/Hover/Walk-in Reveal (`Appear` + `Ease`) under `Animate`; direct effect toggle pills + 9 clickable Tint color swatches + `Hz` speed under `FX`; Clipboard, BE Data, and stacked Layers under `More`.
+  - **Direct number controls**: drag horizontally to scrub, click to type exact values, scroll wheel to step (`Shift` fine / `Ctrl` coarse), right-click to reset.
+- **Hologram fixes & hardening**:
+  - Fixed rotation/spin pivoting around the NW block corner instead of block center (now spins in place and aligns with 3D gizmos).
+  - Non-glow lighting now samples at the hologram's offset position; server edit/delete/recapture reach checks distance to the offset box too.
+  - Guarded entity part creation/rendering with `try/catch` + failed-id cache so exotic modded entities cannot crash the client; passed real `partialTick` for smooth entity animation.
+  - Pruned deleted holograms from the client `BlockEntity` cache; cleared stale BE NBT when switching blocks in the picker; expanded hologram bounds to cover stacked parts.
+  - Enforced server-side caps (`effects <= 4`, `parts <= 4`, `data <= 64 KB`), required op permissions on `/foxstweaks hologram tp` (and owner/op on `edit`), and teleported to the offset box center.
+
 ## 1.38.0
 
 - **Hologram editor & renderer overhaul**:
