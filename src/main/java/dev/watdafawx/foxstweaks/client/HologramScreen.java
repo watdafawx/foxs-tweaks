@@ -202,6 +202,11 @@ public class HologramScreen extends Screen {
     private List<String> filteredParticles = List.of();
     @Nullable
     private Block hoveredGridBlock;
+    @Nullable
+    private EntityEntry hoveredEntity;
+    @Nullable
+    private String hoveredParticle;
+    private int hoveredItemY;
 
     // Per-frame interactive controls for the inspector & toolbar
     private final List<NumControl> numControls = new ArrayList<>();
@@ -939,6 +944,8 @@ public class HologramScreen extends Screen {
                     hologramWorldCenter(), this.scale);
 
         this.hoveredGridBlock = null;
+        this.hoveredEntity = null;
+        this.hoveredParticle = null;
         if (!this.pickerCollapsed)
             renderLeftPanel(graphics, mouseX, mouseY);
         renderRightPanel(graphics, mouseX, mouseY);
@@ -961,12 +968,21 @@ public class HologramScreen extends Screen {
 
         super.render(graphics, mouseX, mouseY, partialTick);
 
-        if (this.hoveredGridBlock != null) {
-            ResourceLocation key = BuiltInRegistries.BLOCK.getKey(this.hoveredGridBlock);
-            graphics.renderComponentTooltip(this.font, List.of(
-                    this.hoveredGridBlock.getName(),
-                    Component.literal(key.toString()).withStyle(s -> s.withColor(MUTED))),
-                    mouseX, mouseY);
+        // Docked hover zoom preview card beside the left panel (never covers the list)
+        if (!this.pickerCollapsed) {
+            int cardX = this.leftX + this.leftW + 6;
+            double secs = HologramRenderer.animSeconds();
+            if (this.hoveredGridBlock != null) {
+                HologramPickerPreview.renderBlockCard(graphics, this.font, this.hoveredGridBlock,
+                        cardX, this.hoveredItemY, this.height);
+            } else if (this.hoveredEntity != null) {
+                HologramPickerPreview.renderEntityCard(graphics, this.font,
+                        this.hoveredEntity.id(), this.hoveredEntity.displayName(), this.hoveredEntity.icon(),
+                        cardX, this.hoveredItemY, this.height, secs);
+            } else if (this.hoveredParticle != null) {
+                HologramPickerPreview.renderParticleCard(graphics, this.font, this.hoveredParticle,
+                        cardX, this.hoveredItemY, this.height, secs);
+            }
         }
     }
 
@@ -1057,8 +1073,10 @@ public class HologramScreen extends Screen {
 
                 boolean hot = mouseX >= x && mouseX < x + CELL && mouseY >= y && mouseY < y + CELL;
                 boolean selected = BuiltInRegistries.BLOCK.getKey(entryBlock).toString().equals(this.block);
-                if (hot)
+                if (hot) {
                     this.hoveredGridBlock = entryBlock;
+                    this.hoveredItemY = y;
+                }
                 if (selected)
                     graphics.fill(x, y, x + CELL, y + CELL, SURFACE_ACTIVE);
                 else if (hot)
@@ -1067,6 +1085,7 @@ public class HologramScreen extends Screen {
                 graphics.renderItem(new ItemStack(entryBlock.asItem()), x + 1, y + 1);
             }
         } else if (this.pickMode == PICK_ENTITIES) {
+            double secs = HologramRenderer.animSeconds();
             for (int row = 0; row < LIST_VISIBLE; row++) {
                 int entryIdx = this.scroll + row;
                 if (entryIdx >= this.filteredEntities.size())
@@ -1074,22 +1093,28 @@ public class HologramScreen extends Screen {
                 EntityEntry e = this.filteredEntities.get(entryIdx);
                 int y = gridY + row * LIST_ROW_H;
                 boolean hot = mouseX >= gridX && mouseX < gridX + gridW && mouseY >= y && mouseY < y + LIST_ROW_H - 1;
+                if (hot) {
+                    this.hoveredEntity = e;
+                    this.hoveredItemY = y;
+                }
                 boolean selected = this.primaryPartOverride && e.id().equals(this.selectedEntityId);
                 graphics.fill(gridX, y, gridX + gridW, y + LIST_ROW_H - 1,
                         selected ? SURFACE_ACTIVE : (hot ? SURFACE_HOT : SURFACE));
-                int textX = gridX + 3;
-                if (!e.icon().isEmpty()) {
+                boolean drew3d = HologramPickerPreview.drawEntityIcon(
+                        graphics, e.id(), gridX + 1, y + 1, 13, 30.0F, secs);
+                if (!drew3d && !e.icon().isEmpty()) {
                     graphics.pose().pushPose();
                     graphics.pose().translate(gridX + 1, y + 1, 0);
                     graphics.pose().scale(0.75F, 0.75F, 1.0F);
                     graphics.renderItem(e.icon(), 0, 0);
                     graphics.pose().popPose();
-                    textX = gridX + 15;
                 }
+                int textX = gridX + 16;
                 String label = this.font.plainSubstrByWidth(e.displayName(), gridW - (textX - gridX) - 2);
                 graphics.drawString(this.font, label, textX, y + 3, selected ? ACCENT : TEXT, false);
             }
         } else {
+            double secs = HologramRenderer.animSeconds();
             for (int row = 0; row < LIST_VISIBLE; row++) {
                 int entryIdx = this.scroll + row;
                 if (entryIdx >= this.filteredParticles.size())
@@ -1097,11 +1122,16 @@ public class HologramScreen extends Screen {
                 String p = this.filteredParticles.get(entryIdx);
                 int y = gridY + row * LIST_ROW_H;
                 boolean hot = mouseX >= gridX && mouseX < gridX + gridW && mouseY >= y && mouseY < y + LIST_ROW_H - 1;
+                if (hot) {
+                    this.hoveredParticle = p;
+                    this.hoveredItemY = y;
+                }
                 boolean selected = this.primaryPartOverride && p.equals(this.selectedParticleId);
                 graphics.fill(gridX, y, gridX + gridW, y + LIST_ROW_H - 1,
                         selected ? SURFACE_ACTIVE : (hot ? SURFACE_HOT : SURFACE));
-                String label = this.font.plainSubstrByWidth(shortId(p), gridW - 6);
-                graphics.drawString(this.font, label, gridX + 3, y + 3, selected ? ACCENT : TEXT, false);
+                HologramPickerPreview.drawParticleIcon(graphics, p, gridX + 2, y + 1, 12, secs);
+                String label = this.font.plainSubstrByWidth(shortId(p), gridW - 18);
+                graphics.drawString(this.font, label, gridX + 16, y + 3, selected ? ACCENT : TEXT, false);
             }
         }
 

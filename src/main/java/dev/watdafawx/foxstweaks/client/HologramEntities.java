@@ -31,14 +31,20 @@ public final class HologramEntities {
     /** The instance for {@code part}, positioned and aged for this frame, or null when it cannot exist. */
     @Nullable
     public static Entity get(HologramPart part, double x, double y, double z, float yawDegrees, float seconds) {
-        if (FAILED.contains(part.id()))
+        return getById(part.id(), x, y, z, yawDegrees, seconds);
+    }
+
+    /** Cached entity instance by registry id, shared by the world renderer and the picker preview. */
+    @Nullable
+    public static Entity getById(String id, double x, double y, double z, float yawDegrees, float seconds) {
+        if (FAILED.contains(id))
             return null;
 
-        ResourceLocation key = ResourceLocation.tryParse(part.id());
+        ResourceLocation key = ResourceLocation.tryParse(id);
         if (key == null || !BuiltInRegistries.ENTITY_TYPE.containsKey(key))
             return null;
 
-        Entity entity = CACHE.get(part.id());
+        Entity entity = CACHE.get(id);
         if (entity == null) {
             EntityType<?> type = BuiltInRegistries.ENTITY_TYPE.get(key);
             if (type == null)
@@ -46,17 +52,17 @@ public final class HologramEntities {
             try {
                 entity = type.create(Minecraft.getInstance().level);
             } catch (Throwable t) {
-                FAILED.add(part.id());
+                FAILED.add(id);
                 return null;
             }
             if (entity == null) {
-                FAILED.add(part.id());
+                FAILED.add(id);
                 return null;
             }
             // Not in the level: no AI, no collisions, no despawn, nothing to save.
             entity.setNoGravity(true);
             entity.setInvulnerable(true);
-            CACHE.put(part.id(), entity);
+            CACHE.put(id, entity);
         }
 
         entity.setPos(x, y, z);
@@ -65,6 +71,11 @@ public final class HologramEntities {
         entity.setXRot(0.0F);
         entity.tickCount = (int) (seconds * 20.0F);
         return entity;
+    }
+
+    static void markFailed(String id) {
+        FAILED.add(id);
+        CACHE.remove(id);
     }
 
     public static void render(PoseStack pose, MultiBufferSource buffer, Entity entity, float partialTick,
