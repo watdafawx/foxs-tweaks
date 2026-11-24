@@ -5,39 +5,31 @@ import com.mojang.math.Axis;
 import dev.watdafawx.foxstweaks.Config;
 import dev.watdafawx.foxstweaks.hologram.HologramAnim;
 import dev.watdafawx.foxstweaks.hologram.HologramEffect;
-import dev.watdafawx.foxstweaks.hologram.HologramPart;
+import dev.watdafawx.foxstweaks.hologram.HologramGroup;
+import dev.watdafawx.foxstweaks.hologram.HologramLayer;
 import dev.watdafawx.foxstweaks.hologram.HologramSpec;
 import dev.watdafawx.foxstweaks.hologram.HologramStates;
-import dev.watdafawx.foxstweaks.hologram.Holograms;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.renderer.LevelRenderer;
-import net.minecraft.world.level.block.entity.BlockEntity;
 import net.minecraft.client.renderer.MultiBufferSource;
 import net.minecraft.client.renderer.RenderType;
 import net.minecraft.client.renderer.texture.OverlayTexture;
-import net.minecraft.util.Mth;
+import net.minecraft.core.BlockPos;
 import net.minecraft.world.level.block.RenderShape;
+import net.minecraft.world.level.block.entity.BlockEntity;
 import net.minecraft.world.level.block.state.BlockState;
 import net.minecraft.world.phys.AABB;
 import net.minecraft.world.phys.Vec3;
 import net.neoforged.neoforge.client.event.RenderLevelStageEvent;
 import net.neoforged.neoforge.client.model.data.ModelData;
-
 import org.joml.Matrix4f;
 
 import javax.annotation.Nullable;
 import java.util.List;
 
 /**
- * Draws holograms: one {@code renderSingleBlock} per hologram, plus the selection outline.
- *
- * <p>Nothing here is a block entity or an entity, so the whole feature is this pass plus
- * {@link HologramClient}'s list. That is also why an idle hologram costs nothing - the pass only
- * runs for what is on screen, and a hologram with no animation is a single cached model draw.
- *
- * <p>Stage is after translucent blocks so a glass hologram blends against what is behind it rather
- * than being swallowed by it. Do not move this to {@code AFTER_LEVEL}: shader packs replace the
- * level pass and the holograms then light up under Iris' tonemap.
+ * Renders unified holograms: root transform + walk-in reveal -> optional groups (linked transform,
+ * animation & FX) -> first-class layers (independent transform, animation, fullbright & FX).
  */
 public final class HologramRenderer {
 
@@ -66,19 +58,27 @@ public final class HologramRenderer {
         return lastCamera;
     }
 
-    /** How many holograms the last frame actually drew; the dev check's benchmark reports this. */
     public static int lastDrawnCount() {
         return lastDrawn;
     }
 
-    /** CPU nanoseconds the hologram pass took last frame. The benchmark's real number. */
-    /** How many block-entity bases were drawn last frame. */
     public static int lastDrawnBlockEntityCount() {
         return drawnBlockEntities;
     }
 
     public static long lastPassNanos() {
         return lastPassNanos;
+    }
+
+    static float hoverOffset(float hover, float period, double seconds) {
+        if (hover <= 0.0F)
+            return 0.0F;
+        double phase = (seconds % period) / period;
+        return (float) (Math.sin(phase * (Math.PI * 2.0)) * hover);
+    }
+
+    static float spinAngle(float spin, double seconds) {
+        return spin == 0.0F ? 0.0F : (float) ((seconds * spin) % 360.0);
     }
 
     public static void onRenderLevel(RenderLevelStageEvent event) {
@@ -94,7 +94,6 @@ public final class HologramRenderer {
     }
 
     private static void renderPass(RenderLevelStageEvent event) {
-
         Minecraft mc = Minecraft.getInstance();
         if (mc.level == null)
             return;
@@ -113,9 +112,6 @@ public final class HologramRenderer {
         MultiBufferSource.BufferSource buffer = mc.renderBuffers().bufferSource();
         float partial = event.getPartialTick().getGameTimeDeltaPartialTick(false);
 
-        // Smooth wall-clock double time (pauses when game is paused). Never use (float) gameTime:
-        // on older worlds float loses partialTick precision (stutter) and overflows Mth.sin's int
-        // lookup table (freezing hover completely).
         long now = System.nanoTime();
         if (lastAnimNanos != 0L && !mc.isPaused()) {
             double dt = Math.min(0.1, (now - lastAnimNanos) * 1.0E-9);
@@ -130,23 +126,19 @@ public final class HologramRenderer {
         drawnBlockEntities = 0;
         for (int i = 0; i < specs.size(); i++) {
             HologramSpec spec = specs.get(i);
-            if (!spec.enabled())
+            if (!spec.enabled() || spec.layers().isEmpty())
                 continue;
 
             double cap = Math.min(spec.renderDistance(), globalCap);
-            double centerX = spec.pos().getX() + spec.offsetX() + 0.5;
-            double centerY = spec.pos().getY() + spec.offsetY() + 0.5 * spec.scale();
-            double centerZ = spec.pos().getZ() + spec.offsetZ() + 0.5;
-            if (camera.distanceToSqr(centerX, centerY, centerZ) > cap * cap)
+            AABB box = spec.box();
+            Vec3 center = box.getCenter();
+            if (camera.distanceToSqr(center) > cap * cap)
                 continue;
 
-            // Frustum cull before any pose work. Distance alone still drew everything behind you, and
-            // this is the cheap win that batching identical models cannot give: an off-screen hologram
-            // costs nothing at all.
-            if (event.getFrustum() != null && !event.getFrustum().isVisible(spec.box()))
+            if (event.getFrustum() != null && !event.getFrustum().isVisible(box))
                 continue;
 
-            draw(pose, buffer, spec, seconds, camera, null, partial);
+            draw(pose, buffer, spec, seconds, camera, partial);
             if (HologramClient.appearProgress(spec.id()) > 0.01F)
                 drawn++;
         }
@@ -163,11 +155,6 @@ public final class HologramRenderer {
         buffer.endBatch();
     }
 
-    /**
-     * Draws the edited hologram a few blocks in front of the camera at full brightness. This is the
-     * editor's "look at it properly" view: the world copy may be behind you, on the other side of a
-     * wall, or too small at its own scale.
-     */
     private static void drawAnchoredPreview(PoseStack pose, MultiBufferSource buffer, HologramSpec spec,
                                             double seconds, Vec3 camera, Minecraft mc, float partialTick) {
         if (mc.player == null)
@@ -179,171 +166,183 @@ public final class HologramRenderer {
             right = new Vec3(1.0, 0.0, 0.0);
         right = right.normalize();
 
-        // The preview sits in the free band between the two panels. Distance grows with the
-        // hologram's own size so it keeps a similar apparent size instead of filling the camera at 8x.
-        double distance = 3.0 + 2.2 * spec.scale();
-        double drop = 0.35 + 0.15 * spec.scale();
+        float refScale = spec.scale();
+        HologramLayer first = spec.primaryLayer();
+        if (first != null && first.kind() != HologramLayer.Kind.PARTICLE)
+            refScale *= first.scale();
+        double distance = 3.0 + 2.2 * Math.min(refScale, 4.0F);
+        double drop = 0.35 + 0.15 * Math.min(refScale, 4.0F);
 
         Vec3 anchor = mc.player.getEyePosition()
                 .add(look.scale(distance))
                 .add(right.scale(0.15))
                 .add(0.0, -drop, 0.0);
 
-        drawAt(pose, buffer, spec, seconds, camera, anchor, 0xF000F0, null, 1.0F, partialTick);
+        drawAt(pose, buffer, spec, seconds, camera, anchor, 0xF000F0, 1.0F, partialTick);
     }
 
-    /**
-     * Draws one hologram, camera-relative. {@code override} lets a caller force the state it wants
-     * (the editor preview), otherwise the saved block and property values are resolved.
-     */
     public static void draw(PoseStack pose, MultiBufferSource buffer, HologramSpec spec, double seconds,
-                            Vec3 camera, @Nullable BlockState override, float partialTick) {
+                            Vec3 camera, float partialTick) {
         Vec3 origin = Vec3.atLowerCornerOf(spec.pos()).add(spec.offsetX(), spec.offsetY(), spec.offsetZ());
-        int light = spec.fullbright()
-                ? 0xF000F0
-                : LevelRenderer.getLightColor(Minecraft.getInstance().level,
-                        net.minecraft.core.BlockPos.containing(origin.x + 0.5, origin.y + 0.5, origin.z + 0.5));
-        drawAt(pose, buffer, spec, seconds, camera, origin, light, override,
+        int worldLight = LevelRenderer.getLightColor(Minecraft.getInstance().level,
+                BlockPos.containing(origin.x + 0.5, origin.y + 0.5, origin.z + 0.5));
+        drawAt(pose, buffer, spec, seconds, camera, origin, worldLight,
                 HologramClient.appearProgress(spec.id()), partialTick);
     }
 
     private static void drawAt(PoseStack pose, MultiBufferSource buffer, HologramSpec spec, double seconds,
-                               Vec3 camera, Vec3 origin, int light, @Nullable BlockState override, float appear,
-                               float partialTick) {
-        if (appear <= 0.01F)
+                               Vec3 camera, Vec3 origin, int worldLight, float appear, float partialTick) {
+        if (appear <= 0.01F || spec.layers().isEmpty())
             return;
 
-        List<HologramEffect> effects = spec.effects();
-        if (HologramAnim.flickerHidden(effects, seconds))
-            return;
-
-        BlockState state = override != null ? override : Holograms.stateOf(spec);
-        boolean hasModel = state != null && state.getRenderShape() == RenderShape.MODEL;
-
-        // Blocks whose look is a block entity renderer (chests, signs, machine LEDs) have no model at
-        // all, so they are drawn from a block entity carrying the data captured when the hologram was
-        // placed. A block can be both (a beacon: model plus beam), so neither path excludes the other.
-        var blockEntity = override == null ? HologramBlockEntities.get(spec) : null;
-        var blockEntityRenderer = blockEntity == null ? null : HologramBlockEntities.renderer(blockEntity);
-
-        if (!hasModel && blockEntityRenderer == null && spec.parts().isEmpty())
-            return;
-
-        // Walk-in reveal pose (6 styles: Rise, Pop, Unfold, Spin, Drop, Glitch)
         HologramAnim.RevealPose reveal = HologramAnim.revealPose(spec.appearStyle(), appear, seconds);
 
-        float jitter = HologramAnim.tremorDegrees(effects, seconds);
-        float spinAngle = (float) ((seconds * spec.spin()) % 360.0);
-        float angleY = spec.yaw() + (spec.spinAxis() == HologramSpec.AXIS_Y ? spinAngle : 0.0F)
-                + reveal.spinY() + jitter;
-        float angleX = spec.pitch() + (spec.spinAxis() == HologramSpec.AXIS_X ? spinAngle : 0.0F) + jitter * 0.7F;
-        float angleZ = spec.roll() + (spec.spinAxis() == HologramSpec.AXIS_Z ? spinAngle : 0.0F) - jitter * 0.5F;
-
-        float hoverOffset = 0.0F;
-        if (spec.hover() > 0.0F) {
-            double phase = (seconds % spec.hoverPeriod()) / spec.hoverPeriod();
-            hoverOffset = (float) (Math.sin(phase * (Math.PI * 2.0)) * spec.hover());
-        }
-
-        float wobbleY = HologramAnim.wobbleScaleY(effects, seconds);
-        float wobbleXZ = HologramAnim.wobbleScaleXZ(effects, seconds);
-        float gx = HologramAnim.glitchOffsetX(effects, seconds) + reveal.glitchX();
-        float gz = HologramAnim.glitchOffsetZ(effects, seconds);
-
         pose.pushPose();
-        // Translate to the cell's centre at its floor FIRST so yaw/pitch/roll/spin rotate in place
-        // around the hologram's centre instead of orbiting around the NW block corner.
-        pose.translate(origin.x + 0.5 - camera.x + gx,
-                origin.y - camera.y + hoverOffset + HologramAnim.jumpOffset(effects, seconds) + reveal.dy(),
-                origin.z + 0.5 - camera.z + gz);
-        pose.mulPose(Axis.YP.rotationDegrees(angleY));
-        pose.mulPose(Axis.XP.rotationDegrees(angleX));
-        pose.mulPose(Axis.ZP.rotationDegrees(angleZ));
+        pose.translate(origin.x + 0.5 - camera.x + reveal.glitchX(),
+                origin.y - camera.y + reveal.dy(),
+                origin.z + 0.5 - camera.z);
+        pose.mulPose(Axis.YP.rotationDegrees(spec.yaw() + reveal.spinY()));
+        pose.mulPose(Axis.XP.rotationDegrees(spec.pitch()));
+        pose.mulPose(Axis.ZP.rotationDegrees(spec.roll()));
+        pose.scale(spec.scale() * reveal.sx(), spec.scale() * reveal.sy(), spec.scale() * reveal.sz());
 
-        MultiBufferSource out = TintedBuffer.wrap(buffer, effects, seconds);
+        List<HologramLayer> layers = spec.layers();
 
-        float scaleX = spec.scale() * reveal.sx() * wobbleXZ;
-        float scaleY = spec.scale() * reveal.sy() * wobbleY;
-        float scaleZ = spec.scale() * reveal.sz() * wobbleXZ;
+        // 1. Draw ungrouped (independent) layers directly in root frame
+        for (int i = 0; i < layers.size(); i++) {
+            HologramLayer layer = layers.get(i);
+            if (!layer.groupId().isEmpty())
+                continue;
+            drawLayer(pose, buffer, spec, null, layer, i, worldLight, seconds, partialTick);
+        }
 
-        if (hasModel) {
-            ModelData modelData = blockEntity != null ? blockEntity.getModelData() : ModelData.EMPTY;
+        // 2. Draw each group once, pushing its shared transform/animation/FX frame around its member layers
+        List<HologramGroup> groups = spec.groups();
+        for (int g = 0; g < groups.size(); g++) {
+            HologramGroup group = groups.get(g);
+            if (!group.visible())
+                continue;
+            List<HologramEffect> gEffects = group.effects();
+            if (HologramAnim.flickerHidden(gEffects, seconds))
+                continue;
+
+            float gHover = hoverOffset(group.hover(), group.hoverPeriod(), seconds);
+            float gJump = HologramAnim.jumpOffset(gEffects, seconds);
+            float gGlitchX = HologramAnim.glitchOffsetX(gEffects, seconds);
+            float gGlitchZ = HologramAnim.glitchOffsetZ(gEffects, seconds);
+            float gJitter = HologramAnim.tremorDegrees(gEffects, seconds);
+            float gSpin = spinAngle(group.spin(), seconds);
+            float gAngleY = group.yaw() + (group.spinAxis() == HologramSpec.AXIS_Y ? gSpin : 0.0F) + gJitter;
+            float gAngleX = group.pitch() + (group.spinAxis() == HologramSpec.AXIS_X ? gSpin : 0.0F) + gJitter * 0.7F;
+            float gAngleZ = group.roll() + (group.spinAxis() == HologramSpec.AXIS_Z ? gSpin : 0.0F) - gJitter * 0.5F;
+            float gWobbleY = HologramAnim.wobbleScaleY(gEffects, seconds);
+            float gWobbleXZ = HologramAnim.wobbleScaleXZ(gEffects, seconds);
+
             pose.pushPose();
-            pose.scale(scaleX, scaleY, scaleZ);
-            pose.translate(-0.5, 0.0, -0.5);
-            Minecraft.getInstance().getBlockRenderer()
-                    .renderSingleBlock(state, pose, out, light, OverlayTexture.NO_OVERLAY, modelData, null);
+            pose.translate(group.offsetX() + gGlitchX, group.offsetY() + gHover + gJump, group.offsetZ() + gGlitchZ);
+            pose.mulPose(Axis.YP.rotationDegrees(gAngleY));
+            pose.mulPose(Axis.XP.rotationDegrees(gAngleX));
+            pose.mulPose(Axis.ZP.rotationDegrees(gAngleZ));
+            pose.scale(group.scale() * gWobbleXZ, group.scale() * gWobbleY, group.scale() * gWobbleXZ);
+
+            MultiBufferSource groupOut = TintedBuffer.wrap(buffer, gEffects, seconds);
+            int groupLight = group.fullbright() ? 0xF000F0 : worldLight;
+
+            for (int i = 0; i < layers.size(); i++) {
+                HologramLayer layer = layers.get(i);
+                if (!group.id().equals(layer.groupId()))
+                    continue;
+                drawLayer(pose, groupOut, spec, group, layer, i, groupLight, seconds, partialTick);
+            }
             pose.popPose();
         }
 
-        if (blockEntityRenderer != null) {
-            pose.pushPose();
-            pose.scale(scaleX, scaleY, scaleZ);
-            pose.translate(-0.5, 0.0, -0.5);
-            renderBlockEntity(pose, out, blockEntity, blockEntityRenderer, partialTick, light);
-            pose.popPose();
-            drawnBlockEntities++;
+        // 3. Fallback: any layer whose groupId references a deleted/missing group still renders in root frame
+        for (int i = 0; i < layers.size(); i++) {
+            HologramLayer layer = layers.get(i);
+            if (!layer.groupId().isEmpty() && spec.groupById(layer.groupId()) == null)
+                drawLayer(pose, buffer, spec, null, layer, i, worldLight, seconds, partialTick);
         }
-
-        boolean hasBase = hasModel || blockEntityRenderer != null;
-        float partScaleMult = (hasBase ? 1.0F : spec.scale()) * reveal.sy() * wobbleY;
-        List<HologramPart> parts = spec.parts();
-        for (int i = 0; i < parts.size(); i++)
-            drawPart(pose, out, spec, parts.get(i), i, light, seconds, partScaleMult, partialTick);
 
         pose.popPose();
     }
 
-    /**
-     * One content part, in the parent's rotated frame: offsets are blocks relative to the parent's
-     * centre, scale is absolute (parts do not inherit the parent's size, or a 4x hologram would make a
-     * 4x dragon head nobody asked for).
-     */
-    private static void drawPart(PoseStack pose, MultiBufferSource buffer, HologramSpec spec, HologramPart part,
-                                 int partIndex, int light, double seconds, float settle, float partialTick) {
-        float partScale = part.scale() * settle;
-        if (partScale <= 0.01F)
+    private static void drawLayer(PoseStack pose, MultiBufferSource parentBuffer, HologramSpec spec,
+                                  @Nullable HologramGroup group, HologramLayer layer, int layerIndex,
+                                  int parentLight, double seconds, float partialTick) {
+        if (!layer.visible() || layer.kind() == HologramLayer.Kind.PARTICLE)
+            return;
+        if (!HologramClient.passesSolo(spec.id(), layerIndex, layer))
             return;
 
-        switch (part.kind()) {
+        List<HologramEffect> effects = layer.effects();
+        if (HologramAnim.flickerHidden(effects, seconds))
+            return;
+
+        float lHover = hoverOffset(layer.hover(), layer.hoverPeriod(), seconds);
+        float lJump = HologramAnim.jumpOffset(effects, seconds);
+        float lGlitchX = HologramAnim.glitchOffsetX(effects, seconds);
+        float lGlitchZ = HologramAnim.glitchOffsetZ(effects, seconds);
+        float lJitter = HologramAnim.tremorDegrees(effects, seconds);
+        float lSpin = spinAngle(layer.spin(), seconds);
+        float lAngleY = layer.yaw() + (layer.spinAxis() == HologramSpec.AXIS_Y ? lSpin : 0.0F) + lJitter;
+        float lAngleX = layer.pitch() + (layer.spinAxis() == HologramSpec.AXIS_X ? lSpin : 0.0F) + lJitter * 0.7F;
+        float lAngleZ = layer.roll() + (layer.spinAxis() == HologramSpec.AXIS_Z ? lSpin : 0.0F) - lJitter * 0.5F;
+        float lWobbleY = HologramAnim.wobbleScaleY(effects, seconds);
+        float lWobbleXZ = HologramAnim.wobbleScaleXZ(effects, seconds);
+
+        float sx = layer.scale() * lWobbleXZ;
+        float sy = layer.scale() * lWobbleY;
+        float sz = layer.scale() * lWobbleXZ;
+        if (sy <= 0.01F)
+            return;
+
+        MultiBufferSource out = TintedBuffer.wrap(parentBuffer, effects, seconds);
+        int light = layer.fullbright() ? 0xF000F0 : parentLight;
+
+        switch (layer.kind()) {
             case BLOCK -> {
-                BlockState partState = HologramStates.resolve(part.id(), part.props());
-                if (partState == null)
+                BlockState state = HologramStates.resolve(layer.id(), layer.props());
+                if (state == null)
                     return;
-                boolean partHasModel = partState.getRenderShape() == RenderShape.MODEL;
-                BlockEntity partBe = HologramBlockEntities.getForPart(spec.id(), partIndex, spec.pos(), partState);
-                var partBer = partBe == null ? null : HologramBlockEntities.renderer(partBe);
-                if (!partHasModel && partBer == null)
+                boolean hasModel = state.getRenderShape() == RenderShape.MODEL;
+                BlockEntity be = HologramBlockEntities.getForLayer(spec.id(), layerIndex, spec.pos(), state, layer.data());
+                var ber = be == null ? null : HologramBlockEntities.renderer(be);
+                if (!hasModel && ber == null)
                     return;
+
                 pose.pushPose();
-                pose.translate(part.offsetX(), part.offsetY(), part.offsetZ());
-                pose.mulPose(Axis.YP.rotationDegrees(part.yaw()));
-                pose.scale(partScale, partScale, partScale);
+                pose.translate(layer.offsetX() + lGlitchX, layer.offsetY() + lHover + lJump, layer.offsetZ() + lGlitchZ);
+                pose.mulPose(Axis.YP.rotationDegrees(lAngleY));
+                pose.mulPose(Axis.XP.rotationDegrees(lAngleX));
+                pose.mulPose(Axis.ZP.rotationDegrees(lAngleZ));
+                pose.scale(sx, sy, sz);
                 pose.translate(-0.5, 0.0, -0.5);
-                if (partHasModel) {
-                    ModelData md = partBe != null ? partBe.getModelData() : ModelData.EMPTY;
+                if (hasModel) {
+                    ModelData md = be != null ? be.getModelData() : ModelData.EMPTY;
                     Minecraft.getInstance().getBlockRenderer()
-                            .renderSingleBlock(partState, pose, buffer, light, OverlayTexture.NO_OVERLAY, md, null);
+                            .renderSingleBlock(state, pose, out, light, OverlayTexture.NO_OVERLAY, md, null);
                 }
-                if (partBer != null)
-                    renderBlockEntity(pose, buffer, partBe, partBer, partialTick, light);
+                if (ber != null) {
+                    renderBlockEntity(pose, out, be, ber, partialTick, light);
+                    drawnBlockEntities++;
+                }
                 pose.popPose();
             }
             case ENTITY -> {
-                // Rendered at the pose origin, so the transform above places it. EntityRenderDispatcher
-                // translates by the coordinates it is given, so they are zero here.
-                var entity = HologramEntities.get(part, 0.0, 0.0, 0.0, part.yaw(), (float) seconds);
+                var entity = HologramEntities.get(layer, 0.0, 0.0, 0.0, 0.0F, (float) seconds);
                 if (entity == null)
                     return;
                 pose.pushPose();
-                pose.translate(part.offsetX(), part.offsetY(), part.offsetZ());
-                pose.scale(partScale, partScale, partScale);
-                HologramEntities.render(pose, buffer, entity, partialTick, light, 0.0, 0.0, 0.0, part.yaw());
+                pose.translate(layer.offsetX() + lGlitchX, layer.offsetY() + lHover + lJump, layer.offsetZ() + lGlitchZ);
+                pose.mulPose(Axis.YP.rotationDegrees(lAngleY));
+                pose.mulPose(Axis.XP.rotationDegrees(lAngleX));
+                pose.mulPose(Axis.ZP.rotationDegrees(lAngleZ));
+                pose.scale(sx, sy, sz);
+                HologramEntities.render(pose, out, entity, partialTick, light, 0.0, 0.0, 0.0, 0.0F);
                 pose.popPose();
             }
             case PARTICLE -> {
-                // Spawned from HologramClient's tick, not from the render pass: particles are stateful
-                // and must not be added per frame.
             }
         }
     }
@@ -352,17 +351,15 @@ public final class HologramRenderer {
     private static void renderBlockEntity(PoseStack pose, MultiBufferSource buffer, BlockEntity entity,
                                           net.minecraft.client.renderer.blockentity.BlockEntityRenderer renderer,
                                           float partialTick, int light) {
-        // The dispatcher's own render() translates by (be pos - camera), which would fight the pose we
-        // already built; the renderer itself expects a pose at the block's corner, same as a model.
         try {
             renderer.render(entity, partialTick, pose, buffer, light, OverlayTexture.NO_OVERLAY);
         } catch (Throwable ignored) {
-            // A modded BER that assumes the block is physically in the level must not crash the frame.
         }
     }
 
     private static void drawOutline(PoseStack pose, MultiBufferSource.BufferSource buffer, HologramSpec spec,
-                                    Vec3 camera, boolean deleting) {        AABB box = spec.box().move(-camera.x, -camera.y, -camera.z).inflate(0.02);
+                                    Vec3 camera, boolean deleting) {
+        AABB box = spec.box().move(-camera.x, -camera.y, -camera.z).inflate(0.02);
         float red = deleting ? 1.0F : 0.35F;
         float green = deleting ? 0.3F : 0.9F;
         float blue = deleting ? 0.3F : 1.0F;

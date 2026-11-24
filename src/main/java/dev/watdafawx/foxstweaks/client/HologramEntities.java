@@ -1,7 +1,7 @@
 package dev.watdafawx.foxstweaks.client;
 
 import com.mojang.blaze3d.vertex.PoseStack;
-import dev.watdafawx.foxstweaks.hologram.HologramPart;
+import dev.watdafawx.foxstweaks.hologram.HologramLayer;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.renderer.MultiBufferSource;
 import net.minecraft.client.renderer.entity.EntityRenderDispatcher;
@@ -28,10 +28,10 @@ public final class HologramEntities {
     private static final Map<String, Entity> CACHE = new HashMap<>();
     private static final java.util.Set<String> FAILED = new java.util.HashSet<>();
 
-    /** The instance for {@code part}, positioned and aged for this frame, or null when it cannot exist. */
+    /** The instance for {@code layer}, positioned and aged for this frame, or null when it cannot exist. */
     @Nullable
-    public static Entity get(HologramPart part, double x, double y, double z, float yawDegrees, float seconds) {
-        return getById(part.id(), x, y, z, yawDegrees, seconds);
+    public static Entity get(HologramLayer layer, double x, double y, double z, float yawDegrees, float seconds) {
+        return getById(layer.id(), x, y, z, yawDegrees, seconds);
     }
 
     /** Cached entity instance by registry id, shared by the world renderer and the picker preview. */

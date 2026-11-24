@@ -1,9 +1,10 @@
 package dev.watdafawx.foxstweaks.client;
 
 import dev.watdafawx.foxstweaks.hologram.HologramEffect;
+import dev.watdafawx.foxstweaks.hologram.HologramGroup;
+import dev.watdafawx.foxstweaks.hologram.HologramLayer;
 import dev.watdafawx.foxstweaks.hologram.HologramNetwork;
 import dev.watdafawx.foxstweaks.hologram.HologramOpenPayload;
-import dev.watdafawx.foxstweaks.hologram.HologramPart;
 import dev.watdafawx.foxstweaks.hologram.HologramSpec;
 import dev.watdafawx.foxstweaks.hologram.HologramStates;
 import net.minecraft.client.Minecraft;
@@ -23,12 +24,13 @@ import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.item.Items;
 import net.minecraft.world.item.SpawnEggItem;
 import net.minecraft.world.level.block.Block;
-import net.minecraft.world.level.block.Blocks;
 import net.minecraft.world.level.block.EntityBlock;
 import net.minecraft.world.level.block.RenderShape;
 import net.minecraft.world.level.block.state.BlockState;
 import net.minecraft.world.level.block.state.properties.Property;
 import net.minecraft.world.phys.Vec3;
+import org.joml.Matrix4f;
+import org.joml.Vector3f;
 import org.lwjgl.glfw.GLFW;
 
 import javax.annotation.Nullable;
@@ -45,20 +47,20 @@ import java.util.function.DoubleConsumer;
 import java.util.function.DoubleSupplier;
 
 /**
- * 3D-studio hologram editor: collapsible Content Picker on the left, unified Inspector on the right,
- * and an open 3D viewport in the middle with Move/Rotate/Scale gizmos and right-drag camera orbit.
- *
- * <p>Every numeric control supports drag-scrubbing (click-drag horizontally), mouse wheel, right-click
- * reset, and click-to-type exact numbers.
+ * 3D-studio hologram editor with unified Layers & Groups, independent per-layer & per-group
+ * animation/FX, solo editing, live multiplayer preview streaming, full Undo/Redo history, and
+ * selection-driven 3D gizmos.
  */
 public class HologramScreen extends Screen {
-    // ---- Palette (flat dark studio, zero vanilla grey buttons) ----
+    // ---- Palette ----
     private static final int DIM = 0x1A000000;
     private static final int PANEL_BG = 0xE80D1117;
     private static final int PANEL_BORDER = 0x40FFFFFF;
     private static final int SURFACE = 0xFF161C24;
     private static final int SURFACE_HOT = 0xFF212B38;
     private static final int SURFACE_ACTIVE = 0x404CC9F0;
+    private static final int SOLO_BG = 0x55FFB84D;
+    private static final int SOLO_BORDER = 0xFFFFB84D;
     private static final int ACCENT = 0xFF4CC9F0;
     private static final int TEXT = 0xFFE8EDF5;
     private static final int MUTED = 0xFF8B97A8;
@@ -69,21 +71,23 @@ public class HologramScreen extends Screen {
     private static final int AXIS_Y = 0xFF5EE877;
     private static final int AXIS_Z = 0xFF5CA0FF;
 
-    private static final int PANEL_H = 276;
+    private static final int PANEL_H = 284;
     private static final int CELL = 18;
     private static final int GRID_ROWS = 5;
     private static final int LIST_ROW_H = 15;
-    private static final int LIST_VISIBLE = 6; // 6 * 15 == 90 == GRID_ROWS * CELL
+    private static final int LIST_VISIBLE = 6;
     private static final int PROP_ROWS = 5;
     private static final int PROP_PITCH = 15;
     private static final int MAX_EFFECTS = HologramSpec.MAX_EFFECTS;
+    private static final int MAX_HISTORY = 64;
+    private static final long LIVE_SYNC_INTERVAL_MS = 100L;
     private static final String[] REVEAL_NAMES = { "Rise", "Pop", "Unfold", "Spin", "Drop", "Glitch" };
 
-    public static final int TAB_TRANSFORM = 0;
-    public static final int TAB_ANIMATE = 1;
-    public static final int TAB_FX = 2;
-    public static final int TAB_MORE = 3;
-    private static final String[] TAB_LABELS = { "Main", "Animate", "FX", "More" };
+    public static final int TAB_LAYERS = 0;
+    public static final int TAB_MAIN = 1;
+    public static final int TAB_ANIMATE = 2;
+    public static final int TAB_FX = 3;
+    private static final String[] TAB_LABELS = { "Layers", "Main", "Anim", "FX" };
 
     public static final int PICK_BLOCKS = 0;
     public static final int PICK_ENTITIES = 1;
@@ -98,13 +102,30 @@ public class HologramScreen extends Screen {
     private static List<EntityEntry> ALL_ENTITIES;
     private static List<String> ALL_PARTICLES;
 
+    public enum TargetKind {
+        ROOT,
+        GROUP,
+        LAYER
+    }
+
     private record EntityEntry(EntityType<?> type, String id, String displayName, ItemStack icon) {
     }
 
-    private record TransformSnapshot(float ox, float oy, float oz, float yaw, float pitch, float roll, float scale) {
+    private record EditorSnapshot(
+            float rootOx, float rootOy, float rootOz,
+            float rootYaw, float rootPitch, float rootRoll, float rootScale,
+            int renderDistance, float appearRadius, float appearSeconds, int appearStyle,
+            List<HologramGroup> groups,
+            List<HologramLayer> layers,
+            TargetKind targetKind,
+            int selectedLayer,
+            @Nullable String selectedGroupId
+    ) {
     }
 
-    /** A clickable/draggable/scrollable numeric control (either a compact scrub box or a horizontal slider). */
+    private record TreeRow(TargetKind kind, int layerIndex, @Nullable String groupId, boolean indented) {
+    }
+
     private record NumControl(
             int x, int y, int w, int h,
             String prefix, int prefixColor,
@@ -123,42 +144,49 @@ public class HologramScreen extends Screen {
         }
     }
 
-    /** A flat clickable pill or toggle button built per-layout so hit-testing and drawing stay in sync. */
     private record FlatBtn(int x, int y, int w, int h, String label, boolean active, boolean danger,
-                           boolean enabled, Runnable onClick) {
+                           boolean solo, boolean enabled, Runnable onClick) {
+        FlatBtn(int x, int y, int w, int h, String label, boolean active, boolean danger,
+                boolean enabled, Runnable onClick) {
+            this(x, y, w, h, label, active, danger, false, enabled, onClick);
+        }
+
         boolean hit(double mx, double my) {
             return mx >= x && mx < x + w && my >= y && my < y + h;
         }
     }
 
-    // ---- Spec state ----
+    // ---- Identity & initial saved copy ----
     private final String id;
     private final BlockPos pos;
     private final int maxRenderDistance;
     @Nullable
     private final UUID owner;
     private final String ownerName;
+    private final HologramSpec initialSpec;
 
-    private float offsetX, offsetY, offsetZ;
-    private String block;
-    private Map<String, String> props;
-    private float scale;
-    private float yaw, pitch, roll;
-    private float spin;
-    private int spinAxis;
-    private float hover;
-    private float hoverPeriod;
-    private boolean fullbright;
+    // ---- Live edited spec state ----
+    private float rootOffsetX, rootOffsetY, rootOffsetZ;
+    private float rootYaw, rootPitch, rootRoll;
+    private float rootScale;
     private int renderDistance;
-    private List<HologramEffect> effects;
-    private List<HologramPart> parts;
-    private CompoundTag data;
     private float appearRadius;
     private float appearSeconds;
     private int appearStyle;
+    private List<HologramGroup> groups;
+    private List<HologramLayer> layers;
+
+    // ---- Selection & Solo ----
+    private TargetKind targetKind = TargetKind.LAYER;
+    private int selectedLayer = 0;
+    @Nullable
+    private String selectedGroupId;
+    private int soloLayerIndex = -1;
+    @Nullable
+    private String soloGroupId;
 
     // ---- UI state ----
-    private int tab = TAB_TRANSFORM;
+    private int tab = TAB_MAIN;
     private int pickMode = PICK_BLOCKS;
     private boolean pickerCollapsed;
     private int scroll;
@@ -166,14 +194,20 @@ public class HologramScreen extends Screen {
     private int fxScroll;
     private boolean draggingScrollbar;
 
-    private String selectedEntityId = "";
-    private String selectedParticleId = "minecraft:end_rod";
-    private boolean primaryPartOverride;
-    private int selectedPart = -1;
+    private String pickedBlockId = "minecraft:glass";
+    private String pickedEntityId = "";
+    private String pickedParticleId = "minecraft:end_rod";
 
     private final HologramGizmo gizmo = new HologramGizmo();
-    private final Deque<TransformSnapshot> undoStack = new ArrayDeque<>();
+    private final Deque<EditorSnapshot> undoStack = new ArrayDeque<>();
+    private final Deque<EditorSnapshot> redoStack = new ArrayDeque<>();
     private boolean orbiting;
+    private boolean panning;
+
+    // Live multiplayer preview throttle
+    private boolean liveDirty;
+    private long lastLiveSyncMs;
+    private boolean finalized; // true once Save or Delete sent (so onClose won't send CANCEL)
 
     // Active drag-scrub or slider drag
     @Nullable
@@ -181,17 +215,15 @@ public class HologramScreen extends Screen {
     private double numDragStartX;
     private double numDragStartVal;
     private boolean numDragged;
+    private boolean numUndoPushed;
 
-    // Inline exact number EditBox
     @Nullable
     private EditBox inlineBox;
     @Nullable
     private NumControl inlineControl;
-
-    // Search EditBox in left panel
     private EditBox search;
 
-    // Computed layout bounds
+    // Computed layout
     private int leftX, leftW;
     private int rightX, rightW;
     private int top;
@@ -208,39 +240,42 @@ public class HologramScreen extends Screen {
     private String hoveredParticle;
     private int hoveredItemY;
 
-    // Per-frame interactive controls for the inspector & toolbar
     private final List<NumControl> numControls = new ArrayList<>();
     private final List<FlatBtn> flatBtns = new ArrayList<>();
 
     public HologramScreen(HologramOpenPayload payload) {
         super(Component.translatable("screen.foxstweaks.hologram.title"));
         HologramSpec spec = payload.spec();
+        this.initialSpec = spec;
         this.id = spec.id();
         this.pos = spec.pos();
-        this.offsetX = spec.offsetX();
-        this.offsetY = spec.offsetY();
-        this.offsetZ = spec.offsetZ();
-        this.block = spec.block();
-        this.props = new LinkedHashMap<>(spec.props());
-        this.scale = spec.scale();
-        this.yaw = spec.yaw();
-        this.pitch = spec.pitch();
-        this.roll = spec.roll();
-        this.spin = spec.spin();
-        this.spinAxis = spec.spinAxis();
-        this.hover = spec.hover();
-        this.hoverPeriod = spec.hoverPeriod();
-        this.fullbright = spec.fullbright();
-        this.renderDistance = spec.renderDistance();
-        this.effects = new ArrayList<>(spec.effects());
-        this.parts = new ArrayList<>(spec.parts());
-        this.data = spec.data().copy();
-        this.appearRadius = spec.appearRadius();
-        this.appearSeconds = spec.appearSeconds();
-        this.appearStyle = spec.appearStyle();
         this.maxRenderDistance = Math.max(16, payload.maxRenderDistance());
         this.owner = spec.owner();
         this.ownerName = spec.ownerName();
+        loadFromSpec(spec);
+    }
+
+    private void loadFromSpec(HologramSpec spec) {
+        this.rootOffsetX = spec.offsetX();
+        this.rootOffsetY = spec.offsetY();
+        this.rootOffsetZ = spec.offsetZ();
+        this.rootYaw = spec.yaw();
+        this.rootPitch = spec.pitch();
+        this.rootRoll = spec.roll();
+        this.rootScale = spec.scale();
+        this.renderDistance = Math.min(spec.renderDistance(), this.maxRenderDistance);
+        this.appearRadius = spec.appearRadius();
+        this.appearSeconds = spec.appearSeconds();
+        this.appearStyle = spec.appearStyle();
+        this.groups = new ArrayList<>(spec.groups());
+        this.layers = new ArrayList<>(spec.layers());
+        if (this.layers.isEmpty())
+            this.layers.add(HologramLayer.block("minecraft:stone", Map.of(), new CompoundTag()));
+
+        this.targetKind = TargetKind.LAYER;
+        this.selectedLayer = 0;
+        this.selectedGroupId = null;
+        syncPickerToSelection();
     }
 
     public static void open(HologramOpenPayload payload) {
@@ -249,7 +284,7 @@ public class HologramScreen extends Screen {
         Minecraft.getInstance().setScreen(new HologramScreen(payload));
     }
 
-    // ---------------------------------------------------------------- layout
+    // ---------------------------------------------------------------- layout & lifecycle
 
     private int gridWidth() {
         return this.gridCols * CELL;
@@ -271,14 +306,14 @@ public class HologramScreen extends Screen {
     protected void init() {
         int gap = Math.max(96, this.width * 18 / 100);
         int remaining = Math.max(240, this.width - 16 - gap);
-        this.rightW = Mth.clamp((int) (remaining * 0.54), 168, 224);
+        this.rightW = Mth.clamp((int) (remaining * 0.54), 178, 232);
         int leftTarget = remaining - this.rightW;
         this.gridCols = Mth.clamp((leftTarget - 22) / CELL, 4, 8);
         this.leftW = this.gridCols * CELL + 22;
 
         this.leftX = 8;
         this.rightX = this.width - this.rightW - 8;
-        this.top = Math.max(26, (this.height - PANEL_H) / 2);
+        this.top = Math.max(24, (this.height - PANEL_H) / 2);
 
         this.search = new EditBox(this.font, this.leftX + 8, this.top + 38, this.leftW - 16, 13,
                 Component.literal("Search"));
@@ -292,25 +327,284 @@ public class HologramScreen extends Screen {
         addRenderableWidget(this.search);
         this.search.visible = !this.pickerCollapsed;
 
-        if (this.selectedEntityId.isEmpty() && !allEntities().isEmpty())
-            this.selectedEntityId = allEntities().get(0).id();
-
-        if ("minecraft:air".equals(this.block) && !this.parts.isEmpty()) {
-            this.primaryPartOverride = true;
-            HologramPart first = this.parts.get(0);
-            if (first.kind() == HologramPart.Kind.ENTITY) {
-                this.selectedEntityId = first.id();
-                this.pickMode = PICK_ENTITIES;
-            } else if (first.kind() == HologramPart.Kind.PARTICLE) {
-                this.selectedParticleId = first.id();
-                this.pickMode = PICK_PARTICLES;
-            }
-        }
+        if (this.pickedEntityId.isEmpty() && !allEntities().isEmpty())
+            this.pickedEntityId = allEntities().get(0).id();
 
         refreshFilter();
         rebuildInspector();
+        applyLocalPreviewOnly();
+        if (!HologramCamera.isActive())
+            HologramCamera.begin(targetWorldCenter());
+    }
+
+    @Override
+    public void tick() {
+        super.tick();
+        if (this.liveDirty && !this.finalized) {
+            long now = System.currentTimeMillis();
+            if (now - this.lastLiveSyncMs >= LIVE_SYNC_INTERVAL_MS)
+                flushLivePreview();
+        }
+    }
+
+    private void flushLivePreview() {
+        this.liveDirty = false;
+        this.lastLiveSyncMs = System.currentTimeMillis();
+        HologramNetwork.sendPreview(buildSpec());
+    }
+
+    private void applyLocalPreviewOnly() {
+        HologramClient.setPreview(buildSpec());
+    }
+
+    private void refresh() {
+        HologramClient.setPreview(buildSpec());
+        this.liveDirty = true;
+        long now = System.currentTimeMillis();
+        if (now - this.lastLiveSyncMs >= LIVE_SYNC_INTERVAL_MS)
+            flushLivePreview();
+    }
+
+    // ---------------------------------------------------------------- selection & solo helpers
+
+    @Nullable
+    private HologramLayer currentLayer() {
+        if (this.targetKind != TargetKind.LAYER)
+            return null;
+        if (this.selectedLayer < 0 || this.selectedLayer >= this.layers.size())
+            return null;
+        return this.layers.get(this.selectedLayer);
+    }
+
+    @Nullable
+    private HologramGroup currentGroup() {
+        if (this.targetKind != TargetKind.GROUP || this.selectedGroupId == null)
+            return null;
+        for (HologramGroup g : this.groups) {
+            if (g.id().equals(this.selectedGroupId))
+                return g;
+        }
+        return null;
+    }
+
+    private int indexOfGroup(String groupId) {
+        if (groupId == null)
+            return -1;
+        for (int i = 0; i < this.groups.size(); i++) {
+            if (this.groups.get(i).id().equals(groupId))
+                return i;
+        }
+        return -1;
+    }
+
+    private void selectRoot() {
+        commitInlineBox();
+        this.targetKind = TargetKind.ROOT;
+        rebuildInspector();
+    }
+
+    private void selectGroup(String groupId) {
+        commitInlineBox();
+        if (indexOfGroup(groupId) < 0)
+            return;
+        this.targetKind = TargetKind.GROUP;
+        this.selectedGroupId = groupId;
+        rebuildInspector();
+    }
+
+    private void selectLayer(int index) {
+        commitInlineBox();
+        if (index < 0 || index >= this.layers.size())
+            return;
+        this.targetKind = TargetKind.LAYER;
+        this.selectedLayer = index;
+        syncPickerToSelection();
+        rebuildInspector();
+    }
+
+    private void syncPickerToSelection() {
+        HologramLayer layer = currentLayer();
+        if (layer == null)
+            return;
+        switch (layer.kind()) {
+            case BLOCK -> {
+                this.pickedBlockId = layer.id();
+                this.pickMode = PICK_BLOCKS;
+            }
+            case ENTITY -> {
+                this.pickedEntityId = layer.id();
+                this.pickMode = PICK_ENTITIES;
+            }
+            case PARTICLE -> {
+                this.pickedParticleId = layer.id();
+                this.pickMode = PICK_PARTICLES;
+            }
+        }
+        if (this.search != null)
+            updateSearchHint();
+        refreshFilter();
+    }
+
+    private void toggleSoloLayer(int index) {
+        if (this.soloLayerIndex == index) {
+            this.soloLayerIndex = -1;
+            this.soloGroupId = null;
+            HologramClient.clearSolo();
+        } else {
+            this.soloLayerIndex = index;
+            this.soloGroupId = null;
+            HologramClient.setSoloLayer(this.id, index);
+        }
+        rebuildInspector();
+    }
+
+    private void toggleSoloGroup(String groupId) {
+        if (groupId.equals(this.soloGroupId)) {
+            this.soloGroupId = null;
+            this.soloLayerIndex = -1;
+            HologramClient.clearSolo();
+        } else {
+            this.soloGroupId = groupId;
+            this.soloLayerIndex = -1;
+            HologramClient.setSoloGroup(this.id, groupId);
+        }
+        rebuildInspector();
+    }
+
+    private void clearSoloIfInvalid() {
+        if (this.soloLayerIndex >= this.layers.size()) {
+            this.soloLayerIndex = -1;
+            HologramClient.clearSolo();
+        }
+        if (this.soloGroupId != null && indexOfGroup(this.soloGroupId) < 0) {
+            this.soloGroupId = null;
+            HologramClient.clearSolo();
+        }
+    }
+
+    private String targetLabel() {
+        if (this.targetKind == TargetKind.ROOT)
+            return "Root (All)";
+        if (this.targetKind == TargetKind.GROUP) {
+            HologramGroup g = currentGroup();
+            return g == null ? "Group" : g.name();
+        }
+        HologramLayer l = currentLayer();
+        return l == null ? "Layer" : ((this.selectedLayer + 1) + ". " + l.shortName());
+    }
+
+    private void cycleTarget(int delta) {
+        List<TreeRow> rows = buildTreeRows();
+        if (rows.isEmpty())
+            return;
+        int cur = 0;
+        for (int i = 0; i < rows.size(); i++) {
+            TreeRow r = rows.get(i);
+            if (r.kind == this.targetKind
+                    && (r.kind == TargetKind.ROOT
+                    || (r.kind == TargetKind.LAYER && r.layerIndex == this.selectedLayer)
+                    || (r.kind == TargetKind.GROUP && r.groupId != null && r.groupId.equals(this.selectedGroupId)))) {
+                cur = i;
+                break;
+            }
+        }
+        TreeRow next = rows.get(Math.floorMod(cur + delta, rows.size()));
+        if (next.kind == TargetKind.ROOT)
+            selectRoot();
+        else if (next.kind == TargetKind.GROUP && next.groupId != null)
+            selectGroup(next.groupId);
+        else
+            selectLayer(next.layerIndex);
+    }
+
+    private List<TreeRow> buildTreeRows() {
+        List<TreeRow> rows = new ArrayList<>();
+        rows.add(new TreeRow(TargetKind.ROOT, -1, null, false));
+        for (HologramGroup g : this.groups) {
+            rows.add(new TreeRow(TargetKind.GROUP, -1, g.id(), false));
+            for (int i = 0; i < this.layers.size(); i++) {
+                if (g.id().equals(this.layers.get(i).groupId()))
+                    rows.add(new TreeRow(TargetKind.LAYER, i, g.id(), true));
+            }
+        }
+        for (int i = 0; i < this.layers.size(); i++) {
+            String gid = this.layers.get(i).groupId();
+            if (gid.isEmpty() || indexOfGroup(gid) < 0)
+                rows.add(new TreeRow(TargetKind.LAYER, i, null, false));
+        }
+        return rows;
+    }
+
+    // ---------------------------------------------------------------- history (undo / redo / revert)
+
+    private EditorSnapshot snapshot() {
+        return new EditorSnapshot(
+                this.rootOffsetX, this.rootOffsetY, this.rootOffsetZ,
+                this.rootYaw, this.rootPitch, this.rootRoll, this.rootScale,
+                this.renderDistance, this.appearRadius, this.appearSeconds, this.appearStyle,
+                List.copyOf(this.groups), List.copyOf(this.layers),
+                this.targetKind, this.selectedLayer, this.selectedGroupId);
+    }
+
+    private void restoreSnapshot(EditorSnapshot snap) {
+        this.rootOffsetX = snap.rootOx();
+        this.rootOffsetY = snap.rootOy();
+        this.rootOffsetZ = snap.rootOz();
+        this.rootYaw = snap.rootYaw();
+        this.rootPitch = snap.rootPitch();
+        this.rootRoll = snap.rootRoll();
+        this.rootScale = snap.rootScale();
+        this.renderDistance = snap.renderDistance();
+        this.appearRadius = snap.appearRadius();
+        this.appearSeconds = snap.appearSeconds();
+        this.appearStyle = snap.appearStyle();
+        this.groups = new ArrayList<>(snap.groups());
+        this.layers = new ArrayList<>(snap.layers());
+        this.targetKind = snap.targetKind();
+        this.selectedLayer = Mth.clamp(snap.selectedLayer(), 0, Math.max(0, this.layers.size() - 1));
+        this.selectedGroupId = snap.selectedGroupId();
+        if (this.targetKind == TargetKind.GROUP && indexOfGroup(this.selectedGroupId) < 0)
+            this.targetKind = TargetKind.LAYER;
+        clearSoloIfInvalid();
+        syncPickerToSelection();
+        rebuildInspector();
         refresh();
     }
+
+    private void pushUndo() {
+        this.undoStack.push(snapshot());
+        while (this.undoStack.size() > MAX_HISTORY)
+            this.undoStack.removeLast();
+        this.redoStack.clear();
+    }
+
+    public void undo() {
+        EditorSnapshot prev = this.undoStack.poll();
+        if (prev == null)
+            return;
+        this.redoStack.push(snapshot());
+        restoreSnapshot(prev);
+    }
+
+    public void redo() {
+        EditorSnapshot next = this.redoStack.poll();
+        if (next == null)
+            return;
+        this.undoStack.push(snapshot());
+        restoreSnapshot(next);
+    }
+
+    public void revertToSaved() {
+        pushUndo();
+        loadFromSpec(this.initialSpec);
+        this.soloLayerIndex = -1;
+        this.soloGroupId = null;
+        HologramClient.clearSolo();
+        rebuildInspector();
+        refresh();
+    }
+
+    // ---------------------------------------------------------------- UI builders
 
     private void setPickMode(int mode) {
         this.pickMode = Mth.clamp(mode, PICK_BLOCKS, PICK_PARTICLES);
@@ -345,39 +639,33 @@ public class HologramScreen extends Screen {
         this.search.setHint(Component.literal(hint).withStyle(style -> style.withColor(MUTED)));
     }
 
-    /** Rebuilds all interactive flat buttons and numeric controls for the current tab & toolbar. */
     private void rebuildInspector() {
         this.numControls.clear();
         this.flatBtns.clear();
 
-        // ---- Top-center gizmo toolbar ----
+        // ---- Top-center gizmo, history & camera toolbar ----
         HologramGizmo.Mode[] modes = HologramGizmo.Mode.values();
         String[] modeLabels = { "Move", "Rotate", "Scale", "Off" };
-        int btnW = 38;
-        int totalW = modes.length * (btnW + 2) + 4 + 34 + 2 + 34;
+        int btnW = 36;
+        int utilGap = 4;
+        int totalW = modes.length * (btnW + 2) + utilGap + 32 + 2 + 32 + 2 + 38 + 2 + 30 + 2 + 30;
         int gx = (this.width - totalW) / 2;
         for (int i = 0; i < modes.length; i++) {
             HologramGizmo.Mode m = modes[i];
-            this.flatBtns.add(new FlatBtn(gx + i * (btnW + 2), 6, btnW, 15, modeLabels[i],
+            this.flatBtns.add(new FlatBtn(gx + i * (btnW + 2), 5, btnW, 15, modeLabels[i],
                     this.gizmo.mode() == m, false, true, () -> {
                 this.gizmo.setMode(m);
                 rebuildInspector();
             }));
         }
-        int utilX = gx + modes.length * (btnW + 2) + 4;
-        this.flatBtns.add(new FlatBtn(utilX, 6, 34, 15, "Undo", false, false, !this.undoStack.isEmpty(),
-                this::undoTransform));
-        this.flatBtns.add(new FlatBtn(utilX + 36, 6, 34, 15, "Zero", false, false,
-                this.offsetX != 0 || this.offsetY != 0 || this.offsetZ != 0, () -> {
-            pushUndo();
-            this.offsetX = 0.0F;
-            this.offsetY = 0.0F;
-            this.offsetZ = 0.0F;
-            rebuildInspector();
-            refresh();
-        }));
+        int ux = gx + modes.length * (btnW + 2) + utilGap;
+        this.flatBtns.add(new FlatBtn(ux, 5, 32, 15, "Undo", false, false, !this.undoStack.isEmpty(), this::undo));
+        this.flatBtns.add(new FlatBtn(ux + 34, 5, 32, 15, "Redo", false, false, !this.redoStack.isEmpty(), this::redo));
+        this.flatBtns.add(new FlatBtn(ux + 68, 5, 38, 15, "Revert", false, false, true, this::revertToSaved));
+        this.flatBtns.add(new FlatBtn(ux + 108, 5, 30, 15, "Zero", false, false, canZeroTarget(), this::zeroTarget));
+        this.flatBtns.add(new FlatBtn(ux + 140, 5, 30, 15, "Cam", false, false, true, HologramCamera::resetToPlayer));
 
-        // ---- Left panel header / collapse button ----
+        // ---- Left panel header / collapse & add-layer button ----
         if (this.pickerCollapsed) {
             this.flatBtns.add(new FlatBtn(this.leftX, this.top, 64, 18, "Content >", false, false, true,
                     () -> setPickerCollapsed(false)));
@@ -390,16 +678,15 @@ public class HologramScreen extends Screen {
                 this.flatBtns.add(new FlatBtn(this.leftX + 8 + i * (pTabW + 2), this.top + 20, pTabW, 14,
                         PICK_LABELS[i], this.pickMode == m, false, true, () -> setPickMode(m)));
             }
-            // Stack as extra layer button at bottom of left panel
-            boolean canStack = this.parts.size() < HologramPart.MAX_PARTS;
-            String stackLabel = canStack
-                    ? ("+ Stack " + PICK_LABELS[this.pickMode] + " Layer (" + this.parts.size() + "/" + HologramPart.MAX_PARTS + ")")
-                    : ("Max " + HologramPart.MAX_PARTS + " Layers");
+            boolean canAdd = this.layers.size() < HologramLayer.MAX_LAYERS;
+            String addLabel = canAdd
+                    ? ("+ Add " + PICK_LABELS[this.pickMode] + " Layer (" + this.layers.size() + "/" + HologramLayer.MAX_LAYERS + ")")
+                    : ("Max " + HologramLayer.MAX_LAYERS + " Layers");
             this.flatBtns.add(new FlatBtn(this.leftX + 8, this.top + PANEL_H - 22, this.leftW - 16, 15,
-                    stackLabel, false, false, canStack, this::stackCurrentPick));
+                    addLabel, false, false, canAdd, this::addLayerFromPicker));
         }
 
-        // ---- Right Inspector tabs ----
+        // ---- Right Inspector tabs (4 tabs: Layers | Main | Anim | FX) ----
         int rx = this.rightX + 8;
         int rw = this.rightW - 16;
         int tabW = (rw - (TAB_LABELS.length - 1) * 2) / TAB_LABELS.length;
@@ -413,370 +700,888 @@ public class HologramScreen extends Screen {
             }));
         }
 
-        // ---- Inspector tab body ----
-        int y = this.top + 44;
-        if (this.tab == TAB_TRANSFORM) {
-            // Position X / Y / Z
-            y += 11; // section label drawn in render
-            int colW = (rw - 6) / 3;
-            this.numControls.add(new NumControl(rx, y, colW, 18, "X", AXIS_X, false,
-                    -16.0, 16.0, 0.25, 0.0, () -> this.offsetX, v -> this.offsetX = (float) v, "", 2));
-            this.numControls.add(new NumControl(rx + colW + 3, y, colW, 18, "Y", AXIS_Y, false,
-                    -16.0, 16.0, 0.25, 0.0, () -> this.offsetY, v -> this.offsetY = (float) v, "", 2));
-            this.numControls.add(new NumControl(rx + (colW + 3) * 2, y, rw - (colW + 3) * 2, 18, "Z", AXIS_Z, false,
-                    -16.0, 16.0, 0.25, 0.0, () -> this.offsetZ, v -> this.offsetZ = (float) v, "", 2));
-            y += 26;
+        // ---- Persistent Target Selector Bar (right under tabs) ----
+        int barY = this.top + 38;
+        boolean soloActive = this.soloLayerIndex >= 0 || this.soloGroupId != null;
+        int soloBtnW = soloActive ? 34 : 0;
+        int navW = 14;
+        int labelW = rw - navW * 2 - 4 - (soloActive ? soloBtnW + 2 : 0);
+        this.flatBtns.add(new FlatBtn(rx, barY, navW, 14, "<", false, false, true, () -> cycleTarget(-1)));
+        this.flatBtns.add(new FlatBtn(rx + navW + 2, barY, labelW, 14, targetLabel(),
+                this.tab == TAB_LAYERS, false, true, () -> {
+            this.tab = TAB_LAYERS;
+            rebuildInspector();
+        }));
+        int nextX = rx + navW + 2 + labelW + 2;
+        this.flatBtns.add(new FlatBtn(nextX, barY, navW, 14, ">", false, false, true, () -> cycleTarget(1)));
+        if (soloActive) {
+            this.flatBtns.add(new FlatBtn(nextX + navW + 2, barY, soloBtnW, 14, "Solo", false, false, true, true, () -> {
+                this.soloLayerIndex = -1;
+                this.soloGroupId = null;
+                HologramClient.clearSolo();
+                rebuildInspector();
+            }));
+        }
 
-            // Rotation Pitch / Yaw / Roll
-            y += 11;
-            this.numControls.add(new NumControl(rx, y, colW, 18, "P", AXIS_X, false,
-                    -180.0, 180.0, 15.0, 0.0, () -> this.pitch, v -> this.pitch = wrap(v), "°", 0));
-            this.numControls.add(new NumControl(rx + colW + 3, y, colW, 18, "Y", AXIS_Y, false,
-                    -180.0, 180.0, 15.0, 0.0, () -> this.yaw, v -> this.yaw = wrap(v), "°", 0));
-            this.numControls.add(new NumControl(rx + (colW + 3) * 2, y, rw - (colW + 3) * 2, 18, "R", AXIS_Z, false,
-                    -180.0, 180.0, 15.0, 0.0, () -> this.roll, v -> this.roll = wrap(v), "°", 0));
-            y += 26;
+        // ---- Tab Body ----
+        int y = this.top + 58;
+        if (this.tab == TAB_LAYERS) {
+            buildLayersTab(rx, rw, y);
+        } else if (this.tab == TAB_MAIN) {
+            buildMainTab(rx, rw, y);
+        } else if (this.tab == TAB_ANIMATE) {
+            buildAnimTab(rx, rw, y);
+        } else {
+            buildFxTab(rx, rw, y);
+        }
 
-            // Scale slider
-            y += 11;
-            this.numControls.add(new NumControl(rx, y, rw, 18, "Scale", TEXT, true,
-                    0.25, 8.0, 0.25, 1.0, () -> this.scale, v -> this.scale = (float) clamp(v, 0.25, 8.0), "x", 2));
-            y += 25;
+        // ---- Right Inspector Footer: Done | Cancel | Del ----
+        int footY = this.top + PANEL_H - 25;
+        int delW = 36;
+        int mainBtnsW = rw - delW - 4;
+        int doneW = (mainBtnsW - 2) / 2;
+        int cancelW = mainBtnsW - 2 - doneW;
+        this.flatBtns.add(new FlatBtn(rx, footY, doneW, 17, "Done", true, false, true, this::saveAndClose));
+        this.flatBtns.add(new FlatBtn(rx + doneW + 2, footY, cancelW, 17, "Cancel", false, false, true, this::cancelAndClose));
+        this.flatBtns.add(new FlatBtn(rx + doneW + 2 + cancelW + 4, footY, delW, 17, "Del", false, true, true,
+                this::deleteAndClose));
+    }
 
-            // Range slider
-            this.numControls.add(new NumControl(rx, y, rw, 18, "Range", TEXT, true,
+    private void buildLayersTab(int rx, int rw, int y) {
+        // Row 1: +Layer | +Group | Copy | Paste | New
+        int b1 = (rw - 8) / 5;
+        int rem = rw - (b1 + 2) * 4;
+        this.flatBtns.add(new FlatBtn(rx, y, b1, 15, "+Layer", false, false,
+                this.layers.size() < HologramLayer.MAX_LAYERS, this::addLayerFromPicker));
+        this.flatBtns.add(new FlatBtn(rx + (b1 + 2), y, b1, 15, "+Grp", false, false,
+                this.groups.size() < HologramGroup.MAX_GROUPS, this::addGroup));
+        this.flatBtns.add(new FlatBtn(rx + (b1 + 2) * 2, y, b1, 15, "Copy", false, false, true, () -> {
+            HologramClipboard.copy(buildSpec());
+            rebuildInspector();
+        }));
+        this.flatBtns.add(new FlatBtn(rx + (b1 + 2) * 3, y, b1, 15, "Paste", false, false,
+                HologramClipboard.has(), this::applyClipboard));
+        this.flatBtns.add(new FlatBtn(rx + (b1 + 2) * 4, y, rem, 15, "New", false, false,
+                HologramClipboard.has(), this::duplicateBesideMe));
+        y += 19;
+
+        // Scrollable hierarchy tree
+        List<TreeRow> rows = buildTreeRows();
+        int maxVis = 8;
+        this.layerScroll = Mth.clamp(this.layerScroll, 0, Math.max(0, rows.size() - maxVis));
+        int rowH = 17;
+        for (int v = 0; v < maxVis; v++) {
+            int rIdx = this.layerScroll + v;
+            if (rIdx >= rows.size())
+                break;
+            TreeRow row = rows.get(rIdx);
+            int ry = y + v * (rowH + 2);
+
+            if (row.kind == TargetKind.ROOT) {
+                boolean sel = this.targetKind == TargetKind.ROOT;
+                this.flatBtns.add(new FlatBtn(rx, ry, rw, rowH,
+                        "Root (All - " + this.layers.size() + " layers)", sel, false, true, this::selectRoot));
+            } else if (row.kind == TargetKind.GROUP && row.groupId != null) {
+                HologramGroup grp = currentGroupById(row.groupId);
+                if (grp == null)
+                    continue;
+                String gid = grp.id();
+                boolean sel = this.targetKind == TargetKind.GROUP && gid.equals(this.selectedGroupId);
+                boolean soloed = gid.equals(this.soloGroupId);
+
+                int btnSmall = 15;
+                int x = rx;
+                this.flatBtns.add(new FlatBtn(x, ry, btnSmall, rowH, grp.visible() ? "V" : "-",
+                        grp.visible(), false, true, () -> toggleGroupVisible(gid)));
+                x += btnSmall + 2;
+                this.flatBtns.add(new FlatBtn(x, ry, btnSmall, rowH, "S", false, false, soloed, true,
+                        () -> toggleSoloGroup(gid)));
+                x += btnSmall + 2;
+                int mainW = rw - (x - rx) - (btnSmall + 2);
+                String fxTag = grp.effects().isEmpty() && grp.spin() == 0 && grp.hover() == 0 ? "" : " *";
+                this.flatBtns.add(new FlatBtn(x, ry, mainW, rowH, grp.name() + fxTag, sel, false, true,
+                        () -> selectGroup(gid)));
+                this.flatBtns.add(new FlatBtn(rx + rw - btnSmall, ry, btnSmall, rowH, "x", false, true, true,
+                        () -> removeGroup(gid)));
+            } else {
+                int lIdx = row.layerIndex;
+                HologramLayer layer = this.layers.get(lIdx);
+                boolean sel = this.targetKind == TargetKind.LAYER && this.selectedLayer == lIdx;
+                boolean soloed = this.soloLayerIndex == lIdx;
+
+                int indent = row.indented ? 8 : 0;
+                int btnSmall = 14;
+                int grpBtnW = this.groups.isEmpty() ? 0 : 18;
+                int x = rx + indent;
+                this.flatBtns.add(new FlatBtn(x, ry, btnSmall, rowH, layer.visible() ? "V" : "-",
+                        layer.visible(), false, true, () -> toggleLayerVisible(lIdx)));
+                x += btnSmall + 2;
+                this.flatBtns.add(new FlatBtn(x, ry, btnSmall, rowH, "S", false, false, soloed, true,
+                        () -> toggleSoloLayer(lIdx)));
+                x += btnSmall + 2;
+
+                int rightUsed = btnSmall + 2 + btnSmall + (grpBtnW > 0 ? grpBtnW + 2 : 0);
+                int mainW = Math.max(24, (rx + rw) - x - rightUsed - 2);
+                this.flatBtns.add(new FlatBtn(x, ry, mainW, rowH, (lIdx + 1) + ". " + layer.label(),
+                        sel, false, true, () -> selectLayer(lIdx)));
+
+                int rightXPos = rx + rw - rightUsed;
+                if (grpBtnW > 0) {
+                    String gLbl = layer.groupId().isEmpty() ? "--" : layer.groupId().toUpperCase(Locale.ROOT);
+                    this.flatBtns.add(new FlatBtn(rightXPos, ry, grpBtnW, rowH, gLbl,
+                            !layer.groupId().isEmpty(), false, true, () -> cycleLayerGroup(lIdx)));
+                    rightXPos += grpBtnW + 2;
+                }
+                this.flatBtns.add(new FlatBtn(rightXPos, ry, btnSmall, rowH, "+", false, false,
+                        this.layers.size() < HologramLayer.MAX_LAYERS, () -> duplicateLayer(lIdx)));
+                rightXPos += btnSmall + 2;
+                this.flatBtns.add(new FlatBtn(rightXPos, ry, btnSmall, rowH, "x", false, true,
+                        this.layers.size() > 1, () -> removeLayer(lIdx)));
+            }
+        }
+
+        // Bottom utility row: Up / Down for selected layer
+        int utilY = this.top + PANEL_H - 46;
+        int halfW = (rw - 4) / 2;
+        boolean canUp = this.targetKind == TargetKind.LAYER && this.selectedLayer > 0;
+        boolean canDown = this.targetKind == TargetKind.LAYER && this.selectedLayer >= 0
+                && this.selectedLayer < this.layers.size() - 1;
+        this.flatBtns.add(new FlatBtn(rx, utilY, halfW, 15, "Move Up", false, false, canUp,
+                () -> moveLayer(this.selectedLayer, -1)));
+        this.flatBtns.add(new FlatBtn(rx + halfW + 4, utilY, rw - halfW - 4, 15, "Move Down", false, false, canDown,
+                () -> moveLayer(this.selectedLayer, 1)));
+    }
+
+    private void buildMainTab(int rx, int rw, int y) {
+        int colW = (rw - 6) / 3;
+        HologramLayer layer = currentLayer();
+        HologramGroup group = currentGroup();
+
+        // Position X / Y / Z
+        y += 10;
+        this.numControls.add(new NumControl(rx, y, colW, 17, "X", AXIS_X, false,
+                -16.0, 16.0, 0.25, 0.0, this::getTargetOffsetX, v -> setTargetOffsetX((float) v), "", 2));
+        this.numControls.add(new NumControl(rx + colW + 3, y, colW, 17, "Y", AXIS_Y, false,
+                -16.0, 16.0, 0.25, 0.0, this::getTargetOffsetY, v -> setTargetOffsetY((float) v), "", 2));
+        this.numControls.add(new NumControl(rx + (colW + 3) * 2, y, rw - (colW + 3) * 2, 17, "Z", AXIS_Z, false,
+                -16.0, 16.0, 0.25, 0.0, this::getTargetOffsetZ, v -> setTargetOffsetZ((float) v), "", 2));
+        y += 23;
+
+        if (layer != null && layer.kind() == HologramLayer.Kind.PARTICLE) {
+            // Particle-specific controls: Spread, Rate, Rise Speed
+            y += 10;
+            this.numControls.add(new NumControl(rx, y, rw, 17, "Spread", TEXT, true,
+                    0.05, 4.0, 0.05, 0.35, this::getTargetScale, v -> setTargetScale((float) v), "m", 2));
+            y += 22;
+            this.numControls.add(new NumControl(rx, y, rw, 17, "Rate", TEXT, true,
+                    1.0, 40.0, 1.0, 10.0,
+                    () -> {
+                        HologramLayer l = currentLayer();
+                        return l == null ? 10.0 : l.particleRate();
+                    },
+                    v -> updateCurrentLayer(l -> l.withParticle((float) v, l.particleSpeed())), "/s", 0));
+            y += 22;
+            this.numControls.add(new NumControl(rx, y, rw, 17, "Rise", TEXT, true,
+                    -0.5, 0.5, 0.01, 0.01,
+                    () -> {
+                        HologramLayer l = currentLayer();
+                        return l == null ? 0.01 : l.particleSpeed();
+                    },
+                    v -> updateCurrentLayer(l -> l.withParticle(l.particleRate(), (float) v)), "", 2));
+            return;
+        }
+
+        // Rotation Pitch / Yaw / Roll
+        y += 10;
+        this.numControls.add(new NumControl(rx, y, colW, 17, "P", AXIS_X, false,
+                -180.0, 180.0, 15.0, 0.0, this::getTargetPitch, v -> setTargetPitch(wrap(v)), "°", 0));
+        this.numControls.add(new NumControl(rx + colW + 3, y, colW, 17, "Y", AXIS_Y, false,
+                -180.0, 180.0, 15.0, 0.0, this::getTargetYaw, v -> setTargetYaw(wrap(v)), "°", 0));
+        this.numControls.add(new NumControl(rx + (colW + 3) * 2, y, rw - (colW + 3) * 2, 17, "R", AXIS_Z, false,
+                -180.0, 180.0, 15.0, 0.0, this::getTargetRoll, v -> setTargetRoll(wrap(v)), "°", 0));
+        y += 23;
+
+        // Scale slider
+        y += 10;
+        double minScale = this.targetKind == TargetKind.ROOT ? 0.25 : 0.1;
+        this.numControls.add(new NumControl(rx, y, rw, 17, "Scale", TEXT, true,
+                minScale, 8.0, 0.25, 1.0, this::getTargetScale, v -> setTargetScale((float) v), "x", 2));
+        y += 23;
+
+        if (this.targetKind == TargetKind.ROOT) {
+            this.numControls.add(new NumControl(rx, y, rw, 17, "Range", TEXT, true,
                     8.0, this.maxRenderDistance, 8.0, 48.0,
                     () -> this.renderDistance,
                     v -> this.renderDistance = (int) clamp(Math.round(v), 8, this.maxRenderDistance), "m", 0));
-            y += 24;
-
-            // Glow + Preview in front inline toggles
+            y += 23;
+            this.flatBtns.add(new FlatBtn(rx, y, rw, 17,
+                    "In-Front Preview: " + (HologramClient.previewAnchored() ? "On" : "Off"),
+                    HologramClient.previewAnchored(), false, true, () -> {
+                HologramClient.setPreviewAnchored(!HologramClient.previewAnchored());
+                rebuildInspector();
+                applyLocalPreviewOnly();
+            }));
+        } else if (group != null) {
             int halfW = (rw - 4) / 2;
-            this.flatBtns.add(new FlatBtn(rx, y, halfW, 18,
-                    "Glow: " + (this.fullbright ? "On" : "Off"), this.fullbright, false, true, () -> {
-                this.fullbright = !this.fullbright;
+            this.flatBtns.add(new FlatBtn(rx, y, halfW, 17,
+                    "Glow: " + (group.fullbright() ? "On" : "Off"), group.fullbright(), false, true, () -> {
+                pushUndo();
+                updateCurrentGroup(g -> g.withFullbright(!g.fullbright()));
                 rebuildInspector();
                 refresh();
             }));
-            this.flatBtns.add(new FlatBtn(rx + halfW + 4, y, rw - halfW - 4, 18,
+            this.flatBtns.add(new FlatBtn(rx + halfW + 4, y, rw - halfW - 4, 17,
+                    "Visible: " + (group.visible() ? "On" : "Off"), group.visible(), false, true, () -> {
+                toggleGroupVisible(group.id());
+            }));
+        } else if (layer != null) {
+            int halfW = (rw - 4) / 2;
+            this.flatBtns.add(new FlatBtn(rx, y, halfW, 17,
+                    "Glow: " + (layer.fullbright() ? "On" : "Off"), layer.fullbright(), false, true, () -> {
+                pushUndo();
+                updateCurrentLayer(l -> l.withFullbright(!l.fullbright()));
+                rebuildInspector();
+                refresh();
+            }));
+            this.flatBtns.add(new FlatBtn(rx + halfW + 4, y, rw - halfW - 4, 17,
                     "Preview: " + (HologramClient.previewAnchored() ? "On" : "Off"),
                     HologramClient.previewAnchored(), false, true, () -> {
                 HologramClient.setPreviewAnchored(!HologramClient.previewAnchored());
                 rebuildInspector();
-                refresh();
+                applyLocalPreviewOnly();
             }));
-        } else if (this.tab == TAB_ANIMATE) {
-            this.numControls.add(new NumControl(rx, y, rw, 18, "Spin", TEXT, true,
-                    -360.0, 360.0, 15.0, 0.0, () -> this.spin, v -> this.spin = (float) clamp(v, -360.0, 360.0), "°/s", 0));
-            y += 23;
+            y += 22;
 
-            // Spin axis segmented bar
-            int axisW = (rw - 4) / 3;
-            String[] axes = { "Axis: X", "Axis: Y", "Axis: Z" };
-            int[] axisIds = { HologramSpec.AXIS_X, HologramSpec.AXIS_Y, HologramSpec.AXIS_Z };
-            for (int i = 0; i < 3; i++) {
-                int ax = axisIds[i];
-                this.flatBtns.add(new FlatBtn(rx + i * (axisW + 2), y, axisW, 16, axes[i],
-                        this.spinAxis == ax, false, true, () -> {
-                    this.spinAxis = ax;
+            // Block layer BE capture controls
+            if (layer.kind() == HologramLayer.Kind.BLOCK) {
+                String dataLabel = layer.data().isEmpty() ? "Capture BE" : ("Re-cap (" + layer.data().sizeInBytes() + "B)");
+                this.flatBtns.add(new FlatBtn(rx, y, halfW, 16, dataLabel, false, false, true,
+                        () -> HologramNetwork.sendRecapture(this.id, this.selectedLayer)));
+                this.flatBtns.add(new FlatBtn(rx + halfW + 4, y, rw - halfW - 4, 16, "Clear BE",
+                        false, true, !layer.data().isEmpty(), () -> {
+                    pushUndo();
+                    updateCurrentLayer(l -> l.withData(new CompoundTag()));
                     rebuildInspector();
                     refresh();
                 }));
             }
-            y += 24;
+        }
+    }
 
-            this.numControls.add(new NumControl(rx, y, rw, 18, "Hover", TEXT, true,
-                    0.0, 4.0, 0.25, 0.0, () -> this.hover, v -> this.hover = (float) clamp(v, 0.0, 4.0), "m", 2));
-            y += 23;
-
-            this.numControls.add(new NumControl(rx, y, rw, 18, "Period", TEXT, true,
-                    0.5, 30.0, 0.5, 4.0, () -> this.hoverPeriod,
-                    v -> this.hoverPeriod = (float) clamp(v, 0.5, 120.0), "s", 1));
-            y += 28;
-
-            // Walk-in appear
-            y += 11;
-            this.numControls.add(new NumControl(rx, y, rw, 16, "Appear", TEXT, true,
+    private void buildAnimTab(int rx, int rw, int y) {
+        if (this.targetKind == TargetKind.ROOT) {
+            // Walk-in reveal controls live on Root
+            y += 10;
+            this.numControls.add(new NumControl(rx, y, rw, 17, "Appear", TEXT, true,
                     0.0, 64.0, 2.0, 0.0, () -> this.appearRadius,
                     v -> this.appearRadius = (float) clamp(v, 0.0, 64.0), "m", 0));
-            y += 19;
-
-            this.numControls.add(new NumControl(rx, y, rw, 16, "Ease", TEXT, true,
+            y += 22;
+            this.numControls.add(new NumControl(rx, y, rw, 17, "Ease", TEXT, true,
                     0.0, 5.0, 0.2, 0.6, () -> this.appearSeconds,
                     v -> this.appearSeconds = (float) clamp(v, 0.0, 10.0), "s", 1));
-            y += 19;
-
-            // 6 Reveal Styles in 2 rows of 3 pills
+            y += 24;
             int rW = (rw - 4) / 3;
             for (int i = 0; i < REVEAL_NAMES.length; i++) {
                 int st = i;
                 int bx = rx + (i % 3) * (rW + 2);
-                int by = y + (i / 3) * 16;
-                this.flatBtns.add(new FlatBtn(bx, by, rW, 14, REVEAL_NAMES[i],
+                int by = y + (i / 3) * 18;
+                this.flatBtns.add(new FlatBtn(bx, by, rW, 15, REVEAL_NAMES[i],
                         this.appearStyle == st, false, true, () -> {
+                    pushUndo();
                     this.appearStyle = st;
                     rebuildInspector();
                     refresh();
                 }));
             }
-        } else if (this.tab == TAB_FX) {
-            // 9 direct effect toggle pills in 2 compact rows (5 + 4)
-            HologramEffect.Type[] allTypes = HologramEffect.Type.values();
-            String[] shortNames = { "Tint", "Scan", "Gltch", "Pulse", "Chrma", "Flkr", "Trmr", "Wbl", "Jump" };
-            int row1W = (rw - 8) / 5;
-            for (int i = 0; i < 5; i++) {
-                HologramEffect.Type type = allTypes[i];
-                boolean has = indexOfEffect(type) >= 0;
-                this.flatBtns.add(new FlatBtn(rx + i * (row1W + 2), y, row1W, 15, shortNames[i],
-                        has, false, has || this.effects.size() < MAX_EFFECTS, () -> toggleEffect(type)));
-            }
-            y += 17;
-            int row2W = (rw - 6) / 4;
-            for (int i = 5; i < allTypes.length; i++) {
-                HologramEffect.Type type = allTypes[i];
-                boolean has = indexOfEffect(type) >= 0;
-                this.flatBtns.add(new FlatBtn(rx + (i - 5) * (row2W + 2), y, row2W, 15, shortNames[i],
-                        has, false, has || this.effects.size() < MAX_EFFECTS, () -> toggleEffect(type)));
-            }
-            y += 20;
+            return;
+        }
 
-            // Scrollable active effect cards
-            int maxCardY = this.top + PANEL_H - 34;
-            this.fxScroll = Mth.clamp(this.fxScroll, 0, Math.max(0, this.effects.size() - 1));
-            for (int i = this.fxScroll; i < this.effects.size(); i++) {
-                int idx = i;
-                HologramEffect fx = this.effects.get(i);
-                int cardH = fx.type() == HologramEffect.Type.TINT ? 40 : 22;
-                if (y + cardH > maxCardY)
-                    break;
-                int strW = fx.type() == HologramEffect.Type.TINT ? rw - 20 : (rw - 24) * 60 / 100;
-                this.numControls.add(new NumControl(rx, y, strW, 18, fx.label(), TEXT, true,
-                        0.0, 2.0, 0.1, 0.5,
-                        () -> idx < this.effects.size() ? this.effects.get(idx).strength() : 0.0,
-                        v -> setEffectStrength(idx, (float) v), "", 2));
-                if (fx.type() != HologramEffect.Type.TINT) {
-                    int spdX = rx + strW + 3;
-                    int spdW = rw - strW - 23;
-                    this.numControls.add(new NumControl(spdX, y, spdW, 18, "Hz", MUTED, false,
-                            0.1, 20.0, 0.5, 1.0,
-                            () -> idx < this.effects.size() ? this.effects.get(idx).speed() : 1.0,
-                            v -> setEffectSpeed(idx, (float) v), "", 1));
-                }
-                this.flatBtns.add(new FlatBtn(rx + rw - 17, y, 17, 18, "x", false, true, true,
-                        () -> removeEffect(idx)));
-                y += cardH + 3;
-            }
-        } else {
-            // More tab: Clipboard, BE Data, and Stacked Layers (Parts, up to 16, scrollable)
-            int thirdW = (rw - 4) / 3;
-            this.flatBtns.add(new FlatBtn(rx, y, thirdW, 18, "Copy", false, false, true, () -> {
-                HologramClipboard.copy(buildSpec());
-                rebuildInspector();
-            }));
-            this.flatBtns.add(new FlatBtn(rx + thirdW + 2, y, thirdW, 18, "Paste", false, false,
-                    HologramClipboard.has(), this::applyClipboard));
-            this.flatBtns.add(new FlatBtn(rx + (thirdW + 2) * 2, y, rw - (thirdW + 2) * 2, 18, "Paste New",
-                    false, false, HologramClipboard.has(), this::duplicateBesideMe));
-            y += 24;
+        // Group or Layer independent Spin + Hover
+        this.numControls.add(new NumControl(rx, y, rw, 17, "Spin", TEXT, true,
+                -360.0, 360.0, 15.0, 0.0, this::getTargetSpin, v -> setTargetSpin((float) v), "°/s", 0));
+        y += 22;
 
-            // BE Data controls
-            int halfW = (rw - 4) / 2;
-            String dataLabel = this.data.isEmpty() ? "Capture BE" : ("Re-cap (" + this.data.sizeInBytes() + "B)");
-            this.flatBtns.add(new FlatBtn(rx, y, halfW, 18, dataLabel, false, false, true,
-                    () -> HologramNetwork.sendRecapture(this.id)));
-            this.flatBtns.add(new FlatBtn(rx + halfW + 4, y, rw - halfW - 4, 18, "Clear BE",
-                    false, true, !this.data.isEmpty(), () -> {
-                this.data = new CompoundTag();
+        int axisW = (rw - 4) / 3;
+        String[] axes = { "Axis: X", "Axis: Y", "Axis: Z" };
+        int[] axisIds = { HologramSpec.AXIS_X, HologramSpec.AXIS_Y, HologramSpec.AXIS_Z };
+        int curAxis = getTargetSpinAxis();
+        for (int i = 0; i < 3; i++) {
+            int ax = axisIds[i];
+            this.flatBtns.add(new FlatBtn(rx + i * (axisW + 2), y, axisW, 15, axes[i],
+                    curAxis == ax, false, true, () -> {
+                pushUndo();
+                setTargetSpinAxis(ax);
                 rebuildInspector();
                 refresh();
             }));
-            y += 28;
-
-            // Extra Layers (Parts) list (3 visible rows, wheel scrolls when > 3)
-            y += 11; // section label "Layers (N/16)"
-            int maxVisLayers = 4;
-            this.layerScroll = Mth.clamp(this.layerScroll, 0, Math.max(0, this.parts.size() - maxVisLayers));
-            for (int row = 0; row < maxVisLayers; row++) {
-                int idx = this.layerScroll + row;
-                if (idx >= this.parts.size())
-                    break;
-                HologramPart p = this.parts.get(idx);
-                this.flatBtns.add(new FlatBtn(rx, y, rw - 20, 17,
-                        (idx + 1) + ". " + p.label() + (idx == 0 && this.primaryPartOverride ? " (main)" : ""),
-                        idx == this.selectedPart, false, true, () -> {
-                    this.selectedPart = idx;
-                    rebuildInspector();
-                }));
-                this.flatBtns.add(new FlatBtn(rx + rw - 18, y, 18, 17, "x", false, true, true,
-                        () -> removePart(idx)));
-                y += 19;
-            }
-
-            // Selected layer fine controls (X / Y / Z + Size / Yaw)
-            if (this.selectedPart >= 0 && this.selectedPart < this.parts.size()) {
-                int pIdx = this.selectedPart;
-                int sy = this.top + PANEL_H - 72;
-                int c3 = (rw - 6) / 3;
-                this.numControls.add(new NumControl(rx, sy, c3, 16, "X", AXIS_X, false,
-                        -16.0, 16.0, 0.25, 0.0,
-                        () -> pIdx < this.parts.size() ? this.parts.get(pIdx).offsetX() : 0.0,
-                        v -> setPartField(pIdx, 0, (float) v), "", 2));
-                this.numControls.add(new NumControl(rx + c3 + 3, sy, c3, 16, "Y", AXIS_Y, false,
-                        -16.0, 16.0, 0.25, 0.0,
-                        () -> pIdx < this.parts.size() ? this.parts.get(pIdx).offsetY() : 0.0,
-                        v -> setPartField(pIdx, 1, (float) v), "", 2));
-                this.numControls.add(new NumControl(rx + (c3 + 3) * 2, sy, rw - (c3 + 3) * 2, 16, "Z", AXIS_Z, false,
-                        -16.0, 16.0, 0.25, 0.0,
-                        () -> pIdx < this.parts.size() ? this.parts.get(pIdx).offsetZ() : 0.0,
-                        v -> setPartField(pIdx, 2, (float) v), "", 2));
-
-                int c2 = (rw - 4) / 2;
-                this.numControls.add(new NumControl(rx, sy + 19, c2, 16, "Size", TEXT, false,
-                        0.1, 8.0, 0.1, 1.0,
-                        () -> pIdx < this.parts.size() ? this.parts.get(pIdx).scale() : 1.0,
-                        v -> setPartField(pIdx, 3, (float) v), "x", 2));
-                this.numControls.add(new NumControl(rx + c2 + 4, sy + 19, rw - c2 - 4, 16, "Yaw", TEXT, false,
-                        -180.0, 180.0, 15.0, 0.0,
-                        () -> pIdx < this.parts.size() ? this.parts.get(pIdx).yaw() : 0.0,
-                        v -> setPartField(pIdx, 4, wrap(v)), "°", 0));
-            }
         }
+        y += 23;
 
-        // ---- Right Inspector footer: Done / Delete ----
-        int footY = this.top + PANEL_H - 26;
-        int halfW = (rw - 4) / 2;
-        this.flatBtns.add(new FlatBtn(rx, footY, halfW, 18, "Done", true, false, true, this::saveAndClose));
-        this.flatBtns.add(new FlatBtn(rx + halfW + 4, footY, rw - halfW - 4, 18, "Delete", false, true, true,
-                this::deleteAndClose));
+        this.numControls.add(new NumControl(rx, y, rw, 17, "Hover", TEXT, true,
+                0.0, 4.0, 0.25, 0.0, this::getTargetHover, v -> setTargetHover((float) v), "m", 2));
+        y += 22;
+
+        this.numControls.add(new NumControl(rx, y, rw, 17, "Period", TEXT, true,
+                0.5, 30.0, 0.5, 4.0, this::getTargetHoverPeriod, v -> setTargetHoverPeriod((float) v), "s", 1));
+        y += 26;
+
+        // Shortcut button to edit Walk-in Reveal on Root
+        this.flatBtns.add(new FlatBtn(rx, y, rw, 16,
+                "Walk-in Reveal: " + (this.appearRadius > 0 ? ((int) this.appearRadius + "m " + REVEAL_NAMES[this.appearStyle]) : "Off") + " (Root)",
+                false, false, true, this::selectRoot));
     }
 
-    // ---------------------------------------------------------------- effects & parts logic
+    private void buildFxTab(int rx, int rw, int y) {
+        if (this.targetKind == TargetKind.ROOT) {
+            this.flatBtns.add(new FlatBtn(rx, y + 26, rw, 18, "Edit Layer 1 FX", false, false, true,
+                    () -> selectLayer(0)));
+            if (this.groups.isEmpty()) {
+                this.flatBtns.add(new FlatBtn(rx, y + 48, rw, 18, "+ Create Group for Shared FX", false, false, true,
+                        this::addGroup));
+            }
+            return;
+        }
 
-    private int indexOfEffect(HologramEffect.Type type) {
-        for (int i = 0; i < this.effects.size(); i++) {
-            if (this.effects.get(i).type() == type)
+        List<HologramEffect> fxList = getTargetEffects();
+        HologramEffect.Type[] allTypes = HologramEffect.Type.values();
+        String[] shortNames = { "Tint", "Scan", "Gltch", "Pulse", "Chrma", "Flkr", "Trmr", "Wbl", "Jump" };
+        int row1W = (rw - 8) / 5;
+        for (int i = 0; i < 5; i++) {
+            HologramEffect.Type type = allTypes[i];
+            boolean has = indexOfEffect(fxList, type) >= 0;
+            this.flatBtns.add(new FlatBtn(rx + i * (row1W + 2), y, row1W, 15, shortNames[i],
+                    has, false, has || fxList.size() < MAX_EFFECTS, () -> toggleEffect(type)));
+        }
+        y += 17;
+        int row2W = (rw - 6) / 4;
+        for (int i = 5; i < allTypes.length; i++) {
+            HologramEffect.Type type = allTypes[i];
+            boolean has = indexOfEffect(fxList, type) >= 0;
+            this.flatBtns.add(new FlatBtn(rx + (i - 5) * (row2W + 2), y, row2W, 15, shortNames[i],
+                    has, false, has || fxList.size() < MAX_EFFECTS, () -> toggleEffect(type)));
+        }
+        y += 20;
+
+        int maxCardY = this.top + PANEL_H - 32;
+        this.fxScroll = Mth.clamp(this.fxScroll, 0, Math.max(0, fxList.size() - 1));
+        for (int i = this.fxScroll; i < fxList.size(); i++) {
+            int idx = i;
+            HologramEffect fx = fxList.get(i);
+            int cardH = fx.type() == HologramEffect.Type.TINT ? 38 : 21;
+            if (y + cardH > maxCardY)
+                break;
+            int strW = fx.type() == HologramEffect.Type.TINT ? rw - 20 : (rw - 24) * 60 / 100;
+            this.numControls.add(new NumControl(rx, y, strW, 17, fx.label(), TEXT, true,
+                    0.0, 2.0, 0.1, 0.5,
+                    () -> {
+                        List<HologramEffect> cur = getTargetEffects();
+                        return idx < cur.size() ? cur.get(idx).strength() : 0.0;
+                    },
+                    v -> setEffectStrength(idx, (float) v), "", 2));
+            if (fx.type() != HologramEffect.Type.TINT) {
+                int spdX = rx + strW + 3;
+                int spdW = rw - strW - 23;
+                this.numControls.add(new NumControl(spdX, y, spdW, 17, "Hz", MUTED, false,
+                        0.1, 20.0, 0.5, 1.0,
+                        () -> {
+                            List<HologramEffect> cur = getTargetEffects();
+                            return idx < cur.size() ? cur.get(idx).speed() : 1.0;
+                        },
+                        v -> setEffectSpeed(idx, (float) v), "", 1));
+            }
+            this.flatBtns.add(new FlatBtn(rx + rw - 17, y, 17, 17, "x", false, true, true,
+                    () -> removeEffect(idx)));
+            y += cardH + 3;
+        }
+    }
+
+    // ---------------------------------------------------------------- target property getters/setters
+
+    @Nullable
+    private HologramGroup currentGroupById(String groupId) {
+        for (HologramGroup g : this.groups) {
+            if (g.id().equals(groupId))
+                return g;
+        }
+        return null;
+    }
+
+    private void updateCurrentLayer(java.util.function.UnaryOperator<HologramLayer> fn) {
+        if (this.targetKind != TargetKind.LAYER || this.selectedLayer < 0 || this.selectedLayer >= this.layers.size())
+            return;
+        this.layers.set(this.selectedLayer, fn.apply(this.layers.get(this.selectedLayer)));
+    }
+
+    private void updateCurrentGroup(java.util.function.UnaryOperator<HologramGroup> fn) {
+        if (this.targetKind != TargetKind.GROUP || this.selectedGroupId == null)
+            return;
+        int idx = indexOfGroup(this.selectedGroupId);
+        if (idx >= 0)
+            this.groups.set(idx, fn.apply(this.groups.get(idx)));
+    }
+
+    private double getTargetOffsetX() {
+        return switch (this.targetKind) {
+            case ROOT -> this.rootOffsetX;
+            case GROUP -> {
+                HologramGroup g = currentGroup();
+                yield g == null ? 0.0 : g.offsetX();
+            }
+            case LAYER -> {
+                HologramLayer l = currentLayer();
+                yield l == null ? 0.0 : l.offsetX();
+            }
+        };
+    }
+
+    private double getTargetOffsetY() {
+        return switch (this.targetKind) {
+            case ROOT -> this.rootOffsetY;
+            case GROUP -> {
+                HologramGroup g = currentGroup();
+                yield g == null ? 0.0 : g.offsetY();
+            }
+            case LAYER -> {
+                HologramLayer l = currentLayer();
+                yield l == null ? 0.0 : l.offsetY();
+            }
+        };
+    }
+
+    private double getTargetOffsetZ() {
+        return switch (this.targetKind) {
+            case ROOT -> this.rootOffsetZ;
+            case GROUP -> {
+                HologramGroup g = currentGroup();
+                yield g == null ? 0.0 : g.offsetZ();
+            }
+            case LAYER -> {
+                HologramLayer l = currentLayer();
+                yield l == null ? 0.0 : l.offsetZ();
+            }
+        };
+    }
+
+    private void setTargetOffsetX(float v) {
+        switch (this.targetKind) {
+            case ROOT -> this.rootOffsetX = Mth.clamp(v, -16.0F, 16.0F);
+            case GROUP -> updateCurrentGroup(g -> g.withOffset(v, g.offsetY(), g.offsetZ()));
+            case LAYER -> updateCurrentLayer(l -> l.withOffset(v, l.offsetY(), l.offsetZ()));
+        }
+    }
+
+    private void setTargetOffsetY(float v) {
+        switch (this.targetKind) {
+            case ROOT -> this.rootOffsetY = Mth.clamp(v, -16.0F, 16.0F);
+            case GROUP -> updateCurrentGroup(g -> g.withOffset(g.offsetX(), v, g.offsetZ()));
+            case LAYER -> updateCurrentLayer(l -> l.withOffset(l.offsetX(), v, l.offsetZ()));
+        }
+    }
+
+    private void setTargetOffsetZ(float v) {
+        switch (this.targetKind) {
+            case ROOT -> this.rootOffsetZ = Mth.clamp(v, -16.0F, 16.0F);
+            case GROUP -> updateCurrentGroup(g -> g.withOffset(g.offsetX(), g.offsetY(), v));
+            case LAYER -> updateCurrentLayer(l -> l.withOffset(l.offsetX(), l.offsetY(), v));
+        }
+    }
+
+    private double getTargetYaw() {
+        return switch (this.targetKind) {
+            case ROOT -> this.rootYaw;
+            case GROUP -> {
+                HologramGroup g = currentGroup();
+                yield g == null ? 0.0 : g.yaw();
+            }
+            case LAYER -> {
+                HologramLayer l = currentLayer();
+                yield l == null ? 0.0 : l.yaw();
+            }
+        };
+    }
+
+    private double getTargetPitch() {
+        return switch (this.targetKind) {
+            case ROOT -> this.rootPitch;
+            case GROUP -> {
+                HologramGroup g = currentGroup();
+                yield g == null ? 0.0 : g.pitch();
+            }
+            case LAYER -> {
+                HologramLayer l = currentLayer();
+                yield l == null ? 0.0 : l.pitch();
+            }
+        };
+    }
+
+    private double getTargetRoll() {
+        return switch (this.targetKind) {
+            case ROOT -> this.rootRoll;
+            case GROUP -> {
+                HologramGroup g = currentGroup();
+                yield g == null ? 0.0 : g.roll();
+            }
+            case LAYER -> {
+                HologramLayer l = currentLayer();
+                yield l == null ? 0.0 : l.roll();
+            }
+        };
+    }
+
+    private void setTargetYaw(float v) {
+        switch (this.targetKind) {
+            case ROOT -> this.rootYaw = Mth.wrapDegrees(v);
+            case GROUP -> updateCurrentGroup(g -> g.withRotation(v, g.pitch(), g.roll()));
+            case LAYER -> updateCurrentLayer(l -> l.withRotation(v, l.pitch(), l.roll()));
+        }
+    }
+
+    private void setTargetPitch(float v) {
+        switch (this.targetKind) {
+            case ROOT -> this.rootPitch = Mth.wrapDegrees(v);
+            case GROUP -> updateCurrentGroup(g -> g.withRotation(g.yaw(), v, g.roll()));
+            case LAYER -> updateCurrentLayer(l -> l.withRotation(l.yaw(), v, l.roll()));
+        }
+    }
+
+    private void setTargetRoll(float v) {
+        switch (this.targetKind) {
+            case ROOT -> this.rootRoll = Mth.wrapDegrees(v);
+            case GROUP -> updateCurrentGroup(g -> g.withRotation(g.yaw(), g.pitch(), v));
+            case LAYER -> updateCurrentLayer(l -> l.withRotation(l.yaw(), l.pitch(), v));
+        }
+    }
+
+    private double getTargetScale() {
+        return switch (this.targetKind) {
+            case ROOT -> this.rootScale;
+            case GROUP -> {
+                HologramGroup g = currentGroup();
+                yield g == null ? 1.0 : g.scale();
+            }
+            case LAYER -> {
+                HologramLayer l = currentLayer();
+                yield l == null ? 1.0 : l.scale();
+            }
+        };
+    }
+
+    private void setTargetScale(float v) {
+        switch (this.targetKind) {
+            case ROOT -> this.rootScale = Mth.clamp(v, 0.25F, 8.0F);
+            case GROUP -> updateCurrentGroup(g -> g.withScale(v));
+            case LAYER -> updateCurrentLayer(l -> l.withScale(v));
+        }
+    }
+
+    private double getTargetSpin() {
+        if (this.targetKind == TargetKind.GROUP) {
+            HologramGroup g = currentGroup();
+            return g == null ? 0.0 : g.spin();
+        }
+        HologramLayer l = currentLayer();
+        return l == null ? 0.0 : l.spin();
+    }
+
+    private int getTargetSpinAxis() {
+        if (this.targetKind == TargetKind.GROUP) {
+            HologramGroup g = currentGroup();
+            return g == null ? HologramSpec.AXIS_Y : g.spinAxis();
+        }
+        HologramLayer l = currentLayer();
+        return l == null ? HologramSpec.AXIS_Y : l.spinAxis();
+    }
+
+    private void setTargetSpin(float v) {
+        if (this.targetKind == TargetKind.GROUP)
+            updateCurrentGroup(g -> g.withSpin(v, g.spinAxis()));
+        else
+            updateCurrentLayer(l -> l.withSpin(v, l.spinAxis()));
+    }
+
+    private void setTargetSpinAxis(int axis) {
+        if (this.targetKind == TargetKind.GROUP)
+            updateCurrentGroup(g -> g.withSpin(g.spin(), axis));
+        else
+            updateCurrentLayer(l -> l.withSpin(l.spin(), axis));
+    }
+
+    private double getTargetHover() {
+        if (this.targetKind == TargetKind.GROUP) {
+            HologramGroup g = currentGroup();
+            return g == null ? 0.0 : g.hover();
+        }
+        HologramLayer l = currentLayer();
+        return l == null ? 0.0 : l.hover();
+    }
+
+    private double getTargetHoverPeriod() {
+        if (this.targetKind == TargetKind.GROUP) {
+            HologramGroup g = currentGroup();
+            return g == null ? 4.0 : g.hoverPeriod();
+        }
+        HologramLayer l = currentLayer();
+        return l == null ? 4.0 : l.hoverPeriod();
+    }
+
+    private void setTargetHover(float v) {
+        if (this.targetKind == TargetKind.GROUP)
+            updateCurrentGroup(g -> g.withHover(v, g.hoverPeriod()));
+        else
+            updateCurrentLayer(l -> l.withHover(v, l.hoverPeriod()));
+    }
+
+    private void setTargetHoverPeriod(float v) {
+        if (this.targetKind == TargetKind.GROUP)
+            updateCurrentGroup(g -> g.withHover(g.hover(), v));
+        else
+            updateCurrentLayer(l -> l.withHover(l.hover(), v));
+    }
+
+    private List<HologramEffect> getTargetEffects() {
+        if (this.targetKind == TargetKind.GROUP) {
+            HologramGroup g = currentGroup();
+            return g == null ? List.of() : g.effects();
+        }
+        if (this.targetKind == TargetKind.LAYER) {
+            HologramLayer l = currentLayer();
+            return l == null ? List.of() : l.effects();
+        }
+        return List.of();
+    }
+
+    private void setTargetEffects(List<HologramEffect> next) {
+        if (this.targetKind == TargetKind.GROUP)
+            updateCurrentGroup(g -> g.withEffects(next));
+        else if (this.targetKind == TargetKind.LAYER)
+            updateCurrentLayer(l -> l.withEffects(next));
+    }
+
+    private boolean canZeroTarget() {
+        return getTargetOffsetX() != 0.0 || getTargetOffsetY() != 0.0 || getTargetOffsetZ() != 0.0;
+    }
+
+    private void zeroTarget() {
+        pushUndo();
+        setTargetOffsetX(0.0F);
+        setTargetOffsetY(0.0F);
+        setTargetOffsetZ(0.0F);
+        rebuildInspector();
+        refresh();
+    }
+
+    // ---------------------------------------------------------------- layer & group mutations
+
+    private void addGroup() {
+        if (this.groups.size() >= HologramGroup.MAX_GROUPS)
+            return;
+        pushUndo();
+        int n = 1;
+        while (indexOfGroup("g" + n) >= 0)
+            n++;
+        String gid = "g" + n;
+        this.groups.add(HologramGroup.create(gid, "Group " + n));
+        this.targetKind = TargetKind.GROUP;
+        this.selectedGroupId = gid;
+        rebuildInspector();
+        refresh();
+    }
+
+    private void removeGroup(String groupId) {
+        int idx = indexOfGroup(groupId);
+        if (idx < 0)
+            return;
+        pushUndo();
+        this.groups.remove(idx);
+        for (int i = 0; i < this.layers.size(); i++) {
+            if (groupId.equals(this.layers.get(i).groupId()))
+                this.layers.set(i, this.layers.get(i).withGroupId(""));
+        }
+        if (this.targetKind == TargetKind.GROUP && groupId.equals(this.selectedGroupId)) {
+            this.targetKind = TargetKind.LAYER;
+            this.selectedLayer = 0;
+            this.selectedGroupId = null;
+        }
+        clearSoloIfInvalid();
+        rebuildInspector();
+        refresh();
+    }
+
+    private void toggleGroupVisible(String groupId) {
+        int idx = indexOfGroup(groupId);
+        if (idx < 0)
+            return;
+        pushUndo();
+        HologramGroup g = this.groups.get(idx);
+        this.groups.set(idx, g.withVisible(!g.visible()));
+        rebuildInspector();
+        refresh();
+    }
+
+    private void toggleLayerVisible(int index) {
+        if (index < 0 || index >= this.layers.size())
+            return;
+        pushUndo();
+        HologramLayer l = this.layers.get(index);
+        this.layers.set(index, l.withVisible(!l.visible()));
+        rebuildInspector();
+        refresh();
+    }
+
+    private void cycleLayerGroup(int index) {
+        if (index < 0 || index >= this.layers.size() || this.groups.isEmpty())
+            return;
+        pushUndo();
+        HologramLayer l = this.layers.get(index);
+        String cur = l.groupId();
+        String next;
+        if (cur.isEmpty()) {
+            next = this.groups.get(0).id();
+        } else {
+            int gIdx = indexOfGroup(cur);
+            next = (gIdx < 0 || gIdx + 1 >= this.groups.size()) ? "" : this.groups.get(gIdx + 1).id();
+        }
+        this.layers.set(index, l.withGroupId(next));
+        rebuildInspector();
+        refresh();
+    }
+
+    private void duplicateLayer(int index) {
+        if (index < 0 || index >= this.layers.size() || this.layers.size() >= HologramLayer.MAX_LAYERS)
+            return;
+        pushUndo();
+        HologramLayer src = this.layers.get(index);
+        HologramLayer copy = src.withOffset(src.offsetX(), src.offsetY() + 0.5F, src.offsetZ());
+        this.layers.add(index + 1, copy);
+        selectLayer(index + 1);
+        refresh();
+    }
+
+    private void removeLayer(int index) {
+        if (this.layers.size() <= 1 || index < 0 || index >= this.layers.size())
+            return;
+        pushUndo();
+        this.layers.remove(index);
+        if (this.selectedLayer >= this.layers.size())
+            this.selectedLayer = this.layers.size() - 1;
+        clearSoloIfInvalid();
+        syncPickerToSelection();
+        rebuildInspector();
+        refresh();
+    }
+
+    private void moveLayer(int index, int delta) {
+        int dst = index + delta;
+        if (index < 0 || index >= this.layers.size() || dst < 0 || dst >= this.layers.size())
+            return;
+        pushUndo();
+        HologramLayer moved = this.layers.remove(index);
+        this.layers.add(dst, moved);
+        this.selectedLayer = dst;
+        if (this.soloLayerIndex == index) {
+            this.soloLayerIndex = dst;
+            HologramClient.setSoloLayer(this.id, dst);
+        }
+        rebuildInspector();
+        refresh();
+    }
+
+    private void addLayerFromPicker() {
+        if (this.layers.size() >= HologramLayer.MAX_LAYERS)
+            return;
+        pushUndo();
+        float topY = 0.0F;
+        for (HologramLayer l : this.layers)
+            topY = Math.max(topY, l.offsetY() + (l.kind() == HologramLayer.Kind.PARTICLE ? 0.5F : l.scale()));
+
+        HologramLayer created = switch (this.pickMode) {
+            case PICK_ENTITIES -> HologramLayer.entity(
+                    this.pickedEntityId.isEmpty() ? "minecraft:zombie" : this.pickedEntityId, topY);
+            case PICK_PARTICLES -> HologramLayer.particle(
+                    this.pickedParticleId.isEmpty() ? "minecraft:end_rod" : this.pickedParticleId, topY + 0.5F);
+            default -> HologramLayer.block(
+                    this.pickedBlockId.isEmpty() ? "minecraft:glass" : this.pickedBlockId, Map.of(), topY);
+        };
+        if (this.targetKind == TargetKind.GROUP && this.selectedGroupId != null)
+            created = created.withGroupId(this.selectedGroupId);
+
+        this.layers.add(created);
+        this.targetKind = TargetKind.LAYER;
+        this.selectedLayer = this.layers.size() - 1;
+        rebuildInspector();
+        refresh();
+    }
+
+    // ---------------------------------------------------------------- effects mutations
+
+    private static int indexOfEffect(List<HologramEffect> list, HologramEffect.Type type) {
+        for (int i = 0; i < list.size(); i++) {
+            if (list.get(i).type() == type)
                 return i;
         }
         return -1;
     }
 
     private void toggleEffect(HologramEffect.Type type) {
-        int existing = indexOfEffect(type);
+        List<HologramEffect> cur = getTargetEffects();
+        int existing = indexOfEffect(cur, type);
         if (existing >= 0) {
             removeEffect(existing);
             return;
         }
-        if (this.effects.size() >= MAX_EFFECTS)
+        if (cur.size() >= MAX_EFFECTS)
             return;
-        List<HologramEffect> next = new ArrayList<>(this.effects);
+        pushUndo();
+        List<HologramEffect> next = new ArrayList<>(cur);
         next.add(HologramEffect.of(type));
-        this.effects = next;
+        setTargetEffects(next);
         rebuildInspector();
         refresh();
     }
 
     private void removeEffect(int index) {
-        if (index < 0 || index >= this.effects.size())
+        List<HologramEffect> cur = getTargetEffects();
+        if (index < 0 || index >= cur.size())
             return;
-        List<HologramEffect> next = new ArrayList<>(this.effects);
+        pushUndo();
+        List<HologramEffect> next = new ArrayList<>(cur);
         next.remove(index);
-        this.effects = next;
+        setTargetEffects(next);
         rebuildInspector();
         refresh();
     }
 
     private void setEffectStrength(int index, float strength) {
-        if (index < 0 || index >= this.effects.size())
+        List<HologramEffect> cur = getTargetEffects();
+        if (index < 0 || index >= cur.size())
             return;
-        HologramEffect old = this.effects.get(index);
-        List<HologramEffect> next = new ArrayList<>(this.effects);
+        HologramEffect old = cur.get(index);
+        List<HologramEffect> next = new ArrayList<>(cur);
         next.set(index, new HologramEffect(old.type(), strength, old.speed(), old.color()));
-        this.effects = next;
+        setTargetEffects(next);
         refresh();
     }
 
     private void setEffectSpeed(int index, float speed) {
-        if (index < 0 || index >= this.effects.size())
+        List<HologramEffect> cur = getTargetEffects();
+        if (index < 0 || index >= cur.size())
             return;
-        HologramEffect old = this.effects.get(index);
-        List<HologramEffect> next = new ArrayList<>(this.effects);
+        HologramEffect old = cur.get(index);
+        List<HologramEffect> next = new ArrayList<>(cur);
         next.set(index, new HologramEffect(old.type(), old.strength(), speed, old.color()));
-        this.effects = next;
+        setTargetEffects(next);
         refresh();
     }
 
     private void setEffectColor(int index, int color) {
-        if (index < 0 || index >= this.effects.size())
+        List<HologramEffect> cur = getTargetEffects();
+        if (index < 0 || index >= cur.size())
             return;
-        HologramEffect old = this.effects.get(index);
-        List<HologramEffect> next = new ArrayList<>(this.effects);
+        pushUndo();
+        HologramEffect old = cur.get(index);
+        List<HologramEffect> next = new ArrayList<>(cur);
         next.set(index, new HologramEffect(old.type(), old.strength(), old.speed(), color));
-        this.effects = next;
-        refresh();
-    }
-
-    private void setPrimaryPart(HologramPart part) {
-        this.block = "minecraft:air";
-        this.props = new LinkedHashMap<>();
-        this.data = new CompoundTag();
-        List<HologramPart> next = new ArrayList<>(this.parts);
-        if (this.primaryPartOverride && !next.isEmpty())
-            next.set(0, part);
-        else
-            next.add(0, part);
-        if (next.size() > HologramPart.MAX_PARTS)
-            next = new ArrayList<>(next.subList(0, HologramPart.MAX_PARTS));
-        this.parts = next;
-        this.primaryPartOverride = true;
-        this.selectedPart = 0;
-        rebuildInspector();
-        refresh();
-    }
-
-    private void stackCurrentPick() {
-        if (this.parts.size() >= HologramPart.MAX_PARTS)
-            return;
-        float topY = "minecraft:air".equals(this.block) ? 0.0F : this.scale;
-        HologramPart part = switch (this.pickMode) {
-            case PICK_ENTITIES -> HologramPart.entity(this.selectedEntityId, topY);
-            case PICK_PARTICLES -> HologramPart.particle(this.selectedParticleId, topY + 0.5F);
-            default -> HologramPart.block(this.block, this.props, topY);
-        };
-        List<HologramPart> next = new ArrayList<>(this.parts);
-        next.add(part);
-        this.parts = next;
-        this.selectedPart = next.size() - 1;
-        this.tab = TAB_MORE;
-        rebuildInspector();
-        refresh();
-    }
-
-    private void setPartField(int index, int field, float value) {
-        if (index < 0 || index >= this.parts.size())
-            return;
-        HologramPart old = this.parts.get(index);
-        List<HologramPart> next = new ArrayList<>(this.parts);
-        next.set(index, new HologramPart(old.kind(), old.id(), old.props(),
-                field == 0 ? value : old.offsetX(),
-                field == 1 ? value : old.offsetY(),
-                field == 2 ? value : old.offsetZ(),
-                field == 3 ? value : old.scale(),
-                field == 4 ? value : old.yaw()));
-        this.parts = next;
-        refresh();
-    }
-
-    private void removePart(int index) {
-        if (index < 0 || index >= this.parts.size())
-            return;
-        List<HologramPart> next = new ArrayList<>(this.parts);
-        next.remove(index);
-        this.parts = next;
-        if (index == 0)
-            this.primaryPartOverride = false;
-        if (this.selectedPart >= next.size())
-            this.selectedPart = next.size() - 1;
-        rebuildInspector();
+        setTargetEffects(next);
         refresh();
     }
 
@@ -937,11 +1742,14 @@ public class HologramScreen extends Screen {
 
     @Override
     public void render(GuiGraphics graphics, int mouseX, int mouseY, float partialTick) {
+        HologramCamera.setMovementBlocked(getFocused() instanceof EditBox || this.gizmo.isDragging() || this.activeNum != null);
+        HologramCamera.setAnchor(targetWorldCenter());
         renderBackground(graphics, mouseX, mouseY, partialTick);
 
-        if (!HologramClient.previewAnchored())
+        if (!HologramClient.previewAnchored()) {
             this.gizmo.render(graphics, this.font, mouseX, mouseY, this.width, this.height,
-                    hologramWorldCenter(), this.scale);
+                    targetWorldCenter(), (float) getTargetScale());
+        }
 
         this.hoveredGridBlock = null;
         this.hoveredEntity = null;
@@ -950,16 +1758,12 @@ public class HologramScreen extends Screen {
             renderLeftPanel(graphics, mouseX, mouseY);
         renderRightPanel(graphics, mouseX, mouseY);
 
-        // Render all flat buttons (top toolbar, panel tabs, toggles, footer)
         for (FlatBtn btn : this.flatBtns)
             drawFlatBtn(graphics, btn, mouseX, mouseY);
-
-        // Render all sliders & scrub boxes
         for (NumControl ctrl : this.numControls)
             drawNumControl(graphics, ctrl, mouseX, mouseY);
 
-        // Subtle viewport hint
-        String hint = "Right-drag: look  |  Drag numbers or click to type  |  G/R/S gizmo";
+        String hint = "WASD/Space/Shift: fly  |  Scroll: zoom  |  R-drag: look  |  M-drag: pan  |  1-4 gizmo  |  F: reset cam";
         int hintW = this.font.width(hint);
         int hintX = (this.width - hintW) / 2;
         int hintY = this.height - 13;
@@ -968,7 +1772,6 @@ public class HologramScreen extends Screen {
 
         super.render(graphics, mouseX, mouseY, partialTick);
 
-        // Docked hover zoom preview card beside the left panel (never covers the list)
         if (!this.pickerCollapsed) {
             int cardX = this.leftX + this.leftW + 6;
             double secs = HologramRenderer.animSeconds();
@@ -994,13 +1797,15 @@ public class HologramScreen extends Screen {
 
     private void drawFlatBtn(GuiGraphics graphics, FlatBtn btn, int mouseX, int mouseY) {
         boolean hot = btn.enabled && btn.hit(mouseX, mouseY);
-        int bg;
-        int border;
-        int txt;
+        int bg, border, txt;
         if (!btn.enabled) {
             bg = 0x55161C24;
             border = 0x22FFFFFF;
             txt = 0xFF556070;
+        } else if (btn.solo) {
+            bg = hot ? 0x77FFB84D : SOLO_BG;
+            border = SOLO_BORDER;
+            txt = 0xFFFFE4B5;
         } else if (btn.danger) {
             bg = hot ? DANGER_HOT : DANGER_BG;
             border = hot ? 0xAAFF5E6C : 0x44FF5E6C;
@@ -1016,7 +1821,7 @@ public class HologramScreen extends Screen {
         }
         graphics.fill(btn.x, btn.y, btn.x + btn.w, btn.y + btn.h, bg);
         graphics.renderOutline(btn.x, btn.y, btn.w, btn.h, border);
-        String label = this.font.plainSubstrByWidth(btn.label, btn.w - 4);
+        String label = this.font.plainSubstrByWidth(btn.label, Math.max(4, btn.w - 4));
         graphics.drawString(this.font, label,
                 btn.x + (btn.w - this.font.width(label)) / 2,
                 btn.y + (btn.h - 8) / 2, txt, false);
@@ -1049,7 +1854,6 @@ public class HologramScreen extends Screen {
     private void renderLeftPanel(GuiGraphics graphics, int mouseX, int mouseY) {
         drawPanel(graphics, this.leftX, this.top, this.leftW, PANEL_H, "Content");
 
-        // Search box background
         graphics.fill(this.leftX + 8, this.top + 36, this.leftX + this.leftW - 8, this.top + 51, SURFACE);
         graphics.renderOutline(this.leftX + 8, this.top + 36, this.leftW - 16, 15,
                 this.search != null && this.search.isFocused() ? ACCENT : 0x28FFFFFF);
@@ -1060,6 +1864,9 @@ public class HologramScreen extends Screen {
         int gridH = gridHeight();
         int maxScroll = maxLeftScroll();
         this.scroll = Mth.clamp(this.scroll, 0, maxScroll);
+
+        HologramLayer selLayer = currentLayer();
+        String activeId = selLayer == null ? "" : selLayer.id();
 
         if (this.pickMode == PICK_BLOCKS) {
             int first = this.scroll * this.gridCols;
@@ -1072,7 +1879,8 @@ public class HologramScreen extends Screen {
                 int y = gridY + (index / this.gridCols) * CELL;
 
                 boolean hot = mouseX >= x && mouseX < x + CELL && mouseY >= y && mouseY < y + CELL;
-                boolean selected = BuiltInRegistries.BLOCK.getKey(entryBlock).toString().equals(this.block);
+                String bKey = BuiltInRegistries.BLOCK.getKey(entryBlock).toString();
+                boolean selected = selLayer != null && selLayer.kind() == HologramLayer.Kind.BLOCK && bKey.equals(activeId);
                 if (hot) {
                     this.hoveredGridBlock = entryBlock;
                     this.hoveredItemY = y;
@@ -1097,7 +1905,7 @@ public class HologramScreen extends Screen {
                     this.hoveredEntity = e;
                     this.hoveredItemY = y;
                 }
-                boolean selected = this.primaryPartOverride && e.id().equals(this.selectedEntityId);
+                boolean selected = selLayer != null && selLayer.kind() == HologramLayer.Kind.ENTITY && e.id().equals(activeId);
                 graphics.fill(gridX, y, gridX + gridW, y + LIST_ROW_H - 1,
                         selected ? SURFACE_ACTIVE : (hot ? SURFACE_HOT : SURFACE));
                 boolean drew3d = HologramPickerPreview.drawEntityIcon(
@@ -1126,7 +1934,7 @@ public class HologramScreen extends Screen {
                     this.hoveredParticle = p;
                     this.hoveredItemY = y;
                 }
-                boolean selected = this.primaryPartOverride && p.equals(this.selectedParticleId);
+                boolean selected = selLayer != null && selLayer.kind() == HologramLayer.Kind.PARTICLE && p.equals(activeId);
                 graphics.fill(gridX, y, gridX + gridW, y + LIST_ROW_H - 1,
                         selected ? SURFACE_ACTIVE : (hot ? SURFACE_HOT : SURFACE));
                 HologramPickerPreview.drawParticleIcon(graphics, p, gridX + 2, y + 1, 12, secs);
@@ -1135,7 +1943,6 @@ public class HologramScreen extends Screen {
             }
         }
 
-        // Draggable scrollbar
         if (maxScroll > 0) {
             int barX = scrollbarX();
             int barHeight = Math.max(14, gridH * leftVisibleRows() / leftTotalRows());
@@ -1148,12 +1955,12 @@ public class HologramScreen extends Screen {
 
         int infoY = gridY + gridH + 6;
         if (this.pickMode == PICK_BLOCKS) {
-            Block currentBlock = HologramStates.blockOf(this.block);
+            BlockState state = currentBlockState();
+            Block currentBlock = state == null ? HologramStates.blockOf(this.pickedBlockId) : state.getBlock();
             String name = currentBlock == null ? "none" : currentBlock.getName().getString();
             graphics.drawString(this.font, this.font.plainSubstrByWidth(name, this.leftW - 16),
                     this.leftX + 8, infoY, TEXT, false);
 
-            BlockState state = currentState();
             if (state != null) {
                 List<Property<?>> properties = HologramStates.properties(state);
                 for (int i = 0; i < Math.min(properties.size(), PROP_ROWS); i++) {
@@ -1170,13 +1977,11 @@ public class HologramScreen extends Screen {
                 }
             }
         } else {
-            String picked = this.pickMode == PICK_ENTITIES ? this.selectedEntityId : this.selectedParticleId;
+            String picked = this.pickMode == PICK_ENTITIES ? this.pickedEntityId : this.pickedParticleId;
             graphics.drawString(this.font, this.font.plainSubstrByWidth(picked, this.leftW - 16),
                     this.leftX + 8, infoY, ACCENT, false);
-            graphics.drawString(this.font, "Click item to set hologram",
-                    this.leftX + 8, infoY + 14, MUTED, false);
-            graphics.drawString(this.font, "Or stack below as extra layer",
-                    this.leftX + 8, infoY + 26, MUTED, false);
+            graphics.drawString(this.font, "Click: set selected layer", this.leftX + 8, infoY + 14, MUTED, false);
+            graphics.drawString(this.font, "+ Add below: new layer", this.leftX + 8, infoY + 26, MUTED, false);
         }
     }
 
@@ -1185,44 +1990,58 @@ public class HologramScreen extends Screen {
         int rx = this.rightX + 8;
         int rw = this.rightW - 16;
 
-        if (this.tab == TAB_TRANSFORM) {
-            graphics.drawString(this.font, "Position", rx, this.top + 44, MUTED, false);
-            graphics.drawString(this.font, "Rotation", rx, this.top + 81, MUTED, false);
-            graphics.drawString(this.font, "Display", rx, this.top + 118, MUTED, false);
-        } else if (this.tab == TAB_ANIMATE) {
-            graphics.drawString(this.font, "Walk-in Reveal", rx, this.top + 142, MUTED, false);
-        } else if (this.tab == TAB_FX) {
-            if (this.effects.isEmpty()) {
-                graphics.drawString(this.font, "Click an effect above to enable", rx, this.top + 92, MUTED, false);
+        if (this.tab == TAB_MAIN) {
+            HologramLayer layer = currentLayer();
+            graphics.drawString(this.font, "Position", rx, this.top + 58, MUTED, false);
+            if (layer != null && layer.kind() == HologramLayer.Kind.PARTICLE) {
+                graphics.drawString(this.font, "Particle Emitter", rx, this.top + 91, MUTED, false);
             } else {
-                // Draw TINT color swatches under any visible TINT card
-                int y = this.top + 81;
-                int maxCardY = this.top + PANEL_H - 34;
-                for (int i = this.fxScroll; i < this.effects.size(); i++) {
-                    HologramEffect fx = this.effects.get(i);
-                    int cardH = fx.type() == HologramEffect.Type.TINT ? 40 : 22;
-                    if (y + cardH > maxCardY)
-                        break;
-                    if (fx.type() == HologramEffect.Type.TINT) {
-                        int swY = y + 21;
-                        int swW = (rw - (TINT_COLORS.length - 1) * 2) / TINT_COLORS.length;
-                        for (int c = 0; c < TINT_COLORS.length; c++) {
-                            int sx = rx + c * (swW + 2);
-                            boolean sel = fx.color() == TINT_COLORS[c];
-                            graphics.fill(sx, swY, sx + swW, swY + 14, 0xFF000000 | TINT_COLORS[c]);
-                            graphics.renderOutline(sx, swY, swW, 14, sel ? 0xFFFFFFFF : 0x55000000);
-                        }
+                graphics.drawString(this.font, "Rotation", rx, this.top + 91, MUTED, false);
+                graphics.drawString(this.font, "Display", rx, this.top + 124, MUTED, false);
+            }
+        } else if (this.tab == TAB_ANIMATE) {
+            if (this.targetKind == TargetKind.ROOT) {
+                graphics.drawString(this.font, "Walk-in Reveal (Whole Hologram)", rx, this.top + 58, MUTED, false);
+            } else if (this.targetKind == TargetKind.LAYER) {
+                HologramLayer l = currentLayer();
+                if (l != null && !l.groupId().isEmpty()) {
+                    HologramGroup g = currentGroupById(l.groupId());
+                    if (g != null) {
+                        graphics.drawString(this.font, "Stacks with " + g.name(),
+                                rx, this.top + PANEL_H - 42, 0xFF7FA8C9, false);
                     }
-                    y += cardH + 3;
                 }
             }
-        } else {
-            graphics.drawString(this.font, "Layers (" + this.parts.size() + "/" + HologramPart.MAX_PARTS + ")",
-                    rx, this.top + 96, MUTED, false);
-            if (this.parts.isEmpty())
-                graphics.drawString(this.font, "No extra layers stacked", rx, this.top + 110, 0xFF556070, false);
-            if (this.selectedPart >= 0 && this.selectedPart < this.parts.size())
-                graphics.drawString(this.font, "Selected layer offset & scale:", rx, this.top + PANEL_H - 83, MUTED, false);
+        } else if (this.tab == TAB_FX) {
+            if (this.targetKind == TargetKind.ROOT) {
+                graphics.drawString(this.font, "FX are per-layer or per-group", rx, this.top + 62, MUTED, false);
+                graphics.drawString(this.font, "so layers stay independent.", rx, this.top + 73, MUTED, false);
+            } else {
+                List<HologramEffect> fxList = getTargetEffects();
+                if (fxList.isEmpty()) {
+                    graphics.drawString(this.font, "Click an effect pill above", rx, this.top + 104, MUTED, false);
+                } else {
+                    int y = this.top + 95;
+                    int maxCardY = this.top + PANEL_H - 32;
+                    for (int i = this.fxScroll; i < fxList.size(); i++) {
+                        HologramEffect fx = fxList.get(i);
+                        int cardH = fx.type() == HologramEffect.Type.TINT ? 38 : 21;
+                        if (y + cardH > maxCardY)
+                            break;
+                        if (fx.type() == HologramEffect.Type.TINT) {
+                            int swY = y + 20;
+                            int swW = (rw - (TINT_COLORS.length - 1) * 2) / TINT_COLORS.length;
+                            for (int c = 0; c < TINT_COLORS.length; c++) {
+                                int sx = rx + c * (swW + 2);
+                                boolean sel = fx.color() == TINT_COLORS[c];
+                                graphics.fill(sx, swY, sx + swW, swY + 13, 0xFF000000 | TINT_COLORS[c]);
+                                graphics.renderOutline(sx, swY, swW, 13, sel ? 0xFFFFFFFF : 0x55000000);
+                            }
+                        }
+                        y += cardH + 3;
+                    }
+                }
+            }
         }
     }
 
@@ -1234,7 +2053,7 @@ public class HologramScreen extends Screen {
                 && mouseY >= this.top && mouseY < this.top + PANEL_H;
         boolean inRight = mouseX >= this.rightX && mouseX < this.rightX + this.rightW
                 && mouseY >= this.top && mouseY < this.top + PANEL_H;
-        boolean inTopBar = mouseY >= 4 && mouseY <= 24;
+        boolean inTopBar = mouseY >= 3 && mouseY <= 23;
         return inLeft || inRight || inTopBar;
     }
 
@@ -1252,14 +2071,12 @@ public class HologramScreen extends Screen {
 
     @Override
     public boolean mouseClicked(double mouseX, double mouseY, int button) {
-        // Clicking outside active inline EditBox commits it
         if (this.inlineBox != null && this.inlineControl != null && !this.inlineControl.hit(mouseX, mouseY))
             commitInlineBox();
 
         if (super.mouseClicked(mouseX, mouseY, button))
             return true;
 
-        // Flat buttons
         if (button == 0) {
             for (FlatBtn btn : this.flatBtns) {
                 if (btn.enabled && btn.hit(mouseX, mouseY)) {
@@ -1269,23 +2086,24 @@ public class HologramScreen extends Screen {
             }
         }
 
-        // Tint color swatches on FX tab
-        if (this.tab == TAB_FX && button == 0) {
+        // TINT swatches on FX tab
+        if (this.tab == TAB_FX && this.targetKind != TargetKind.ROOT && button == 0) {
+            List<HologramEffect> fxList = getTargetEffects();
             int rx = this.rightX + 8;
             int rw = this.rightW - 16;
-            int y = this.top + 81;
-            int maxCardY = this.top + PANEL_H - 34;
-            for (int i = this.fxScroll; i < this.effects.size(); i++) {
-                HologramEffect fx = this.effects.get(i);
-                int cardH = fx.type() == HologramEffect.Type.TINT ? 40 : 22;
+            int y = this.top + 95;
+            int maxCardY = this.top + PANEL_H - 32;
+            for (int i = this.fxScroll; i < fxList.size(); i++) {
+                HologramEffect fx = fxList.get(i);
+                int cardH = fx.type() == HologramEffect.Type.TINT ? 38 : 21;
                 if (y + cardH > maxCardY)
                     break;
                 if (fx.type() == HologramEffect.Type.TINT) {
-                    int swY = y + 21;
+                    int swY = y + 20;
                     int swW = (rw - (TINT_COLORS.length - 1) * 2) / TINT_COLORS.length;
                     for (int c = 0; c < TINT_COLORS.length; c++) {
                         int sx = rx + c * (swW + 2);
-                        if (mouseX >= sx && mouseX < sx + swW && mouseY >= swY && mouseY < swY + 14) {
+                        if (mouseX >= sx && mouseX < sx + swW && mouseY >= swY && mouseY < swY + 13) {
                             setEffectColor(i, TINT_COLORS[c]);
                             return true;
                         }
@@ -1295,7 +2113,7 @@ public class HologramScreen extends Screen {
             }
         }
 
-        // Numeric sliders & scrub controls
+        // Numeric controls
         for (NumControl ctrl : this.numControls) {
             if (!ctrl.hit(mouseX, mouseY))
                 continue;
@@ -1310,29 +2128,35 @@ public class HologramScreen extends Screen {
                 this.numDragStartX = mouseX;
                 this.numDragStartVal = ctrl.get.getAsDouble();
                 this.numDragged = false;
+                this.numUndoPushed = false;
                 if (ctrl.isSlider) {
                     pushUndo();
+                    this.numUndoPushed = true;
                     applySlider(ctrl, mouseX);
                 }
                 return true;
             }
         }
 
-        // Left Content Picker
         if (!this.pickerCollapsed && clickLeftPanel(mouseX, mouseY, button))
             return true;
 
-        // Open 3D viewport interactions
         if (!isInsidePanel(mouseX, mouseY)) {
             setFocused(null);
             if (button == 1) {
                 this.orbiting = true;
                 return true;
             }
+            if (button == 2) {
+                this.panning = true;
+                return true;
+            }
             if (button == 0) {
                 if (!HologramClient.previewAnchored()
-                        && this.gizmo.beginDrag(mouseX, mouseY, this.width, this.height, hologramWorldCenter(),
-                        this.offsetX, this.offsetY, this.offsetZ, this.yaw, this.pitch, this.roll, this.scale)) {
+                        && this.gizmo.beginDrag(mouseX, mouseY, this.width, this.height, targetWorldCenter(),
+                        (float) getTargetOffsetX(), (float) getTargetOffsetY(), (float) getTargetOffsetZ(),
+                        (float) getTargetYaw(), (float) getTargetPitch(), (float) getTargetRoll(),
+                        (float) getTargetScale())) {
                     pushUndo();
                     return true;
                 }
@@ -1378,7 +2202,7 @@ public class HologramScreen extends Screen {
                 return false;
             }
 
-            BlockState state = currentState();
+            BlockState state = currentBlockState();
             if (state != null) {
                 List<Property<?>> properties = HologramStates.properties(state);
                 int infoY = gridY + gridH + 6;
@@ -1394,20 +2218,15 @@ public class HologramScreen extends Screen {
             return false;
         }
 
-        // Entity or Particle list click: immediately sets the hologram to be that entity/particle
         if (mouseX >= gridX && mouseX < gridX + gridW && mouseY >= gridY && mouseY < gridY + gridH) {
             int row = (int) ((mouseY - gridY) / LIST_ROW_H);
             int entryIdx = this.scroll + row;
             if (this.pickMode == PICK_ENTITIES && entryIdx >= 0 && entryIdx < this.filteredEntities.size()) {
-                String pickedId = this.filteredEntities.get(entryIdx).id();
-                this.selectedEntityId = pickedId;
-                setPrimaryPart(HologramPart.entity(pickedId, 0.0F));
+                pickEntity(this.filteredEntities.get(entryIdx).id());
                 return true;
             }
             if (this.pickMode == PICK_PARTICLES && entryIdx >= 0 && entryIdx < this.filteredParticles.size()) {
-                String pickedId = this.filteredParticles.get(entryIdx);
-                this.selectedParticleId = pickedId;
-                setPrimaryPart(HologramPart.particle(pickedId, 0.5F));
+                pickParticle(this.filteredParticles.get(entryIdx));
                 return true;
             }
         }
@@ -1421,8 +2240,13 @@ public class HologramScreen extends Screen {
             return true;
         }
         if (this.activeNum != null) {
-            if (Math.abs(mouseX - this.numDragStartX) > 3.0)
+            if (Math.abs(mouseX - this.numDragStartX) > 3.0) {
+                if (!this.numDragged && !this.numUndoPushed) {
+                    pushUndo();
+                    this.numUndoPushed = true;
+                }
                 this.numDragged = true;
+            }
             if (this.activeNum.isSlider) {
                 applySlider(this.activeNum, mouseX);
             } else if (this.numDragged) {
@@ -1437,8 +2261,15 @@ public class HologramScreen extends Screen {
             return true;
         }
         if (this.orbiting) {
-            if (this.minecraft != null && this.minecraft.player != null)
+            if (HologramCamera.isActive())
+                HologramCamera.turn(dragX, dragY);
+            else if (this.minecraft != null && this.minecraft.player != null)
                 this.minecraft.player.turn(dragX * 4.0, dragY * 4.0);
+            return true;
+        }
+        if (this.panning) {
+            if (HologramCamera.isActive())
+                HologramCamera.pan(dragX, dragY);
             return true;
         }
         if (this.gizmo.isDragging()) {
@@ -1446,23 +2277,23 @@ public class HologramScreen extends Screen {
                     1.0F, hasShiftDown(), new HologramGizmo.Target() {
                         @Override
                         public void setOffset(float x, float y, float z) {
-                            HologramScreen.this.offsetX = x;
-                            HologramScreen.this.offsetY = y;
-                            HologramScreen.this.offsetZ = z;
+                            setTargetOffsetX(x);
+                            setTargetOffsetY(y);
+                            setTargetOffsetZ(z);
                             refresh();
                         }
 
                         @Override
                         public void setRotation(float y, float p, float r) {
-                            HologramScreen.this.yaw = y;
-                            HologramScreen.this.pitch = p;
-                            HologramScreen.this.roll = r;
+                            setTargetYaw(y);
+                            setTargetPitch(p);
+                            setTargetRoll(r);
                             refresh();
                         }
 
                         @Override
                         public void setScale(float s) {
-                            HologramScreen.this.scale = s;
+                            setTargetScale(s);
                             refresh();
                         }
                     });
@@ -1475,11 +2306,13 @@ public class HologramScreen extends Screen {
     public boolean mouseReleased(double mouseX, double mouseY, int button) {
         this.draggingScrollbar = false;
         this.orbiting = false;
+        this.panning = false;
         if (this.activeNum != null) {
             NumControl released = this.activeNum;
             boolean wasDragged = this.numDragged;
             this.activeNum = null;
             this.numDragged = false;
+            this.numUndoPushed = false;
             if (!wasDragged && !released.isSlider)
                 openInlineBox(released);
             return true;
@@ -1498,9 +2331,9 @@ public class HologramScreen extends Screen {
         if (dir == 0)
             return false;
 
-        // Numeric sliders & scrub controls take the wheel directly
         for (NumControl ctrl : this.numControls) {
             if (ctrl.hit(mouseX, mouseY)) {
+                pushUndo();
                 double mult = hasControlDown() ? 4.0 : (hasShiftDown() ? 0.25 : 1.0);
                 double next = ctrl.get.getAsDouble() + dir * ctrl.step * mult;
                 ctrl.set.accept(clamp(next, ctrl.min, ctrl.max));
@@ -1509,25 +2342,26 @@ public class HologramScreen extends Screen {
             }
         }
 
-        // Scrollable Layers list on More tab or FX list on FX tab when mouse is inside right panel
         if (mouseX >= this.rightX && mouseX < this.rightX + this.rightW
-                && mouseY >= this.top + 42 && mouseY < this.top + PANEL_H - 30) {
-            if (this.tab == TAB_MORE && this.parts.size() > 4) {
-                this.layerScroll = Mth.clamp(this.layerScroll - dir, 0, Math.max(0, this.parts.size() - 4));
-                rebuildInspector();
-                return true;
+                && mouseY >= this.top + 54 && mouseY < this.top + PANEL_H - 30) {
+            if (this.tab == TAB_LAYERS) {
+                int max = Math.max(0, buildTreeRows().size() - 8);
+                if (max > 0) {
+                    this.layerScroll = Mth.clamp(this.layerScroll - dir, 0, max);
+                    rebuildInspector();
+                    return true;
+                }
             }
-            if (this.tab == TAB_FX && this.effects.size() > 3) {
-                this.fxScroll = Mth.clamp(this.fxScroll - dir, 0, Math.max(0, this.effects.size() - 1));
+            if (this.tab == TAB_FX && getTargetEffects().size() > 3) {
+                this.fxScroll = Mth.clamp(this.fxScroll - dir, 0, Math.max(0, getTargetEffects().size() - 1));
                 rebuildInspector();
                 return true;
             }
         }
 
         if (!this.pickerCollapsed) {
-            // Property rows in Block mode
             if (this.pickMode == PICK_BLOCKS) {
-                BlockState state = currentState();
+                BlockState state = currentBlockState();
                 if (state != null) {
                     List<Property<?>> properties = HologramStates.properties(state);
                     int infoY = gridTop() + gridHeight() + 6;
@@ -1542,7 +2376,6 @@ public class HologramScreen extends Screen {
                 }
             }
 
-            // Left picker grid / list + scrollbar
             int gridX = this.leftX + 8;
             int gridY = gridTop();
             if (mouseX >= gridX && mouseX < scrollbarX() + 8
@@ -1550,6 +2383,10 @@ public class HologramScreen extends Screen {
                 this.scroll = Mth.clamp(this.scroll - dir, 0, maxLeftScroll());
                 return true;
             }
+        }
+        if (!isInsidePanel(mouseX, mouseY) && HologramCamera.isActive()) {
+            HologramCamera.dolly(dir * (hasShiftDown() ? 0.35 : 1.0));
+            return true;
         }
         return false;
     }
@@ -1570,62 +2407,139 @@ public class HologramScreen extends Screen {
 
         if (keyCode == GLFW.GLFW_KEY_ESCAPE && this.gizmo.isDragging()) {
             this.gizmo.cancelDrag();
-            undoTransform();
+            undo();
             return true;
         }
         if (!(getFocused() instanceof EditBox)) {
-            if (keyCode == GLFW.GLFW_KEY_G) {
+            if (keyCode == GLFW.GLFW_KEY_1) {
                 this.gizmo.setMode(HologramGizmo.Mode.MOVE);
                 rebuildInspector();
                 return true;
             }
-            if (keyCode == GLFW.GLFW_KEY_R) {
+            if (keyCode == GLFW.GLFW_KEY_2) {
                 this.gizmo.setMode(HologramGizmo.Mode.ROTATE);
                 rebuildInspector();
                 return true;
             }
-            if (keyCode == GLFW.GLFW_KEY_S) {
+            if (keyCode == GLFW.GLFW_KEY_3) {
                 this.gizmo.setMode(HologramGizmo.Mode.SCALE);
                 rebuildInspector();
                 return true;
             }
+            if (keyCode == GLFW.GLFW_KEY_4) {
+                this.gizmo.setMode(HologramGizmo.Mode.OFF);
+                rebuildInspector();
+                return true;
+            }
+            if (keyCode == GLFW.GLFW_KEY_F) {
+                HologramCamera.resetToPlayer();
+                return true;
+            }
             if (keyCode == GLFW.GLFW_KEY_Z && hasControlDown()) {
-                undoTransform();
+                if (hasShiftDown())
+                    redo();
+                else
+                    undo();
+                return true;
+            }
+            if (keyCode == GLFW.GLFW_KEY_Y && hasControlDown()) {
+                redo();
                 return true;
             }
         }
         return super.keyPressed(keyCode, scanCode, modifiers);
     }
 
-    // ---------------------------------------------------------------- state helpers
+    // ---------------------------------------------------------------- picker content actions
 
-    private void pushUndo() {
-        this.undoStack.push(new TransformSnapshot(
-                this.offsetX, this.offsetY, this.offsetZ, this.yaw, this.pitch, this.roll, this.scale));
-        while (this.undoStack.size() > 32)
-            this.undoStack.removeLast();
+    private void ensureLayerTarget() {
+        if (this.targetKind != TargetKind.LAYER) {
+            this.targetKind = TargetKind.LAYER;
+            this.selectedLayer = Mth.clamp(this.selectedLayer, 0, Math.max(0, this.layers.size() - 1));
+        }
     }
 
-    private void undoTransform() {
-        TransformSnapshot snap = this.undoStack.poll();
-        if (snap == null)
+    public void pickBlock(Block block) {
+        String next = BuiltInRegistries.BLOCK.getKey(block).toString();
+        this.pickedBlockId = next;
+        ensureLayerTarget();
+        HologramLayer cur = currentLayer();
+        if (cur == null)
             return;
-        this.offsetX = snap.ox();
-        this.offsetY = snap.oy();
-        this.offsetZ = snap.oz();
-        this.yaw = snap.yaw();
-        this.pitch = snap.pitch();
-        this.roll = snap.roll();
-        this.scale = snap.scale();
-        rebuildInspector();
+        if (cur.kind() != HologramLayer.Kind.BLOCK || !next.equals(cur.id())) {
+            pushUndo();
+            updateCurrentLayer(l -> l.withContent(HologramLayer.Kind.BLOCK, next, Map.of(), new CompoundTag()));
+            rebuildInspector();
+            refresh();
+        }
+    }
+
+    public void pickEntity(String entityId) {
+        this.pickedEntityId = entityId;
+        ensureLayerTarget();
+        HologramLayer cur = currentLayer();
+        if (cur == null)
+            return;
+        if (cur.kind() != HologramLayer.Kind.ENTITY || !entityId.equals(cur.id())) {
+            pushUndo();
+            updateCurrentLayer(l -> l.withContent(HologramLayer.Kind.ENTITY, entityId, Map.of(), new CompoundTag()));
+            rebuildInspector();
+            refresh();
+        }
+    }
+
+    public void pickParticle(String particleId) {
+        this.pickedParticleId = particleId;
+        ensureLayerTarget();
+        HologramLayer cur = currentLayer();
+        if (cur == null)
+            return;
+        if (cur.kind() != HologramLayer.Kind.PARTICLE || !particleId.equals(cur.id())) {
+            pushUndo();
+            updateCurrentLayer(l -> l.withContent(HologramLayer.Kind.PARTICLE, particleId, Map.of(), new CompoundTag()));
+            rebuildInspector();
+            refresh();
+        }
+    }
+
+    private void cycleProperty(Property<?> property, BlockState state, int direction) {
+        if (direction == 0)
+            return;
+        HologramLayer cur = currentLayer();
+        if (cur == null || cur.kind() != HologramLayer.Kind.BLOCK)
+            return;
+        pushUndo();
+        String current = HologramStates.valueOf(state, property);
+        String next = HologramStates.cycle(property, current, direction);
+        Map<String, String> nextProps = new LinkedHashMap<>(cur.props());
+        nextProps.put(property.getName(), next);
+        updateCurrentLayer(l -> l.withProps(nextProps));
         refresh();
     }
 
-    private Vec3 hologramWorldCenter() {
-        return new Vec3(
-                this.pos.getX() + this.offsetX + 0.5,
-                this.pos.getY() + this.offsetY + 0.5 * this.scale,
-                this.pos.getZ() + this.offsetZ + 0.5);
+    // ---------------------------------------------------------------- world center & spec building
+
+    private Vec3 targetWorldCenter() {
+        HologramSpec spec = buildSpec();
+        Matrix4f m = spec.rootMatrix();
+        Vector3f v = new Vector3f(0.0F, 0.5F, 0.0F);
+        if (this.targetKind == TargetKind.GROUP) {
+            HologramGroup g = currentGroup();
+            if (g != null)
+                m.mul(HologramSpec.groupMatrix(g));
+        } else if (this.targetKind == TargetKind.LAYER) {
+            HologramLayer l = currentLayer();
+            if (l != null) {
+                HologramGroup g = spec.groupById(l.groupId());
+                if (g != null)
+                    m.mul(HologramSpec.groupMatrix(g));
+                m.mul(HologramSpec.layerMatrix(l));
+                if (l.kind() == HologramLayer.Kind.PARTICLE)
+                    v.set(0.0F, 0.0F, 0.0F);
+            }
+        }
+        m.transformPosition(v);
+        return new Vec3(v.x, v.y, v.z);
     }
 
     private static float wrap(double degrees) {
@@ -1636,49 +2550,29 @@ public class HologramScreen extends Screen {
         return Math.max(min, Math.min(max, value));
     }
 
-    private void refresh() {
-        HologramClient.setPreview(buildSpec());
-    }
-
     private HologramSpec buildSpec() {
-        return new HologramSpec(this.id, this.pos, this.offsetX, this.offsetY, this.offsetZ,
-                this.block, this.props, this.scale, this.yaw, this.pitch,
-                this.roll, this.spin, this.spinAxis, this.hover, this.hoverPeriod, this.fullbright, true,
-                this.renderDistance, this.owner, this.ownerName, this.effects, this.appearRadius,
-                this.appearSeconds, this.appearStyle, this.parts, this.data);
+        return new HologramSpec(this.id, this.pos,
+                this.rootOffsetX, this.rootOffsetY, this.rootOffsetZ,
+                this.rootYaw, this.rootPitch, this.rootRoll, this.rootScale,
+                true, this.renderDistance, this.owner, this.ownerName,
+                this.appearRadius, this.appearSeconds, this.appearStyle,
+                this.groups, this.layers);
     }
 
     @Nullable
-    private BlockState currentState() {
-        return HologramStates.resolve(this.block, this.props);
+    private BlockState currentBlockState() {
+        HologramLayer l = currentLayer();
+        if (l == null || l.kind() != HologramLayer.Kind.BLOCK)
+            return null;
+        return HologramStates.resolve(l.id(), l.props());
     }
 
     private void applyClipboard() {
         HologramSpec clip = HologramClipboard.peek();
         if (clip == null)
             return;
-        this.offsetX = clip.offsetX();
-        this.offsetY = clip.offsetY();
-        this.offsetZ = clip.offsetZ();
-        this.block = clip.block();
-        this.props = new LinkedHashMap<>(clip.props());
-        this.scale = clip.scale();
-        this.yaw = clip.yaw();
-        this.pitch = clip.pitch();
-        this.roll = clip.roll();
-        this.spin = clip.spin();
-        this.spinAxis = clip.spinAxis();
-        this.hover = clip.hover();
-        this.hoverPeriod = clip.hoverPeriod();
-        this.fullbright = clip.fullbright();
-        this.renderDistance = Math.min(clip.renderDistance(), this.maxRenderDistance);
-        this.effects = new ArrayList<>(clip.effects());
-        this.parts = new ArrayList<>(clip.parts());
-        this.data = clip.data().copy();
-        this.appearRadius = clip.appearRadius();
-        this.appearSeconds = clip.appearSeconds();
-        this.appearStyle = clip.appearStyle();
-        this.primaryPartOverride = "minecraft:air".equals(this.block) && !this.parts.isEmpty();
+        pushUndo();
+        loadFromSpec(clip);
         rebuildInspector();
         refresh();
     }
@@ -1692,39 +2586,23 @@ public class HologramScreen extends Screen {
         HologramNetwork.sendCreate(target, clip);
     }
 
-    public void pickBlock(Block block) {
-        String next = BuiltInRegistries.BLOCK.getKey(block).toString();
-        if (!next.equals(this.block)) {
-            this.block = next;
-            this.props = new LinkedHashMap<>();
-            this.data = new CompoundTag();
-            if (this.primaryPartOverride && !"minecraft:air".equals(next) && !this.parts.isEmpty()) {
-                List<HologramPart> trimmed = new ArrayList<>(this.parts);
-                trimmed.remove(0);
-                this.parts = trimmed;
-                this.primaryPartOverride = false;
-                if (this.selectedPart >= trimmed.size())
-                    this.selectedPart = trimmed.size() - 1;
-                rebuildInspector();
-            }
-            refresh();
-        }
-    }
-
-    private void cycleProperty(Property<?> property, BlockState state, int direction) {
-        if (direction == 0)
-            return;
-        String current = HologramStates.valueOf(state, property);
-        String next = HologramStates.cycle(property, current, direction);
-        Map<String, String> props = new LinkedHashMap<>(this.props);
-        props.put(property.getName(), next);
-        this.props = props;
-        refresh();
-    }
-
     public void saveAndClose() {
         commitInlineBox();
+        this.finalized = true;
+        this.liveDirty = false;
+        HologramCamera.end();
         HologramNetwork.sendSave(buildSpec());
+        HologramClient.clearPreview();
+        if (this.minecraft != null)
+            this.minecraft.setScreen(null);
+    }
+
+    public void cancelAndClose() {
+        cancelInlineBox();
+        this.finalized = true;
+        this.liveDirty = false;
+        HologramCamera.end();
+        HologramNetwork.sendCancel(this.id);
         HologramClient.clearPreview();
         if (this.minecraft != null)
             this.minecraft.setScreen(null);
@@ -1732,6 +2610,9 @@ public class HologramScreen extends Screen {
 
     public void deleteAndClose() {
         cancelInlineBox();
+        this.finalized = true;
+        this.liveDirty = false;
+        HologramCamera.end();
         HologramNetwork.sendDelete(this.id);
         HologramClient.clearPreview();
         if (this.minecraft != null)
@@ -1741,6 +2622,12 @@ public class HologramScreen extends Screen {
     @Override
     public void onClose() {
         cancelInlineBox();
+        HologramCamera.end();
+        if (!this.finalized) {
+            this.finalized = true;
+            this.liveDirty = false;
+            HologramNetwork.sendCancel(this.id);
+        }
         HologramClient.clearPreview();
         super.onClose();
     }
@@ -1757,12 +2644,12 @@ public class HologramScreen extends Screen {
     }
 
     public List<Property<?>> currentProperties() {
-        BlockState state = currentState();
+        BlockState state = currentBlockState();
         return state == null ? List.of() : HologramStates.properties(state);
     }
 
     public void devCycleProperty(int index, int direction) {
-        BlockState state = currentState();
+        BlockState state = currentBlockState();
         if (state == null)
             return;
         List<Property<?>> properties = HologramStates.properties(state);
@@ -1772,24 +2659,28 @@ public class HologramScreen extends Screen {
     }
 
     public void devSetScale(float scale) {
-        this.scale = (float) clamp(scale, 0.25, 8.0);
+        pushUndo();
+        setTargetScale(scale);
         refresh();
     }
 
     public void devSetSpin(float spin) {
-        this.spin = (float) clamp(spin, -360.0, 360.0);
+        pushUndo();
+        setTargetSpin(spin);
         refresh();
     }
 
     public void devSetOffset(float x, float y, float z) {
-        this.offsetX = (float) clamp(x, -16.0, 16.0);
-        this.offsetY = (float) clamp(y, -16.0, 16.0);
-        this.offsetZ = (float) clamp(z, -16.0, 16.0);
+        pushUndo();
+        setTargetOffsetX(x);
+        setTargetOffsetY(y);
+        setTargetOffsetZ(z);
         rebuildInspector();
         refresh();
     }
 
     public void devSetAppearRadius(float radius) {
+        pushUndo();
         this.appearRadius = (float) clamp(radius, 0.0, 64.0);
         refresh();
     }
@@ -1831,12 +2722,42 @@ public class HologramScreen extends Screen {
     }
 
     public void devTab(int tab) {
-        this.tab = Mth.clamp(tab, TAB_TRANSFORM, TAB_MORE);
+        this.tab = Mth.clamp(tab, TAB_LAYERS, TAB_FX);
         rebuildInspector();
     }
 
     public int devNumControlCount() {
         return this.numControls.size();
+    }
+
+    public void devSelectRoot() {
+        selectRoot();
+    }
+
+    public void devSelectLayer(int idx) {
+        selectLayer(idx);
+    }
+
+    public void devSelectGroup(String gid) {
+        selectGroup(gid);
+    }
+
+    public String devAddGroup() {
+        addGroup();
+        return this.selectedGroupId == null ? "" : this.selectedGroupId;
+    }
+
+    public void devAssignLayerGroup(int layerIdx, String groupId) {
+        if (layerIdx < 0 || layerIdx >= this.layers.size())
+            return;
+        pushUndo();
+        this.layers.set(layerIdx, this.layers.get(layerIdx).withGroupId(groupId));
+        rebuildInspector();
+        refresh();
+    }
+
+    public void devToggleSoloLayer(int idx) {
+        toggleSoloLayer(idx);
     }
 
     public void devToggleEffect(HologramEffect.Type type) {
@@ -1860,41 +2781,29 @@ public class HologramScreen extends Screen {
     }
 
     public void devPickEntity(String id) {
-        this.selectedEntityId = id;
-        setPrimaryPart(HologramPart.entity(id, 0.0F));
+        pickEntity(id);
     }
 
-    public void devAddPart(int kind, String id) {
-        if (this.parts.size() >= HologramPart.MAX_PARTS)
+    public void devAddLayer(HologramLayer.Kind kind, String id) {
+        if (this.layers.size() >= HologramLayer.MAX_LAYERS)
             return;
-        float topY = this.scale;
-        HologramPart part = switch (Mth.clamp(kind, 0, 2)) {
-            case 1 -> HologramPart.entity(id, topY);
-            case 2 -> HologramPart.particle(id, topY * 0.5F);
-            default -> HologramPart.block(id, Map.of(), topY);
+        pushUndo();
+        HologramLayer layer = switch (kind) {
+            case ENTITY -> HologramLayer.entity(id, 1.0F);
+            case PARTICLE -> HologramLayer.particle(id, 1.5F);
+            case BLOCK -> HologramLayer.block(id, Map.of(), 1.0F);
         };
-        List<HologramPart> next = new ArrayList<>(this.parts);
-        next.add(part);
-        this.parts = next;
-        this.selectedPart = next.size() - 1;
-        rebuildInspector();
+        this.layers.add(layer);
+        selectLayer(this.layers.size() - 1);
         refresh();
     }
 
-    public void devAdjustPart(int index, float dx, float dy, float dz, float scale, float yaw) {
-        if (index < 0 || index >= this.parts.size())
-            return;
-        HologramPart old = this.parts.get(index);
-        List<HologramPart> next = new ArrayList<>(this.parts);
-        next.set(index, new HologramPart(old.kind(), old.id(), old.props(),
-                old.offsetX() + dx, old.offsetY() + dy, old.offsetZ() + dz, scale, yaw));
-        this.parts = next;
-        rebuildInspector();
-        refresh();
+    public void devFlushLive() {
+        flushLivePreview();
     }
 
-    public int devPartCount() {
-        return this.parts.size();
+    public int devLayerCount() {
+        return this.layers.size();
     }
 
     public int devGridCols() {

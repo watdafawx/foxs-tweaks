@@ -15,10 +15,8 @@ import net.neoforged.neoforge.network.event.RegisterPayloadHandlersEvent;
 import java.util.UUID;
 
 /**
- * Payload registration and the server half of the editor.
- *
- * <p>Registrar version "1": holograms are new, so a client on an older build simply cannot open the
- * editor (the payloads are {@code optional()}, so nothing else breaks on a mixed pack).
+ * Payload registration and the server half of the hologram editor, including live multi-player
+ * preview streaming and revert/cancel.
  */
 public final class HologramNetwork {
     private HologramNetwork() {
@@ -58,6 +56,11 @@ public final class HologramNetwork {
         if (stored == null || !canEdit(player, stored))
             return;
 
+        if (payload.action() == HologramActionPayload.Action.CANCEL) {
+            Holograms.clearLivePreview(level, id);
+            return;
+        }
+
         // The client can send any position it likes; only the stored one (anchor or offset box) is trusted.
         double distSq = Math.min(
                 player.distanceToSqr(Vec3.atCenterOf(stored.pos())),
@@ -78,7 +81,13 @@ public final class HologramNetwork {
             CompoundTag captured = Holograms.capture(level, source);
             if (captured == null)
                 return;
-            HologramSpec updated = stored.withData(captured);
+            int layerIdx = payload.spec().getInt("layerIndex");
+            if (layerIdx < 0 || layerIdx >= stored.layers().size())
+                layerIdx = 0;
+            HologramLayer target = stored.layers().get(layerIdx);
+            if (target.kind() != HologramLayer.Kind.BLOCK)
+                return;
+            HologramSpec updated = stored.withLayer(layerIdx, target.withData(captured));
             Holograms.save(level, updated);
             openEditor(player, updated);
             return;
@@ -88,9 +97,15 @@ public final class HologramNetwork {
         if (incoming == null)
             return;
 
-        // Identity, position and owner come from the server; only the presentation is the client's.
-        Holograms.save(level, incoming.at(stored.id(), stored.pos(), stored.owner(), stored.ownerName())
-                .withRenderDistance(Math.min(incoming.renderDistance(), ServerConfig.hologramsMaxRenderDistance())));
+        HologramSpec sanitized = incoming.at(stored.id(), stored.pos(), stored.owner(), stored.ownerName())
+                .withRenderDistance(Math.min(incoming.renderDistance(), ServerConfig.hologramsMaxRenderDistance()));
+
+        if (payload.action() == HologramActionPayload.Action.PREVIEW) {
+            Holograms.setLivePreview(level, player.getUUID(), sanitized);
+            return;
+        }
+
+        Holograms.save(level, sanitized);
     }
 
     private static boolean canEdit(ServerPlayer player, HologramSpec spec) {
@@ -100,18 +115,13 @@ public final class HologramNetwork {
         return owner == null || owner.equals(player.getUUID());
     }
 
-    /**
-     * The clipboard's paste: a new hologram at the requested spot, built from the presentation fields
-     * the client sent. Identity and owner are always the server's - a pasted hologram belongs to
-     * whoever pasted it, and its block has to exist on this side.
-     */
     private static void create(ServerPlayer player, CompoundTag tag) {
         if (!ServerConfig.hologramsEnabled() || !tag.contains("pos"))
             return;
 
         ServerLevel level = player.serverLevel();
         HologramSpec style = HologramSpec.fromTag(tag);
-        if (style == null || HologramStates.blockOf(style.block()) == null)
+        if (style == null || style.layers().isEmpty())
             return;
         if (Holograms.capacityLeft(level) <= 0)
             return;
@@ -122,7 +132,7 @@ public final class HologramNetwork {
         if (player.distanceToSqr(Vec3.atCenterOf(pos)) > square(Holograms.REACH + 8.0))
             return;
 
-        HologramSpec created = style.at(Holograms.newId(level, style.block()), pos,
+        HologramSpec created = style.at(Holograms.newId(level, style.primaryId()), pos,
                         player.getUUID(), player.getGameProfile().getName())
                 .withRenderDistance(Math.min(style.renderDistance(), ServerConfig.hologramsMaxRenderDistance()));
 
@@ -159,6 +169,14 @@ public final class HologramNetwork {
         PacketDistributor.sendToServer(HologramActionPayload.save(spec));
     }
 
+    public static void sendPreview(HologramSpec spec) {
+        PacketDistributor.sendToServer(HologramActionPayload.preview(spec));
+    }
+
+    public static void sendCancel(String id) {
+        PacketDistributor.sendToServer(HologramActionPayload.cancel(id));
+    }
+
     public static void sendDelete(String id) {
         PacketDistributor.sendToServer(HologramActionPayload.delete(id));
     }
@@ -167,7 +185,7 @@ public final class HologramNetwork {
         PacketDistributor.sendToServer(HologramActionPayload.create(pos, style));
     }
 
-    public static void sendRecapture(String id) {
-        PacketDistributor.sendToServer(HologramActionPayload.recapture(id));
+    public static void sendRecapture(String id, int layerIndex) {
+        PacketDistributor.sendToServer(HologramActionPayload.recapture(id, layerIndex));
     }
 }

@@ -1,8 +1,9 @@
 package dev.watdafawx.foxstweaks.client;
 
 import dev.watdafawx.foxstweaks.hologram.HologramAnim;
+import dev.watdafawx.foxstweaks.hologram.HologramGroup;
+import dev.watdafawx.foxstweaks.hologram.HologramLayer;
 import dev.watdafawx.foxstweaks.hologram.HologramNetwork;
-import dev.watdafawx.foxstweaks.hologram.HologramPart;
 import dev.watdafawx.foxstweaks.hologram.HologramPick;
 import dev.watdafawx.foxstweaks.hologram.HologramSpec;
 import dev.watdafawx.foxstweaks.hologram.HologramSyncPayload;
@@ -14,21 +15,20 @@ import net.minecraft.resources.ResourceLocation;
 import net.neoforged.neoforge.client.event.ClientTickEvent;
 import net.neoforged.neoforge.common.NeoForge;
 import net.neoforged.neoforge.event.level.LevelEvent;
+import org.joml.Matrix4f;
+import org.joml.Vector3f;
 
 import javax.annotation.Nullable;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.HashSet;
+import java.util.List;
 import java.util.Map;
 import java.util.Set;
-import java.util.List;
 
 /**
- * Client mirror of the server's hologram list for the dimension the player is in.
- *
- * <p>The editor keeps an edited copy here as {@link #setPreview}: the world renderer draws the
- * preview instead of the saved row, so changes are visible in world while the GUI is open without a
- * packet per click. Closing the GUI saves or drops it.
+ * Client mirror of the server's hologram list for the current dimension, plus editor-local
+ * preview overlay and layer/group solo filter.
  */
 public final class HologramClient {
     private static List<HologramSpec> cached = List.of();
@@ -37,6 +37,14 @@ public final class HologramClient {
     private static HologramSpec preview;
     private static HologramSpec hovered;
     private static boolean previewAnchored;
+
+    // Editor-local solo filter (never hides layers for other players).
+    @Nullable
+    private static String soloHologramId;
+    private static int soloLayerIndex = -1;
+    @Nullable
+    private static String soloGroupId;
+
     private static final Map<String, Float> appear = new HashMap<>();
     private static long lastAppearNanos;
 
@@ -52,7 +60,6 @@ public final class HologramClient {
         rebuild();
     }
 
-    /** The holograms to draw this frame, with the editor's unsaved copy merged in. */
     public static List<HologramSpec> specs() {
         return HologramClient.visible;
     }
@@ -75,19 +82,44 @@ public final class HologramClient {
     public static void clearPreview() {
         HologramClient.preview = null;
         HologramClient.hovered = null;
+        clearSolo();
         rebuild();
     }
 
-    /** The edited copy the open editor is showing, or null when no editor is open. */
+    public static void setSoloLayer(@Nullable String hologramId, int layerIndex) {
+        HologramClient.soloHologramId = hologramId;
+        HologramClient.soloLayerIndex = layerIndex;
+        HologramClient.soloGroupId = null;
+    }
+
+    public static void setSoloGroup(@Nullable String hologramId, @Nullable String groupId) {
+        HologramClient.soloHologramId = hologramId;
+        HologramClient.soloLayerIndex = -1;
+        HologramClient.soloGroupId = groupId;
+    }
+
+    public static void clearSolo() {
+        HologramClient.soloHologramId = null;
+        HologramClient.soloLayerIndex = -1;
+        HologramClient.soloGroupId = null;
+    }
+
+    /** True if this layer passes the editor-local solo filter (or solo is off for this hologram). */
+    public static boolean passesSolo(String hologramId, int layerIndex, HologramLayer layer) {
+        if (soloHologramId == null || !soloHologramId.equals(hologramId))
+            return true;
+        if (soloLayerIndex >= 0)
+            return layerIndex == soloLayerIndex;
+        if (soloGroupId != null)
+            return soloGroupId.equals(layer.groupId());
+        return true;
+    }
+
     @Nullable
     public static HologramSpec previewSpec() {
         return HologramClient.preview;
     }
 
-    /**
-     * When on, the renderer also draws the edited hologram a few blocks in front of the camera, so
-     * the editor's preview is visible even if the real one is behind you or far away.
-     */
     public static boolean previewAnchored() {
         return HologramClient.previewAnchored;
     }
@@ -139,12 +171,6 @@ public final class HologramClient {
                 Holograms.REACH, HologramClient.visible);
     }
 
-    /**
-     * Advances each hologram's grow-in toward whether a player is inside its appear radius.
-     *
-     * <p>Client-side on purpose: the radius is about who is looking, each client animates its own copy,
-     * and none of it needs the server to tick or to know.
-     */
     private static void updateAppear(Minecraft mc) {
         long now = System.nanoTime();
         double delta = lastAppearNanos == 0L ? 0.05 : Math.min(0.25, (now - lastAppearNanos) / 1.0E9);
@@ -164,8 +190,6 @@ public final class HologramClient {
                 target = HologramAnim.appearTarget(nearest, spec.appearRadius());
             }
 
-            // A hologram nobody has seen yet starts at its target, so walking up to an existing display
-            // does not make it pop in the first time it is drawn.
             float current = HologramClient.appear.getOrDefault(spec.id(), target);
             HologramClient.appear.put(spec.id(),
                     HologramAnim.approach(current, target, spec.appearSeconds(), delta));
@@ -173,57 +197,92 @@ public final class HologramClient {
         HologramClient.appear.keySet().removeIf(id -> !seen.contains(id));
     }
 
-    /** 0..1 grow-in progress for a hologram; 1 for one with no appear radius. */
     public static float appearProgress(String id) {
         Float value = HologramClient.appear.get(id);
         return value == null ? 1.0F : value;
     }
 
     /**
-     * Particle parts spawn here rather than in the render pass: particles are stateful, so adding them
-     * once per frame would multiply the count by the frame rate. Every other tick is 10/s per part, which
-     * reads as a steady trickle.
+     * Emits particles from exact transformed layer world positions (root -> group -> layer + hover),
+     * respecting per-layer rate, spread, rise speed, visibility, solo, and group/layer flicker.
      */
     private static void emitParticles(Minecraft mc) {
-        if (mc.level.getGameTime() % 2L != 0L)
-            return;
+        double seconds = HologramRenderer.animSeconds();
+        Vector3f posBuf = new Vector3f();
 
         for (HologramSpec spec : HologramClient.visible) {
-            if (spec.parts().isEmpty() || appearProgress(spec.id()) <= 0.01F)
-                continue;
-            if (HologramAnim.flickerHidden(spec.effects(), HologramRenderer.animSeconds()))
+            if (!spec.enabled() || spec.layers().isEmpty() || appearProgress(spec.id()) <= 0.01F)
                 continue;
 
             var centre = spec.box().getCenter();
             if (mc.player.distanceToSqr(centre) > (double) spec.renderDistance() * spec.renderDistance())
                 continue;
 
-            for (HologramPart part : spec.parts()) {
-                if (part.kind() != HologramPart.Kind.PARTICLE)
+            Matrix4f rootMat = null;
+            List<HologramLayer> layers = spec.layers();
+            for (int i = 0; i < layers.size(); i++) {
+                HologramLayer layer = layers.get(i);
+                if (layer.kind() != HologramLayer.Kind.PARTICLE || !layer.visible())
+                    continue;
+                if (!passesSolo(spec.id(), i, layer))
                     continue;
 
-                var key = ResourceLocation.tryParse(part.id());
+                HologramGroup group = spec.groupById(layer.groupId());
+                if (group != null) {
+                    if (!group.visible() || HologramAnim.flickerHidden(group.effects(), seconds))
+                        continue;
+                }
+                if (HologramAnim.flickerHidden(layer.effects(), seconds))
+                    continue;
+
+                var key = ResourceLocation.tryParse(layer.id());
                 if (key == null)
                     continue;
                 if (!(BuiltInRegistries.PARTICLE_TYPE.get(key) instanceof SimpleParticleType simple))
                     continue;
 
-                double x = centre.x + part.offsetX();
-                double y = centre.y + part.offsetY();
-                double z = centre.z + part.offsetZ();
-                boolean hasBase = !spec.block().isEmpty() && !"minecraft:air".equals(spec.block());
-                double spread = 0.35 * part.scale() * (hasBase ? 1.0 : spec.scale()) * 4.0;
+                // Expected particles this tick = rate / 20.0
+                float perTick = layer.particleRate() / 20.0F;
+                int count = (int) perTick;
+                if (mc.level.random.nextFloat() < (perTick - count))
+                    count++;
+                if (count <= 0)
+                    continue;
 
-                mc.level.addParticle(simple,
-                        x + (mc.level.random.nextDouble() - 0.5) * spread,
-                        y + (mc.level.random.nextDouble() - 0.5) * spread,
-                        z + (mc.level.random.nextDouble() - 0.5) * spread,
-                        0.0, 0.01, 0.0);
+                if (rootMat == null)
+                    rootMat = spec.rootMatrix();
+
+                Matrix4f m = new Matrix4f(rootMat);
+                if (group != null) {
+                    float gHover = HologramRenderer.hoverOffset(group.hover(), group.hoverPeriod(), seconds);
+                    float gSpin = HologramRenderer.spinAngle(group.spin(), seconds);
+                    float gJump = HologramAnim.jumpOffset(group.effects(), seconds);
+                    m.translate(group.offsetX(), group.offsetY() + gHover + gJump, group.offsetZ())
+                            .rotateY((float) Math.toRadians(group.yaw() + (group.spinAxis() == HologramSpec.AXIS_Y ? gSpin : 0.0F)))
+                            .rotateX((float) Math.toRadians(group.pitch() + (group.spinAxis() == HologramSpec.AXIS_X ? gSpin : 0.0F)))
+                            .rotateZ((float) Math.toRadians(group.roll() + (group.spinAxis() == HologramSpec.AXIS_Z ? gSpin : 0.0F)))
+                            .scale(group.scale());
+                }
+
+                float lHover = HologramRenderer.hoverOffset(layer.hover(), layer.hoverPeriod(), seconds);
+                float lJump = HologramAnim.jumpOffset(layer.effects(), seconds);
+                posBuf.set(layer.offsetX(), layer.offsetY() + lHover + lJump, layer.offsetZ());
+                m.transformPosition(posBuf);
+
+                double spread = layer.scale() * spec.scale() * (group != null ? group.scale() : 1.0F);
+                double vy = layer.particleSpeed();
+
+                for (int p = 0; p < count; p++) {
+                    mc.level.addParticle(simple,
+                            posBuf.x + (mc.level.random.nextDouble() - 0.5) * 2.0 * spread,
+                            posBuf.y + (mc.level.random.nextDouble() - 0.5) * 2.0 * spread,
+                            posBuf.z + (mc.level.random.nextDouble() - 0.5) * 2.0 * spread,
+                            0.0, vy, 0.0);
+                }
             }
         }
     }
 
-    /** How many holograms currently have an appear state; the dev check asserts it tracks the list. */
     public static int appearTracked() {
         return HologramClient.appear.size();
     }
@@ -234,12 +293,6 @@ public final class HologramClient {
                 || mc.player.getOffhandItem().getItem() instanceof dev.watdafawx.foxstweaks.hologram.HologramItem);
     }
 
-    /**
-     * Client half of the wand's sneak-use: paste the copied hologram where the player clicked.
-     *
-     * <p>Only the client has a clipboard, so the create is sent from here. Aiming at an existing
-     * hologram is left alone - that gesture is the server's delete.
-     */
     public static void onWandUseOn(net.minecraft.world.item.context.UseOnContext context) {
         var player = context.getPlayer();
         if (player == null || !player.isShiftKeyDown())
@@ -248,7 +301,7 @@ public final class HologramClient {
         HologramSpec clip = HologramClipboard.peek();
         if (clip == null) {
             player.displayClientMessage(net.minecraft.network.chat.Component
-                    .literal("Clipboard is empty - copy a hologram from its editor's Share tab.")
+                    .literal("Clipboard is empty - copy a hologram from its editor's Layers tab.")
                     .withStyle(net.minecraft.ChatFormatting.GRAY), true);
             return;
         }
@@ -266,6 +319,8 @@ public final class HologramClient {
         HologramClient.preview = null;
         HologramClient.hovered = null;
         HologramClient.dimension = null;
+        HologramCamera.end();
+        clearSolo();
         HologramClient.appear.clear();
         HologramEntities.clear();
         HologramBlockEntities.clear();

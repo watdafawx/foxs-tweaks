@@ -86,7 +86,7 @@ public final class HologramCommand {
         BlockPos pos = BlockPos.containing(target);
         HologramSpec spec = Holograms.create(level, pos, block.defaultBlockState(), pos, player);
         source.sendSuccess(() -> Component.literal("Hologram '" + spec.id() + "' at " + pos.toShortString()
-                + ", showing " + spec.block() + "."), false);
+                + ", showing " + spec.primaryId() + "."), false);
         return 1;
     }
 
@@ -128,9 +128,9 @@ public final class HologramCommand {
         }
         for (HologramSpec spec : specs) {
             source.sendSuccess(() -> Component.literal(String.format(Locale.ROOT,
-                    "- %s  %s  %s  scale %.2f  spin %.0f/s  range %d",
-                    spec.id(), spec.block(), spec.pos().toShortString(), spec.scale(), spec.spin(),
-                    spec.renderDistance())), false);
+                    "- %s  %s  %s  %d layer(s)  %d group(s)  range %d",
+                    spec.id(), spec.primaryId(), spec.pos().toShortString(),
+                    spec.layers().size(), spec.groups().size(), spec.renderDistance())), false);
         }
         return specs.size();
     }

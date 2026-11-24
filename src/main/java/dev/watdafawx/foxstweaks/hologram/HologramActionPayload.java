@@ -9,10 +9,8 @@ import net.minecraft.network.protocol.common.custom.CustomPacketPayload;
 import net.minecraft.resources.ResourceLocation;
 
 /**
- * Client -> server: save the edited hologram, or delete it.
- *
- * <p>One payload for both because both are "here is a hologram tag and what to do with it", and the
- * 1.21.1 {@code StreamCodec.composite} helper only goes up to six fields anyway.
+ * Client -> server hologram editor actions: live preview streaming, save, cancel/revert, delete,
+ * create (paste), and block-entity recapture.
  */
 public record HologramActionPayload(Action action, CompoundTag spec) implements CustomPacketPayload {
     public enum Action {
@@ -21,7 +19,11 @@ public record HologramActionPayload(Action action, CompoundTag spec) implements 
         /** Create a new hologram at the {@code pos} in the tag, using the tag's presentation fields. */
         CREATE,
         /** Re-capture block entity data from the block at or adjacent to the hologram's position. */
-        RECAPTURE
+        RECAPTURE,
+        /** Transient live edit broadcast to all players in the dimension before Done is pressed. */
+        PREVIEW,
+        /** Clear any active live preview for this hologram id and revert all players to saved data. */
+        CANCEL
     }
 
     public static final Type<HologramActionPayload> TYPE =
@@ -32,6 +34,16 @@ public record HologramActionPayload(Action action, CompoundTag spec) implements 
 
     public static HologramActionPayload save(HologramSpec spec) {
         return new HologramActionPayload(Action.SAVE, spec.toTag());
+    }
+
+    public static HologramActionPayload preview(HologramSpec spec) {
+        return new HologramActionPayload(Action.PREVIEW, spec.toTag());
+    }
+
+    public static HologramActionPayload cancel(String id) {
+        CompoundTag tag = new CompoundTag();
+        tag.putString("id", id);
+        return new HologramActionPayload(Action.CANCEL, tag);
     }
 
     public static HologramActionPayload delete(String id) {
@@ -47,9 +59,10 @@ public record HologramActionPayload(Action action, CompoundTag spec) implements 
         return new HologramActionPayload(Action.CREATE, tag);
     }
 
-    public static HologramActionPayload recapture(String id) {
+    public static HologramActionPayload recapture(String id, int layerIndex) {
         CompoundTag tag = new CompoundTag();
         tag.putString("id", id);
+        tag.putInt("layerIndex", layerIndex);
         return new HologramActionPayload(Action.RECAPTURE, tag);
     }
 

@@ -1,5 +1,16 @@
 # Changelog
 
+## 1.39.0
+
+- **Holograms: unified Layers & Groups, independent animation/FX, Solo, live multiplayer edits, Undo/Redo, and Free Studio Camera**:
+  - **Unified first-class Layers (`HologramLayer`, up to 16)**: replaced the split base-block + `parts[]` / `minecraft:air` override model with a single uniform layer list. Every Block, Entity, and Particle layer has its own position, pitch/yaw/roll, scale, spin, hover, fullbright, FX list, visibility, and block-entity NBT data. Particle layers add dedicated `Spread`, `Rate` (`/s`), and `Rise` speed controls and spawn from exact transformed world positions.
+  - **Groups (`HologramGroup`, up to 8)**: create named groups to link transform, spin, hover, fullbright, and FX across member layers while ungrouped layers remain completely independent in the same hologram.
+  - **Solo editing**: click `S` on any layer or group to isolate it locally while editing without modifying visibility flags for other players.
+  - **Live multiplayer previews & safe Revert/Cancel**: edits stream live (throttled) to all players in the dimension before pressing `Done` so others can review in real time. `Done` saves permanently; `Cancel` / `Esc` / disconnect reverts everyone to the saved state; `Revert` restores the opened snapshot (undoable).
+  - **Full Undo & Redo history**: 64-step history (`Ctrl+Z`, `Ctrl+Y` / `Ctrl+Shift+Z`, and toolbar buttons) covering layer/group transforms, content picks, FX, animations, and hierarchy edits.
+  - **Free Studio Camera**: detached client-side camera while the editor is open (`W/A/S/D` + `Space`/`E` & `Shift`/`Q` to fly, scroll on viewport to dolly zoom, right-drag to look, middle-drag to pan, `F` / `Cam` to reset). Gizmo hotkeys moved to `1`–`4` (`Move`/`Rotate`/`Scale`/`Off`) so `S` flies backward cleanly.
+  - **Backwards-compatible world migration**: existing saved holograms auto-migrate to the unified layer/group format on load.
+
 ## 1.38.3
 
 - **Hologram Content Picker visual previews & hover zoom**:

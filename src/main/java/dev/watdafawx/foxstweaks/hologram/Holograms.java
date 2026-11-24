@@ -4,6 +4,7 @@ import dev.watdafawx.foxstweaks.FoxsTweaks;
 import dev.watdafawx.foxstweaks.ServerConfig;
 import net.minecraft.core.BlockPos;
 import net.minecraft.nbt.CompoundTag;
+import net.minecraft.resources.ResourceLocation;
 import net.minecraft.server.level.ServerLevel;
 import net.minecraft.server.level.ServerPlayer;
 import net.minecraft.world.entity.player.Player;
@@ -12,19 +13,22 @@ import net.minecraft.world.level.block.state.BlockState;
 import net.neoforged.bus.api.SubscribeEvent;
 import net.neoforged.fml.common.EventBusSubscriber;
 import net.neoforged.neoforge.event.entity.player.PlayerEvent;
+import net.neoforged.neoforge.event.server.ServerStoppingEvent;
 import net.neoforged.neoforge.network.PacketDistributor;
 
 import javax.annotation.Nullable;
+import java.util.ArrayList;
+import java.util.HashMap;
+import java.util.Iterator;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Locale;
+import java.util.Map;
 import java.util.UUID;
 
 /**
- * Server-side manager for holograms: create/update/delete, and syncing the current dimension's list
- * to whoever is looking at it.
- *
- * <p>No chunk ticket, no block entity, no entity. A hologram is a row of saved data and a packet;
- * that is what makes "show only, no collision" free rather than a special case.
+ * Server-side manager for holograms: create/update/delete, transient live-edit previews shared
+ * with all players in the dimension, and syncing the dimension's list.
  */
 @EventBusSubscriber(modid = FoxsTweaks.MODID)
 public final class Holograms {
@@ -32,11 +36,32 @@ public final class Holograms {
     /** How far a player may be from a hologram and still edit or delete it with the wand. */
     public static final double REACH = 6.0;
 
+    private record LivePreview(UUID editor, HologramSpec spec) {
+    }
+
+    /** Transient live previews keyed by dimension -> hologram id. Never persisted to SavedData. */
+    private static final Map<ResourceLocation, Map<String, LivePreview>> LIVE_PREVIEWS = new HashMap<>();
+
     private Holograms() {
     }
 
     public static List<HologramSpec> list(ServerLevel level) {
         return HologramData.get(level).snapshot();
+    }
+
+    /** Saved holograms with any active live-editor previews overlaid for broadcasting to players. */
+    public static List<HologramSpec> listForSync(ServerLevel level) {
+        List<HologramSpec> saved = HologramData.get(level).snapshot();
+        Map<String, LivePreview> dimPreviews = LIVE_PREVIEWS.get(level.dimension().location());
+        if (dimPreviews == null || dimPreviews.isEmpty())
+            return saved;
+
+        List<HologramSpec> merged = new ArrayList<>(saved.size());
+        for (HologramSpec spec : saved) {
+            LivePreview live = dimPreviews.get(spec.id());
+            merged.add(live != null ? live.spec() : spec);
+        }
+        return merged;
     }
 
     @Nullable
@@ -47,6 +72,8 @@ public final class Holograms {
     /** A short unique id for a new hologram, readable enough to use from a command. */
     public static String newId(ServerLevel level, String block) {
         String base = block.substring(block.indexOf(':') + 1).toLowerCase(Locale.ROOT).replaceAll("[^a-z0-9_]", "_");
+        if (base.isEmpty())
+            base = "hologram";
         if (base.length() > 20)
             base = base.substring(0, 20);
 
@@ -59,20 +86,8 @@ public final class Holograms {
         return base + "_" + UUID.randomUUID().toString().substring(0, 6);
     }
 
-    /**
-     * Captured block-entity tags larger than this are dropped: a chest hologram of a chest full of
-     * shulker boxes would otherwise be synced to every client and saved in the world for a decoration.
-     */
     public static final int MAX_DATA_BYTES = 64 * 1024;
 
-    /**
-     * The block entity's own data, so a hologram of a chest/sign/machine can render its real state
-     * instead of nothing (those blocks have no model at all).
-     *
-     * <p>Also captures {@link BlockEntity#getUpdateTag} under {@code _ft_update} when non-empty:
-     * mods like AE2 only serialize client visual state (drive cell models, powered LEDs) into the
-     * update tag rather than {@code saveWithoutMetadata}.
-     */
     @Nullable
     public static CompoundTag capture(ServerLevel level, BlockPos source) {
         BlockEntity blockEntity = level.getBlockEntity(source);
@@ -87,54 +102,96 @@ public final class Holograms {
         return tag;
     }
 
-    /** Creates a hologram at {@code pos} showing {@code state}. Does not enforce limits - see {@link #capacityLeft}. */
     public static HologramSpec create(ServerLevel level, BlockPos pos, BlockState state, @Nullable Player placer) {
         return create(level, pos, state, null, placer);
     }
 
-    /**
-     * @param dataSource the block whose block entity data should be copied, or null. The wand passes the
-     *                   block it clicked; a chest is copied with its contents and open state, which is
-     *                   what makes it draw at all.
-     */
     public static HologramSpec create(ServerLevel level, BlockPos pos, BlockState state, @Nullable BlockPos dataSource,
                                       @Nullable Player placer) {
         String block = HologramStates.blockName(state);
-        HologramSpec spec = HologramSpec.create(newId(level, block), pos, block,
-                placer == null ? null : placer.getUUID(),
-                placer == null ? "" : placer.getGameProfile().getName());
-
+        Map<String, String> props = new LinkedHashMap<>();
         if (!state.getProperties().isEmpty()) {
-            java.util.Map<String, String> props = new java.util.LinkedHashMap<>();
             for (var property : HologramStates.properties(state))
                 props.put(property.getName(), HologramStates.valueOf(state, property));
-            spec = spec.withProps(props);
         }
 
-        if (dataSource != null) {
-            CompoundTag data = capture(level, dataSource);
-            if (data != null)
-                spec = spec.withData(data);
-        }
+        CompoundTag beData = dataSource != null ? capture(level, dataSource) : null;
+        HologramLayer first = HologramLayer.block(block, props, beData == null ? new CompoundTag() : beData);
 
-        save(level, spec.withRenderDistance(Math.min(spec.renderDistance(), ServerConfig.hologramsMaxRenderDistance())));
+        HologramSpec spec = new HologramSpec(newId(level, block), pos,
+                0.0F, 0.0F, 0.0F, 0.0F, 0.0F, 0.0F, 1.0F,
+                true, Math.min(48, ServerConfig.hologramsMaxRenderDistance()),
+                placer == null ? null : placer.getUUID(),
+                placer == null ? "" : placer.getGameProfile().getName(),
+                0.0F, 0.6F, HologramSpec.REVEAL_RISE, List.of(), List.of(first));
+
+        save(level, spec);
         return get(level, spec.id());
     }
 
+    public static void setLivePreview(ServerLevel level, UUID editor, HologramSpec spec) {
+        LIVE_PREVIEWS.computeIfAbsent(level.dimension().location(), k -> new HashMap<>())
+                .put(spec.id(), new LivePreview(editor, spec));
+        sync(level);
+    }
+
+    public static void clearLivePreview(ServerLevel level, String id) {
+        Map<String, LivePreview> dimPreviews = LIVE_PREVIEWS.get(level.dimension().location());
+        if (dimPreviews != null && dimPreviews.remove(id) != null) {
+            if (dimPreviews.isEmpty())
+                LIVE_PREVIEWS.remove(level.dimension().location());
+            sync(level);
+        }
+    }
+
+    private static void clearLivePreviewsForPlayer(ServerPlayer player) {
+        UUID uuid = player.getUUID();
+        var server = player.getServer();
+        if (server == null)
+            return;
+
+        List<ResourceLocation> changedDims = new ArrayList<>();
+        Iterator<Map.Entry<ResourceLocation, Map<String, LivePreview>>> it = LIVE_PREVIEWS.entrySet().iterator();
+        while (it.hasNext()) {
+            Map.Entry<ResourceLocation, Map<String, LivePreview>> entry = it.next();
+            boolean removed = entry.getValue().values().removeIf(p -> p.editor().equals(uuid));
+            if (removed) {
+                changedDims.add(entry.getKey());
+                if (entry.getValue().isEmpty())
+                    it.remove();
+            }
+        }
+        for (ServerLevel level : server.getAllLevels()) {
+            if (changedDims.contains(level.dimension().location()))
+                sync(level);
+        }
+    }
+
     public static void save(ServerLevel level, HologramSpec spec) {
+        Map<String, LivePreview> dimPreviews = LIVE_PREVIEWS.get(level.dimension().location());
+        if (dimPreviews != null) {
+            dimPreviews.remove(spec.id());
+            if (dimPreviews.isEmpty())
+                LIVE_PREVIEWS.remove(level.dimension().location());
+        }
         HologramData.get(level).put(spec);
         sync(level);
     }
 
     @Nullable
     public static HologramSpec remove(ServerLevel level, String id) {
+        Map<String, LivePreview> dimPreviews = LIVE_PREVIEWS.get(level.dimension().location());
+        if (dimPreviews != null) {
+            dimPreviews.remove(id);
+            if (dimPreviews.isEmpty())
+                LIVE_PREVIEWS.remove(level.dimension().location());
+        }
         HologramSpec removed = HologramData.get(level).remove(id);
         if (removed != null)
             sync(level);
         return removed;
     }
 
-    /** How many more holograms this dimension may hold; negative means unlimited. */
     public static int capacityLeft(ServerLevel level) {
         int max = ServerConfig.hologramsMaxPerDimension();
         if (max <= 0)
@@ -142,14 +199,15 @@ public final class Holograms {
         return max - HologramData.get(level).size();
     }
 
-    /** The block a hologram should draw, or null when the block is not installed or has no model. */
     @Nullable
-    public static BlockState stateOf(HologramSpec spec) {
-        return HologramStates.resolve(spec.block(), spec.props());
+    public static BlockState stateOf(HologramLayer layer) {
+        if (layer.kind() != HologramLayer.Kind.BLOCK)
+            return null;
+        return HologramStates.resolve(layer.id(), layer.props());
     }
 
     public static void sync(ServerLevel level) {
-        HologramSyncPayload payload = new HologramSyncPayload(level.dimension().location(), list(level));
+        HologramSyncPayload payload = new HologramSyncPayload(level.dimension().location(), listForSync(level));
         for (ServerPlayer player : level.players())
             PacketDistributor.sendToPlayer(player, payload);
     }
@@ -157,10 +215,9 @@ public final class Holograms {
     public static void syncTo(ServerPlayer player) {
         ServerLevel level = player.serverLevel();
         PacketDistributor.sendToPlayer(player,
-                new HologramSyncPayload(level.dimension().location(), list(level)));
+                new HologramSyncPayload(level.dimension().location(), listForSync(level)));
     }
 
-    /** Re-sends the list when a player arrives somewhere, so the client cache starts out complete. */
     @SubscribeEvent
     public static void onLogin(PlayerEvent.PlayerLoggedInEvent event) {
         if (event.getEntity() instanceof ServerPlayer player)
@@ -168,8 +225,21 @@ public final class Holograms {
     }
 
     @SubscribeEvent
-    public static void onChangedDimension(PlayerEvent.PlayerChangedDimensionEvent event) {
+    public static void onLogout(PlayerEvent.PlayerLoggedOutEvent event) {
         if (event.getEntity() instanceof ServerPlayer player)
+            clearLivePreviewsForPlayer(player);
+    }
+
+    @SubscribeEvent
+    public static void onChangedDimension(PlayerEvent.PlayerChangedDimensionEvent event) {
+        if (event.getEntity() instanceof ServerPlayer player) {
+            clearLivePreviewsForPlayer(player);
             syncTo(player);
+        }
+    }
+
+    @SubscribeEvent
+    public static void onServerStopping(ServerStoppingEvent event) {
+        LIVE_PREVIEWS.clear();
     }
 }

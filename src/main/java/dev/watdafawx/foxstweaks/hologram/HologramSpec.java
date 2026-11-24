@@ -2,27 +2,24 @@ package dev.watdafawx.foxstweaks.hologram;
 
 import net.minecraft.core.BlockPos;
 import net.minecraft.nbt.CompoundTag;
+import net.minecraft.nbt.ListTag;
 import net.minecraft.nbt.Tag;
 import net.minecraft.util.Mth;
 import net.minecraft.world.phys.AABB;
+import org.joml.Matrix4f;
+import org.joml.Vector3f;
 
 import javax.annotation.Nullable;
+import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
 
 /**
- * One decorative hologram: a single block drawn in world at a spot, with no collision, no light, no
- * block entity and no chunk ticket of its own.
- *
- * <p>The block is stored by registry name plus the blockstate values that were picked, not as a
- * {@link net.minecraft.world.level.block.state.BlockState}, so a world saved with a mod installed
- * still loads when that mod is missing - {@link Holograms#stateOf} then answers null and nothing is
- * drawn.
- *
- * <p>Everything visual is plain data: the renderer is the only thing that turns it into pixels. The
- * server never ticks a hologram, so an idle hologram costs exactly nothing.
+ * One decorative hologram: a world-anchored root containing {@link HologramGroup}s (for linked
+ * transform, animation & FX) and first-class {@link HologramLayer}s (blocks, entities, particles),
+ * with no collision, no light, no block entity and no chunk ticket of its own.
  */
 public record HologramSpec(
         String id,
@@ -30,27 +27,19 @@ public record HologramSpec(
         float offsetX,
         float offsetY,
         float offsetZ,
-        String block,
-        Map<String, String> props,
-        float scale,
         float yaw,
         float pitch,
         float roll,
-        float spin,
-        int spinAxis,
-        float hover,
-        float hoverPeriod,
-        boolean fullbright,
+        float scale,
         boolean enabled,
         int renderDistance,
         @Nullable UUID owner,
         String ownerName,
-        List<HologramEffect> effects,
         float appearRadius,
         float appearSeconds,
         int appearStyle,
-        List<HologramPart> parts,
-        CompoundTag data
+        List<HologramGroup> groups,
+        List<HologramLayer> layers
 ) {
     public static final int AXIS_Y = 0;
     public static final int AXIS_X = 1;
@@ -70,99 +59,175 @@ public record HologramSpec(
         offsetX = Mth.clamp(offsetX, -16.0F, 16.0F);
         offsetY = Mth.clamp(offsetY, -16.0F, 16.0F);
         offsetZ = Mth.clamp(offsetZ, -16.0F, 16.0F);
+        yaw = Mth.wrapDegrees(yaw);
+        pitch = Mth.wrapDegrees(pitch);
+        roll = Mth.wrapDegrees(roll);
         scale = Mth.clamp(scale, 0.25F, 8.0F);
-        spin = Mth.clamp(spin, -360.0F, 360.0F);
-        spinAxis = Mth.clamp(spinAxis, 0, 2);
-        hover = Mth.clamp(hover, 0.0F, 4.0F);
-        hoverPeriod = Mth.clamp(hoverPeriod, 0.5F, 120.0F);
         renderDistance = Mth.clamp(renderDistance, 8, 512);
         appearRadius = Mth.clamp(appearRadius, 0.0F, 64.0F);
         appearSeconds = Mth.clamp(appearSeconds, 0.0F, 10.0F);
         appearStyle = Mth.clamp(appearStyle, 0, REVEAL_COUNT - 1);
-        props = Map.copyOf(props);
-        effects = effects.size() > MAX_EFFECTS ? List.copyOf(effects.subList(0, MAX_EFFECTS)) : List.copyOf(effects);
-        parts = parts.size() > HologramPart.MAX_PARTS
-                ? List.copyOf(parts.subList(0, HologramPart.MAX_PARTS))
-                : List.copyOf(parts);
-        // Copied and capped so a caller cannot mutate saved data or send oversized NBT payloads.
-        data = data.sizeInBytes() > Holograms.MAX_DATA_BYTES ? new CompoundTag() : data.copy();
+        groups = groups.size() > HologramGroup.MAX_GROUPS
+                ? List.copyOf(groups.subList(0, HologramGroup.MAX_GROUPS))
+                : List.copyOf(groups);
+        layers = layers.size() > HologramLayer.MAX_LAYERS
+                ? List.copyOf(layers.subList(0, HologramLayer.MAX_LAYERS))
+                : List.copyOf(layers);
     }
 
     public static HologramSpec create(String id, BlockPos pos, String block, @Nullable UUID owner, String ownerName) {
-        return new HologramSpec(id, pos, 0.0F, 0.0F, 0.0F, block, Map.of(), 1.0F, 0.0F, 0.0F, 0.0F, 0.0F, AXIS_Y,
-                0.0F, 4.0F, false, true, 48, owner, ownerName, List.of(), 0.0F, 0.6F, REVEAL_RISE, List.of(),
-                new CompoundTag());
+        HologramLayer first = HologramLayer.block(block, Map.of(), new CompoundTag());
+        return new HologramSpec(id, pos, 0.0F, 0.0F, 0.0F, 0.0F, 0.0F, 0.0F, 1.0F,
+                true, 48, owner, ownerName, 0.0F, 0.6F, REVEAL_RISE, List.of(), List.of(first));
     }
 
-    /**
-     * Same hologram, re-identified and moved. Every presentation field comes along, which is exactly
-     * what the clipboard's paste needs and what keeps a new field from being forgotten at a call site.
-     */
+    /** Same hologram, re-identified and moved; every presentation field comes along. */
     public HologramSpec at(String newId, BlockPos newPos, @Nullable UUID newOwner, String newOwnerName) {
-        return new HologramSpec(newId, newPos, this.offsetX, this.offsetY, this.offsetZ, this.block, this.props,
-                this.scale, this.yaw, this.pitch, this.roll, this.spin, this.spinAxis, this.hover,
-                this.hoverPeriod, this.fullbright, this.enabled, this.renderDistance, newOwner, newOwnerName,
-                this.effects, this.appearRadius, this.appearSeconds, this.appearStyle, this.parts, this.data);
-    }
-
-    public HologramSpec withProps(Map<String, String> props) {
-        return new HologramSpec(this.id, this.pos, this.offsetX, this.offsetY, this.offsetZ, this.block, props,
-                this.scale, this.yaw, this.pitch, this.roll, this.spin, this.spinAxis, this.hover,
-                this.hoverPeriod, this.fullbright, this.enabled, this.renderDistance, this.owner, this.ownerName,
-                this.effects, this.appearRadius, this.appearSeconds, this.appearStyle, this.parts, this.data);
+        return new HologramSpec(newId, newPos, this.offsetX, this.offsetY, this.offsetZ,
+                this.yaw, this.pitch, this.roll, this.scale,
+                this.enabled, this.renderDistance, newOwner, newOwnerName,
+                this.appearRadius, this.appearSeconds, this.appearStyle, this.groups, this.layers);
     }
 
     public HologramSpec withRenderDistance(int distance) {
-        return new HologramSpec(this.id, this.pos, this.offsetX, this.offsetY, this.offsetZ, this.block, this.props,
-                this.scale, this.yaw, this.pitch, this.roll, this.spin, this.spinAxis, this.hover,
-                this.hoverPeriod, this.fullbright, this.enabled, distance, this.owner, this.ownerName,
-                this.effects, this.appearRadius, this.appearSeconds, this.appearStyle, this.parts, this.data);
+        return new HologramSpec(this.id, this.pos, this.offsetX, this.offsetY, this.offsetZ,
+                this.yaw, this.pitch, this.roll, this.scale,
+                this.enabled, distance, this.owner, this.ownerName,
+                this.appearRadius, this.appearSeconds, this.appearStyle, this.groups, this.layers);
     }
 
-    public HologramSpec withEffects(List<HologramEffect> effects) {
-        return new HologramSpec(this.id, this.pos, this.offsetX, this.offsetY, this.offsetZ, this.block, this.props,
-                this.scale, this.yaw, this.pitch, this.roll, this.spin, this.spinAxis, this.hover,
-                this.hoverPeriod, this.fullbright, this.enabled, this.renderDistance, this.owner, this.ownerName,
-                effects, this.appearRadius, this.appearSeconds, this.appearStyle, this.parts, this.data);
+    public HologramSpec withGroups(List<HologramGroup> groups) {
+        return new HologramSpec(this.id, this.pos, this.offsetX, this.offsetY, this.offsetZ,
+                this.yaw, this.pitch, this.roll, this.scale,
+                this.enabled, this.renderDistance, this.owner, this.ownerName,
+                this.appearRadius, this.appearSeconds, this.appearStyle, groups, this.layers);
     }
 
-    public HologramSpec withData(CompoundTag data) {
-        return new HologramSpec(this.id, this.pos, this.offsetX, this.offsetY, this.offsetZ, this.block, this.props,
-                this.scale, this.yaw, this.pitch, this.roll, this.spin, this.spinAxis, this.hover,
-                this.hoverPeriod, this.fullbright, this.enabled, this.renderDistance, this.owner, this.ownerName,
-                this.effects, this.appearRadius, this.appearSeconds, this.appearStyle, this.parts, data);
+    public HologramSpec withLayers(List<HologramLayer> layers) {
+        return new HologramSpec(this.id, this.pos, this.offsetX, this.offsetY, this.offsetZ,
+                this.yaw, this.pitch, this.roll, this.scale,
+                this.enabled, this.renderDistance, this.owner, this.ownerName,
+                this.appearRadius, this.appearSeconds, this.appearStyle, this.groups, layers);
     }
 
-    public HologramSpec withParts(List<HologramPart> parts) {
-        return new HologramSpec(this.id, this.pos, this.offsetX, this.offsetY, this.offsetZ, this.block, this.props,
-                this.scale, this.yaw, this.pitch, this.roll, this.spin, this.spinAxis, this.hover,
-                this.hoverPeriod, this.fullbright, this.enabled, this.renderDistance, this.owner, this.ownerName,
-                this.effects, this.appearRadius, this.appearSeconds, this.appearStyle, parts, this.data);
+    /** Replaces layer 0's props/data/effects helpers for single-layer call sites. */
+    public HologramSpec withLayer(int index, HologramLayer layer) {
+        if (index < 0 || index >= this.layers.size())
+            return this;
+        List<HologramLayer> next = new ArrayList<>(this.layers);
+        next.set(index, layer);
+        return withLayers(next);
     }
 
-    /** The box the hologram and its parts occupy, used for frustum culling, selection outline and click pick. */
+    @Nullable
+    public HologramLayer primaryLayer() {
+        return this.layers.isEmpty() ? null : this.layers.get(0);
+    }
+
+    /** Registry id of the first layer (used for command labels, clipboard, and id generation). */
+    public String primaryId() {
+        return this.layers.isEmpty() ? "hologram" : this.layers.get(0).id();
+    }
+
+    @Nullable
+    public HologramGroup groupById(String groupId) {
+        if (groupId == null || groupId.isEmpty())
+            return null;
+        for (HologramGroup g : this.groups) {
+            if (g.id().equals(groupId))
+                return g;
+        }
+        return null;
+    }
+
+    /** Builds the static world-space transform matrix for the root (anchor + root offset/rot/scale). */
+    public Matrix4f rootMatrix() {
+        return new Matrix4f()
+                .translate(this.pos.getX() + this.offsetX + 0.5F,
+                        this.pos.getY() + this.offsetY,
+                        this.pos.getZ() + this.offsetZ + 0.5F)
+                .rotateY((float) Math.toRadians(this.yaw))
+                .rotateX((float) Math.toRadians(this.pitch))
+                .rotateZ((float) Math.toRadians(this.roll))
+                .scale(this.scale);
+    }
+
+    /** Builds the static local matrix of a group inside the root frame. */
+    public static Matrix4f groupMatrix(HologramGroup g) {
+        return new Matrix4f()
+                .translate(g.offsetX(), g.offsetY(), g.offsetZ())
+                .rotateY((float) Math.toRadians(g.yaw()))
+                .rotateX((float) Math.toRadians(g.pitch()))
+                .rotateZ((float) Math.toRadians(g.roll()))
+                .scale(g.scale());
+    }
+
+    /** Builds the static local matrix of a layer inside its parent frame (group or root). */
+    public static Matrix4f layerMatrix(HologramLayer l) {
+        return new Matrix4f()
+                .translate(l.offsetX(), l.offsetY(), l.offsetZ())
+                .rotateY((float) Math.toRadians(l.yaw()))
+                .rotateX((float) Math.toRadians(l.pitch()))
+                .rotateZ((float) Math.toRadians(l.roll()))
+                .scale(l.kind() == HologramLayer.Kind.PARTICLE ? 1.0F : l.scale());
+    }
+
+    /** World-space bounding box covering all visible layers (respecting group & root transforms). */
     public AABB box() {
-        double cx = this.pos.getX() + this.offsetX + 0.5;
-        double cz = this.pos.getZ() + this.offsetZ + 0.5;
-        double half = 0.5 * this.scale + 0.05;
-        // The model is anchored at its bottom, so a bigger hologram grows upward from the spot.
-        double cy = this.pos.getY() + this.offsetY + half;
-        AABB bounds = new AABB(cx - half, cy - half, cz - half, cx + half, cy + half, cz + half);
-        if (!this.parts.isEmpty()) {
-            double baseY = this.pos.getY() + this.offsetY;
-            for (HologramPart part : this.parts) {
-                double ph = 0.5 * part.scale() + 0.05;
-                double px = cx + part.offsetX();
-                double py = baseY + part.offsetY() + ph;
-                double pz = cz + part.offsetZ();
-                bounds = bounds.minmax(new AABB(px - ph, py - ph, pz - ph, px + ph, py + ph, pz + ph));
+        Matrix4f root = rootMatrix();
+        AABB bounds = null;
+        Vector3f tmp = new Vector3f();
+
+        for (HologramLayer layer : this.layers) {
+            if (!layer.visible())
+                continue;
+            HologramGroup grp = groupById(layer.groupId());
+            if (grp != null && !grp.visible())
+                continue;
+
+            Matrix4f m = new Matrix4f(root);
+            if (grp != null)
+                m.mul(groupMatrix(grp));
+            m.mul(layerMatrix(layer));
+
+            float halfXZ = layer.kind() == HologramLayer.Kind.PARTICLE ? Math.max(0.35F, layer.scale()) : 0.55F;
+            float minY = layer.kind() == HologramLayer.Kind.PARTICLE ? -halfXZ : -0.05F;
+            float maxY = layer.kind() == HologramLayer.Kind.PARTICLE ? halfXZ : 1.05F;
+
+            double minX = Double.POSITIVE_INFINITY, minYd = Double.POSITIVE_INFINITY, minZ = Double.POSITIVE_INFINITY;
+            double maxX = Double.NEGATIVE_INFINITY, maxYd = Double.NEGATIVE_INFINITY, maxZ = Double.NEGATIVE_INFINITY;
+            for (int cx = 0; cx < 2; cx++) {
+                for (int cy = 0; cy < 2; cy++) {
+                    for (int cz = 0; cz < 2; cz++) {
+                        tmp.set(cx == 0 ? -halfXZ : halfXZ,
+                                cy == 0 ? minY : maxY,
+                                cz == 0 ? -halfXZ : halfXZ);
+                        m.transformPosition(tmp);
+                        if (tmp.x < minX) minX = tmp.x;
+                        if (tmp.y < minYd) minYd = tmp.y;
+                        if (tmp.z < minZ) minZ = tmp.z;
+                        if (tmp.x > maxX) maxX = tmp.x;
+                        if (tmp.y > maxYd) maxYd = tmp.y;
+                        if (tmp.z > maxZ) maxZ = tmp.z;
+                    }
+                }
             }
+            AABB layerBox = new AABB(minX, minYd, minZ, maxX, maxYd, maxZ);
+            bounds = bounds == null ? layerBox : bounds.minmax(layerBox);
+        }
+
+        if (bounds == null) {
+            double cx = this.pos.getX() + this.offsetX + 0.5;
+            double cy = this.pos.getY() + this.offsetY + 0.5;
+            double cz = this.pos.getZ() + this.offsetZ + 0.5;
+            return new AABB(cx - 0.5, cy - 0.5, cz - 0.5, cx + 0.5, cy + 0.5, cz + 0.5);
         }
         return bounds;
     }
 
     public CompoundTag toTag() {
         CompoundTag tag = new CompoundTag();
+        tag.putByte("v", (byte) 2);
         tag.putString("id", this.id);
         tag.putLong("pos", this.pos.asLong());
         if (this.offsetX != 0.0F)
@@ -171,50 +236,66 @@ public record HologramSpec(
             tag.putFloat("offsetY", this.offsetY);
         if (this.offsetZ != 0.0F)
             tag.putFloat("offsetZ", this.offsetZ);
-        tag.putString("block", this.block);
-        CompoundTag props = new CompoundTag();
-        this.props.forEach(props::putString);
-        tag.put("props", props);
-        tag.putFloat("scale", this.scale);
-        tag.putFloat("yaw", this.yaw);
-        tag.putFloat("pitch", this.pitch);
-        tag.putFloat("roll", this.roll);
-        tag.putFloat("spin", this.spin);
-        tag.putByte("spinAxis", (byte) this.spinAxis);
-        tag.putFloat("hover", this.hover);
-        tag.putFloat("hoverPeriod", this.hoverPeriod);
-        tag.putBoolean("fullbright", this.fullbright);
+        if (this.yaw != 0.0F)
+            tag.putFloat("yaw", this.yaw);
+        if (this.pitch != 0.0F)
+            tag.putFloat("pitch", this.pitch);
+        if (this.roll != 0.0F)
+            tag.putFloat("roll", this.roll);
+        if (this.scale != 1.0F)
+            tag.putFloat("scale", this.scale);
         tag.putBoolean("enabled", this.enabled);
         tag.putInt("renderDistance", this.renderDistance);
         if (this.owner != null)
             tag.putUUID("owner", this.owner);
         tag.putString("ownerName", this.ownerName);
-        if (!this.effects.isEmpty())
-            tag.put("effects", HologramEffect.listToTag(this.effects));
-        if (!this.parts.isEmpty())
-            tag.put("parts", HologramPart.listToTag(this.parts));
-        if (!this.data.isEmpty())
-            tag.put("blockEntity", this.data.copy());
         tag.putFloat("appearRadius", this.appearRadius);
         tag.putFloat("appearSeconds", this.appearSeconds);
         if (this.appearStyle != REVEAL_RISE)
             tag.putByte("appearStyle", (byte) this.appearStyle);
+        if (!this.groups.isEmpty())
+            tag.put("groups", HologramGroup.listToTag(this.groups));
+        tag.put("layers", HologramLayer.listToTag(this.layers));
         return tag;
     }
 
     @Nullable
     public static HologramSpec fromTag(CompoundTag tag) {
         String id = tag.getString("id");
-        String block = tag.getString("block");
         if (id.isEmpty())
             return null;
 
-        List<HologramPart> savedParts = tag.contains("parts")
-                ? HologramPart.listFromTag(tag.getList("parts", Tag.TAG_COMPOUND))
-                : List.of();
-        // A hologram with no base block is legal when it has parts (an entity-only display) and junk
-        // otherwise.
-        if (block.isEmpty() && savedParts.isEmpty())
+        UUID owner = tag.contains("owner") ? tag.getUUID("owner") : null;
+        BlockPos pos = BlockPos.of(tag.getLong("pos"));
+        float ox = tag.getFloat("offsetX");
+        float oy = tag.getFloat("offsetY");
+        float oz = tag.getFloat("offsetZ");
+        boolean enabled = !tag.contains("enabled") || tag.getBoolean("enabled");
+        int renderDist = tag.contains("renderDistance") ? tag.getInt("renderDistance") : 48;
+        String ownerName = tag.getString("ownerName");
+        float appearRadius = tag.getFloat("appearRadius");
+        float appearSeconds = tag.contains("appearSeconds") ? tag.getFloat("appearSeconds") : 0.6F;
+        int appearStyle = tag.getByte("appearStyle");
+
+        // v2 unified format
+        if (tag.contains("layers", Tag.TAG_LIST)) {
+            List<HologramGroup> groups = tag.contains("groups", Tag.TAG_LIST)
+                    ? HologramGroup.listFromTag(tag.getList("groups", Tag.TAG_COMPOUND))
+                    : List.of();
+            List<HologramLayer> layers = HologramLayer.listFromTag(tag.getList("layers", Tag.TAG_COMPOUND));
+            if (layers.isEmpty())
+                return null;
+            float scale = tag.contains("scale") ? tag.getFloat("scale") : 1.0F;
+            return new HologramSpec(id, pos, ox, oy, oz,
+                    tag.getFloat("yaw"), tag.getFloat("pitch"), tag.getFloat("roll"), scale,
+                    enabled, renderDist, owner, ownerName, appearRadius, appearSeconds, appearStyle,
+                    groups, layers);
+        }
+
+        // Legacy v1 migration: base block + parts[] -> unified layers (+ group if multi-part)
+        String block = tag.getString("block");
+        ListTag legacyParts = tag.contains("parts", Tag.TAG_LIST) ? tag.getList("parts", Tag.TAG_COMPOUND) : new ListTag();
+        if (block.isEmpty() && legacyParts.isEmpty())
             return null;
 
         Map<String, String> props = new LinkedHashMap<>();
@@ -225,24 +306,87 @@ public record HologramSpec(
         List<HologramEffect> effects = tag.contains("effects")
                 ? HologramEffect.listFromTag(tag.getList("effects", Tag.TAG_COMPOUND))
                 : List.of();
+        CompoundTag beData = tag.contains("blockEntity") ? tag.getCompound("blockEntity") : new CompoundTag();
 
+        float legacyScale = tag.contains("scale") ? tag.getFloat("scale") : 1.0F;
+        float legacyYaw = tag.getFloat("yaw");
+        float legacyPitch = tag.getFloat("pitch");
+        float legacyRoll = tag.getFloat("roll");
+        float legacySpin = tag.getFloat("spin");
+        int legacySpinAxis = tag.getByte("spinAxis");
+        float legacyHover = tag.getFloat("hover");
+        float legacyHoverPeriod = tag.contains("hoverPeriod") ? tag.getFloat("hoverPeriod") : 4.0F;
+        boolean legacyFullbright = tag.getBoolean("fullbright");
 
-        UUID owner = tag.contains("owner") ? tag.getUUID("owner") : null;
-        return new HologramSpec(id, BlockPos.of(tag.getLong("pos")),
-                tag.getFloat("offsetX"), tag.getFloat("offsetY"), tag.getFloat("offsetZ"),
-                block, props,
-                tag.getFloat("scale"), tag.getFloat("yaw"), tag.getFloat("pitch"), tag.getFloat("roll"),
-                tag.getFloat("spin"), tag.getByte("spinAxis"), tag.getFloat("hover"), tag.getFloat("hoverPeriod"),
-                tag.getBoolean("fullbright"), !tag.contains("enabled") || tag.getBoolean("enabled"),
-                tag.getInt("renderDistance"), owner, tag.getString("ownerName"), effects,
-                tag.getFloat("appearRadius"), tag.contains("appearSeconds") ? tag.getFloat("appearSeconds") : 0.6F,
-                tag.getByte("appearStyle"),
-                savedParts, tag.contains("blockEntity") ? tag.getCompound("blockEntity") : new CompoundTag());
+        List<HologramGroup> groups = new ArrayList<>();
+        List<HologramLayer> layers = new ArrayList<>();
+        boolean hasBase = !block.isEmpty() && !"minecraft:air".equals(block);
+
+        if (legacyParts.isEmpty()) {
+            // Simple single-block legacy hologram: migrate all transform/anim/FX cleanly onto Layer 0
+            if (!hasBase)
+                return null;
+            layers.add(new HologramLayer(HologramLayer.Kind.BLOCK, block, props, beData, "", true,
+                    0.0F, 0.0F, 0.0F, legacyYaw, legacyPitch, legacyRoll, legacyScale,
+                    legacySpin, legacySpinAxis, legacyHover, legacyHoverPeriod, legacyFullbright,
+                    effects, 10.0F, 0.01F));
+            return new HologramSpec(id, pos, ox, oy, oz, 0.0F, 0.0F, 0.0F, 1.0F,
+                    enabled, renderDist, owner, ownerName, appearRadius, appearSeconds, appearStyle,
+                    groups, layers);
+        }
+
+        // Legacy multi-part: put linked anim/FX into Group 1 so everything keeps moving together
+        String grpId = "";
+        boolean needsGroup = legacySpin != 0.0F || legacyHover != 0.0F || legacyFullbright || !effects.isEmpty()
+                || legacyYaw != 0.0F || legacyPitch != 0.0F || legacyRoll != 0.0F;
+        if (needsGroup) {
+            grpId = "g1";
+            groups.add(new HologramGroup(grpId, "Group 1", true,
+                    0.0F, 0.0F, 0.0F, legacyYaw, legacyPitch, legacyRoll, 1.0F,
+                    legacySpin, legacySpinAxis, legacyHover, legacyHoverPeriod, legacyFullbright, effects));
+        }
+
+        if (hasBase) {
+            layers.add(new HologramLayer(HologramLayer.Kind.BLOCK, block, props, beData, grpId, true,
+                    0.0F, 0.0F, 0.0F, 0.0F, 0.0F, 0.0F, legacyScale,
+                    0.0F, AXIS_Y, 0.0F, 4.0F, false, List.of(), 10.0F, 0.01F));
+        }
+
+        float partScaleMult = hasBase ? 1.0F : legacyScale;
+        for (int i = 0; i < legacyParts.size() && layers.size() < HologramLayer.MAX_LAYERS; i++) {
+            CompoundTag pt = legacyParts.getCompound(i);
+            HologramLayer.Kind kind;
+            try {
+                kind = HologramLayer.Kind.valueOf(pt.getString("kind"));
+            } catch (IllegalArgumentException e) {
+                continue;
+            }
+            String pid = pt.getString("id");
+            if (pid.isEmpty())
+                continue;
+            Map<String, String> pProps = new LinkedHashMap<>();
+            CompoundTag rawP = pt.getCompound("props");
+            for (String k : rawP.getAllKeys())
+                pProps.put(k, rawP.getString(k));
+            float pScale = (pt.contains("scale") ? pt.getFloat("scale") : 1.0F) * partScaleMult;
+            layers.add(new HologramLayer(kind, pid, pProps, new CompoundTag(), grpId, true,
+                    pt.getFloat("dx"), pt.getFloat("dy"), pt.getFloat("dz"),
+                    pt.getFloat("yaw"), 0.0F, 0.0F, pScale,
+                    0.0F, AXIS_Y, 0.0F, 4.0F, false, List.of(), 10.0F, 0.01F));
+        }
+
+        if (layers.isEmpty())
+            return null;
+
+        return new HologramSpec(id, pos, ox, oy, oz, 0.0F, 0.0F, 0.0F, 1.0F,
+                enabled, renderDist, owner, ownerName, appearRadius, appearSeconds, appearStyle,
+                groups, layers);
     }
 
-    /** True when this tag carries the fields the renderer needs; used to skip junk in a saved list. */
     public static boolean looksValid(Tag tag) {
         return tag instanceof CompoundTag compound && !compound.getString("id").isEmpty()
-                && (!compound.getString("block").isEmpty() || !compound.getList("parts", Tag.TAG_COMPOUND).isEmpty());
+                && (!compound.getList("layers", Tag.TAG_COMPOUND).isEmpty()
+                || !compound.getString("block").isEmpty()
+                || !compound.getList("parts", Tag.TAG_COMPOUND).isEmpty());
     }
 }

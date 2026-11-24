@@ -34,7 +34,7 @@ public final class HologramClipboard {
 
     /** What to show next to the paste row. */
     public static String label() {
-        return copied == null ? "" : copied.block();
+        return copied == null ? "" : copied.primaryId();
     }
 
     private HologramClipboard() {

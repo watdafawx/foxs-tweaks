@@ -7,8 +7,9 @@ import dev.watdafawx.foxstweaks.client.HologramEntities;
 import dev.watdafawx.foxstweaks.client.HologramRenderer;
 import dev.watdafawx.foxstweaks.client.HologramScreen;
 import dev.watdafawx.foxstweaks.hologram.HologramAnim;
-import dev.watdafawx.foxstweaks.hologram.HologramPart;
 import dev.watdafawx.foxstweaks.hologram.HologramEffect;
+import dev.watdafawx.foxstweaks.hologram.HologramGroup;
+import dev.watdafawx.foxstweaks.hologram.HologramLayer;
 import dev.watdafawx.foxstweaks.hologram.HologramSpec;
 import dev.watdafawx.foxstweaks.hologram.HologramStates;
 import dev.watdafawx.foxstweaks.hologram.Holograms;
@@ -217,9 +218,9 @@ public final class HologramCheck {
             if (!(mc.screen instanceof HologramScreen screen))
                 return;
 
-            // ---- two panels, 4 inspector tabs, collapsible picker ----
-            screen.devTab(HologramScreen.TAB_TRANSFORM);
-            check("Transform tab exposes Pos/Rot/Scale/Range controls", screen.devNumControlCount() == 8,
+            // ---- two panels, 4 inspector tabs (Layers/Main/Anim/FX), collapsible picker ----
+            screen.devTab(HologramScreen.TAB_MAIN);
+            check("Main tab exposes Pos/Rot/Scale controls for layer", screen.devNumControlCount() == 7,
                     "controls=" + screen.devNumControlCount());
             check("the middle of the screen stays free", screen.devFreeWidth() >= 90,
                     "free=" + screen.devFreeWidth() + "px, gridCols=" + screen.devGridCols());
@@ -231,6 +232,15 @@ public final class HologramCheck {
             screen.devCollapsePicker(false);
 
             boolean anchoredBefore = HologramClient.previewAnchored();
+            HologramClient.setPreviewAnchored(false);
+            check("studio camera active when editor open", dev.watdafawx.foxstweaks.client.HologramCamera.isActive(),
+                    "active=" + dev.watdafawx.foxstweaks.client.HologramCamera.isActive());
+            var camStart = dev.watdafawx.foxstweaks.client.HologramCamera.pos();
+            dev.watdafawx.foxstweaks.client.HologramCamera.dolly(-2.0);
+            check("studio camera dollies back and forward",
+                    dev.watdafawx.foxstweaks.client.HologramCamera.pos().distanceTo(camStart) > 1.5,
+                    "moved=" + dev.watdafawx.foxstweaks.client.HologramCamera.pos().distanceTo(camStart));
+            dev.watdafawx.foxstweaks.client.HologramCamera.resetToPlayer();
             HologramClient.setPreviewAnchored(!anchoredBefore);
             check("in-front preview toggles",
                     HologramClient.previewAnchored() != anchoredBefore,
@@ -253,8 +263,19 @@ public final class HologramCheck {
             screen.devSetScale(2.5F);
             screen.devSetSpin(45.0F);
             screen.devSetOffset(0.5F, 1.0F, -0.25F);
+            // Verify Undo & Redo history
+            screen.undo();
+            check("undo reverts last offset edit",
+                    Math.abs(screen.current().layers().get(0).offsetX()) < 0.001F,
+                    "ox=" + screen.current().layers().get(0).offsetX());
+            screen.redo();
+            check("redo reapplies offset edit",
+                    Math.abs(screen.current().layers().get(0).offsetX() - 0.5F) < 0.001F,
+                    "ox=" + screen.current().layers().get(0).offsetX());
+
             check("editor preview follows the edit immediately",
-                    HologramClient.specs().stream().anyMatch(spec -> spec.id().equals(hologramId) && spec.scale() == 2.5F),
+                    HologramClient.specs().stream().anyMatch(spec -> spec.id().equals(hologramId)
+                            && spec.layers().get(0).scale() == 2.5F),
                     "preview=" + HologramClient.specs());
 
             // Scrollbar drag + Entity/Particle pickers + JEI/AE2 search prefixes (@mod #tip $tag -neg | or)
@@ -287,29 +308,26 @@ public final class HologramCheck {
                 check("save reached the server", false, "hologram gone");
                 return;
             }
-            check("save kept the cycled property", !saved.props().isEmpty(), "props=" + saved.props());
-            check("save kept the new scale", Math.abs(saved.scale() - 2.5F) < 0.001F, "scale=" + saved.scale());
-            check("save kept the spin", Math.abs(saved.spin() - 45.0F) < 0.001F, "spin=" + saved.spin());
-            check("save kept the origin offset",
-                    Math.abs(saved.offsetX() - 0.5F) < 0.001F
-                            && Math.abs(saved.offsetY() - 1.0F) < 0.001F
-                            && Math.abs(saved.offsetZ() + 0.25F) < 0.001F,
-                    "offset=(" + saved.offsetX() + "," + saved.offsetY() + "," + saved.offsetZ() + ")");
+            HologramLayer savedL0 = saved.layers().get(0);
+            check("save kept the cycled property", !savedL0.props().isEmpty(), "props=" + savedL0.props());
+            check("save kept the new scale", Math.abs(savedL0.scale() - 2.5F) < 0.001F, "scale=" + savedL0.scale());
+            check("save kept the spin", Math.abs(savedL0.spin() - 45.0F) < 0.001F, "spin=" + savedL0.spin());
+            check("save kept the layer offset",
+                    Math.abs(savedL0.offsetX() - 0.5F) < 0.001F
+                            && Math.abs(savedL0.offsetY() - 1.0F) < 0.001F
+                            && Math.abs(savedL0.offsetZ() + 0.25F) < 0.001F,
+                    "offset=(" + savedL0.offsetX() + "," + savedL0.offsetY() + "," + savedL0.offsetZ() + ")");
             // Reset offset back to 0 so downstream screenshots stay centred in frame.
             onServer(player -> {
                 var cur = Holograms.get(player.serverLevel(), hologramId);
                 if (cur != null) {
-                    var zeroed = new HologramSpec(cur.id(), cur.pos(), 0.0F, 0.0F, 0.0F, cur.block(), cur.props(),
-                            cur.scale(), cur.yaw(), cur.pitch(), cur.roll(), cur.spin(), cur.spinAxis(),
-                            cur.hover(), cur.hoverPeriod(), cur.fullbright(), cur.enabled(), cur.renderDistance(),
-                            cur.owner(), cur.ownerName(), cur.effects(), cur.appearRadius(), cur.appearSeconds(),
-                            cur.appearStyle(), cur.parts(), cur.data());
+                    var zeroed = cur.withLayer(0, cur.layers().get(0).withOffset(0.0F, 0.0F, 0.0F));
                     Holograms.save(player.serverLevel(), zeroed);
                 }
                 return null;
             });
-            log("saved spec: block=" + saved.block() + " props=" + saved.props() + " scale=" + saved.scale()
-                    + " spin=" + saved.spin() + " range=" + saved.renderDistance());
+            log("saved spec: primary=" + saved.primaryId() + " props=" + savedL0.props() + " scale=" + savedL0.scale()
+                    + " spin=" + savedL0.spin() + " range=" + saved.renderDistance());
         });
 
         // ---- screenshot of the editor over a live hologram ----
@@ -439,8 +457,8 @@ public final class HologramCheck {
             if (!AE2 || ae2Id == null)
                 return;
             HologramSpec saved = onServer(player -> Holograms.get(player.serverLevel(), ae2Id));
-            check("ae2 state persisted", saved != null && !saved.props().getOrDefault("state", "").isEmpty(),
-                    saved == null ? "gone" : saved.props().toString());
+            check("ae2 state persisted", saved != null && !saved.layers().get(0).props().getOrDefault("state", "").isEmpty(),
+                    saved == null ? "gone" : saved.layers().get(0).props().toString());
 
             onServer(player -> {
                 player.server.getCommands().performPrefixedCommand(
@@ -478,26 +496,27 @@ public final class HologramCheck {
                 return;
             }
 
+            screen.devSelectLayer(0);
             screen.devTab(HologramScreen.TAB_FX);
-            int before = screen.current().effects().size();
+            int before = screen.current().layers().get(0).effects().size();
             screen.devToggleEffect(HologramEffect.Type.TINT);
             screen.devToggleEffect(HologramEffect.Type.FLICKER);
-            check("FX pills toggle effect layers", screen.current().effects().size() == before + 2,
-                    "effects=" + screen.current().effects().size());
+            check("FX pills toggle layer effect list", screen.current().layers().get(0).effects().size() == before + 2,
+                    "effects=" + screen.current().layers().get(0).effects().size());
 
-            float strengthBefore = screen.current().effects().get(0).strength();
+            float strengthBefore = screen.current().layers().get(0).effects().get(0).strength();
             screen.devSetEffectStrength(0, strengthBefore + 0.1F);
-            float strengthAfter = screen.current().effects().get(0).strength();
+            float strengthAfter = screen.current().layers().get(0).effects().get(0).strength();
             check("effect strength adjusts", strengthAfter > strengthBefore,
                     strengthBefore + " -> " + strengthAfter);
 
-            int colorBefore = screen.current().effects().get(0).color();
+            int colorBefore = screen.current().layers().get(0).effects().get(0).color();
             screen.devSetEffectColor(0, 0xFF4D5A);
-            check("tint color updates", screen.current().effects().get(0).color() != colorBefore,
-                    Integer.toHexString(colorBefore) + " -> " + Integer.toHexString(screen.current().effects().get(0).color()));
+            check("tint color updates", screen.current().layers().get(0).effects().get(0).color() != colorBefore,
+                    Integer.toHexString(colorBefore) + " -> " + Integer.toHexString(screen.current().layers().get(0).effects().get(0).color()));
             screen.devSetEffectSpeed(1, 4.5F);
-            check("effect speed adjusts", Math.abs(screen.current().effects().get(1).speed() - 4.5F) < 0.01F,
-                    "speed=" + screen.current().effects().get(1).speed());
+            check("effect speed adjusts", Math.abs(screen.current().layers().get(0).effects().get(1).speed() - 4.5F) < 0.01F,
+                    "speed=" + screen.current().layers().get(0).effects().get(1).speed());
 
             screen.devSetAppearRadius(10.0F);
             check("appear radius can be raised", screen.current().appearRadius() >= 8.0F,
@@ -525,13 +544,15 @@ public final class HologramCheck {
                 check("effects reached the server", false, "hologram gone");
                 return;
             }
-            check("effects round-trip through save and load", saved.effects().size() == 2,
-                    "effects=" + saved.effects());
+            List<HologramEffect> savedFx = saved.layers().get(0).effects();
+            check("effects round-trip through save and load", savedFx.size() == 2,
+                    "effects=" + savedFx);
             check("effect types are TINT + FLICKER",
-                    saved.effects().stream().map(HologramEffect::type).toList()
+                    savedFx.stream().map(HologramEffect::type).toList()
                             .equals(List.of(HologramEffect.Type.TINT, HologramEffect.Type.FLICKER)),
-                    "effects=" + saved.effects());
-            check("appear radius persisted", saved.appearRadius() > 0.0F, "radius=" + saved.appearRadius());            log("saved effects: " + saved.effects() + " radius=" + saved.appearRadius()
+                    "effects=" + savedFx);
+            check("appear radius persisted", saved.appearRadius() > 0.0F, "radius=" + saved.appearRadius());
+            log("saved effects: " + savedFx + " radius=" + saved.appearRadius()
                     + " fade=" + saved.appearSeconds());
         });
 
@@ -571,49 +592,65 @@ public final class HologramCheck {
                 check("editor opened for the parts step", false, String.valueOf(mc.screen));
                 return;
             }
+            screen.devSelectLayer(0);
             screen.devSetScale(1.0F);
 
-            // Drop the flicker layers first: they hide the whole hologram for part of every cycle, so
-            // screenshots of the parts would land on empty grass about a third of the time.
+            // Drop flicker on layer 0 first so screenshots don't land on hidden frames.
             screen.devTab(HologramScreen.TAB_FX);
-            while (!screen.current().effects().isEmpty())
+            while (!screen.current().layers().get(0).effects().isEmpty())
                 screen.devRemoveEffect(0);
 
-            // Verify direct entity override (clicking an entity turns hologram into that entity, air base)
+            // Verify picking an entity replaces the selected layer cleanly without air-base hack
             screen.devPickEntity("minecraft:creeper");
-            check("clicking an entity overrides base to air + entity",
-                    "minecraft:air".equals(screen.current().block())
-                            && screen.current().parts().size() == 1
-                            && screen.current().parts().get(0).id().equals("minecraft:creeper"),
-                    "block=" + screen.current().block() + " parts=" + screen.current().parts());
-            // Switching back to a block cleanly clears the primary entity override
+            check("picking an entity updates selected layer cleanly",
+                    screen.current().layers().size() == 1
+                            && screen.current().layers().get(0).kind() == HologramLayer.Kind.ENTITY
+                            && screen.current().layers().get(0).id().equals("minecraft:creeper"),
+                    "layers=" + screen.current().layers());
             screen.pickBlock(Blocks.OAK_STAIRS);
-            check("picking a block back clears primary entity override",
-                    "minecraft:oak_stairs".equals(screen.current().block()) && screen.current().parts().isEmpty(),
-                    "block=" + screen.current().block() + " parts=" + screen.current().parts());
+            check("picking a block back updates layer 0 to oak_stairs",
+                    screen.current().layers().size() == 1
+                            && screen.current().layers().get(0).id().equals("minecraft:oak_stairs"),
+                    "layers=" + screen.current().layers());
 
-            screen.devTab(HologramScreen.TAB_MORE);
-            screen.devAddPart(1, "minecraft:zombie");
-            screen.devAddPart(2, "minecraft:end_rod");
-            check("block + entity + particles live in one hologram", screen.devPartCount() == 2,
-                    "parts=" + screen.current().parts());
+            // Add entity + independent particle layer, plus a group linking block + entity only
+            screen.devTab(HologramScreen.TAB_LAYERS);
+            screen.devAddLayer(HologramLayer.Kind.ENTITY, "minecraft:zombie");
+            screen.devAddLayer(HologramLayer.Kind.PARTICLE, "minecraft:end_rod");
+            check("block + entity + particles live as 3 unified layers", screen.devLayerCount() == 3,
+                    "layers=" + screen.current().layers());
 
-            List<HologramPart> parts = screen.current().parts();
-            check("entity part is an entity", parts.get(0).kind() == HologramPart.Kind.ENTITY,
-                    "kind=" + parts.get(0).kind());
-            check("particle part is a particle", parts.get(1).kind() == HologramPart.Kind.PARTICLE,
-                    "kind=" + parts.get(1).kind());
+            String gid = screen.devAddGroup();
+            screen.devAssignLayerGroup(0, gid);
+            screen.devAssignLayerGroup(1, gid);
+            // Layer 2 (particle) stays ungrouped outside the group with independent FX/anim
+            screen.devSelectGroup(gid);
+            screen.devSetSpin(30.0F);
+            screen.devToggleEffect(HologramEffect.Type.TINT);
+            check("group holds linked spin & FX while ungrouped particle stays clean",
+                    screen.current().groups().size() == 1
+                            && Math.abs(screen.current().groups().get(0).spin() - 30.0F) < 0.01F
+                            && screen.current().groups().get(0).effects().size() == 1
+                            && screen.current().layers().get(2).groupId().isEmpty()
+                            && screen.current().layers().get(2).effects().isEmpty(),
+                    "groups=" + screen.current().groups() + " l2=" + screen.current().layers().get(2));
 
-            // The renderer's entity cache must hand back a real instance, or entity parts draw nothing.
-            check("entity part resolves to a drawable entity",
-                    HologramEntities.get(parts.get(0), 0.0, 0.0, 0.0, 0.0F, 1.0F) != null, "null entity");
-            screen.devAdjustPart(0, 0.0F, 0.25F, 0.0F, 1.0F, 45.0F);
-            check("parts get fractional offsets",
-                    Math.abs(screen.current().parts().get(0).offsetY() - 1.25F) < 1.0E-4F,
-                    "offsetY=" + screen.current().parts().get(0).offsetY());
-            check("parts can rotate yaw",
-                    Math.abs(screen.current().parts().get(0).yaw() - 45.0F) < 1.0E-4F,
-                    "yaw=" + screen.current().parts().get(0).yaw());
+            // Solo toggle hides other layers locally
+            screen.devToggleSoloLayer(1);
+            check("solo layer filters other layers",
+                    HologramClient.passesSolo(hologramId, 1, screen.current().layers().get(1))
+                            && !HologramClient.passesSolo(hologramId, 0, screen.current().layers().get(0)),
+                    "solo check");
+            screen.devToggleSoloLayer(1);
+
+            List<HologramLayer> layers = screen.current().layers();
+            check("entity layer resolves to a drawable entity",
+                    HologramEntities.get(layers.get(1), 0.0, 0.0, 0.0, 0.0F, 1.0F) != null, "null entity");
+            screen.devSelectLayer(1);
+            screen.devSetOffset(0.0F, 1.25F, 0.0F);
+            check("layers get fractional offsets",
+                    Math.abs(screen.current().layers().get(1).offsetY() - 1.25F) < 1.0E-4F,
+                    "offsetY=" + screen.current().layers().get(1).offsetY());
         });
 
         add(10, () -> {
@@ -630,13 +667,14 @@ public final class HologramCheck {
 
         add(10, () -> {
             HologramSpec saved = onServer(player -> Holograms.get(player.serverLevel(), hologramId));
-            check("parts round-trip through save and load", saved != null && saved.parts().size() == 2,
-                    saved == null ? "gone" : "parts=" + saved.parts());
-            if (saved != null && saved.parts().size() == 2) {
-                check("saved parts keep their kind and id",
-                        saved.parts().get(0).id().equals("minecraft:zombie")
-                                && saved.parts().get(1).id().equals("minecraft:end_rod"),
-                        "parts=" + saved.parts());
+            check("layers & groups round-trip through save and load",
+                    saved != null && saved.layers().size() == 3 && saved.groups().size() == 1,
+                    saved == null ? "gone" : "layers=" + saved.layers() + " groups=" + saved.groups());
+            if (saved != null && saved.layers().size() == 3) {
+                check("saved layers keep their kind and id",
+                        saved.layers().get(1).id().equals("minecraft:zombie")
+                                && saved.layers().get(2).id().equals("minecraft:end_rod"),
+                        "layers=" + saved.layers());
             }
         });
 
@@ -658,8 +696,8 @@ public final class HologramCheck {
             });
 
             HologramSpec saved = onServer(player -> Holograms.get(player.serverLevel(), berId));
-            check("chest hologram captured block entity data", saved != null && !saved.data().isEmpty(),
-                    saved == null ? "gone" : "data=" + saved.data().size() + " keys");
+            check("chest hologram captured block entity data", saved != null && !saved.layers().get(0).data().isEmpty(),
+                    saved == null ? "gone" : "data=" + saved.layers().get(0).data().size() + " keys");
         });
 
         add(10, () -> {
@@ -671,7 +709,7 @@ public final class HologramCheck {
 
             var blockEntity = HologramBlockEntities.get(spec);
             check("block entity was built from the captured data", blockEntity != null,
-                    "null entity for " + spec.block());
+                    "null entity for " + spec.primaryId());
             if (blockEntity == null)
                 return;
             check("block entity has a renderer", HologramBlockEntities.renderer(blockEntity) != null,
@@ -746,9 +784,9 @@ public final class HologramCheck {
                 check("client has the ae2 drive hologram", false, "missing");
                 return;
             }
-            log("ae2 drive captured keys: " + spec.data().getAllKeys());
-            check("ae2 drive captured update tag (_ft_update)", spec.data().contains("_ft_update"),
-                    "keys=" + spec.data().getAllKeys());
+            log("ae2 drive captured keys: " + spec.layers().get(0).data().getAllKeys());
+            check("ae2 drive captured update tag (_ft_update)", spec.layers().get(0).data().contains("_ft_update"),
+                    "keys=" + spec.layers().get(0).data().getAllKeys());
             var blockEntity = HologramBlockEntities.get(spec);
             check("ae2 drive block entity was built", blockEntity != null, "null entity");
             check("ae2 drive has a renderer",
@@ -759,8 +797,9 @@ public final class HologramCheck {
                     "modelData=" + (blockEntity == null ? "null" : blockEntity.getModelData()));
             // Verify Paste-as-new (at()) preserves BER data
             var pasted = spec.at("dev_pasted_drive", spec.pos().east(), spec.owner(), spec.ownerName());
-            check("Paste-as-new keeps BER data", !pasted.data().isEmpty() && pasted.data().contains("_ft_update"),
-                    "data=" + pasted.data().getAllKeys());
+            check("Paste-as-new keeps BER data",
+                    !pasted.layers().get(0).data().isEmpty() && pasted.layers().get(0).data().contains("_ft_update"),
+                    "data=" + pasted.layers().get(0).data().getAllKeys());
             shoot("hologram-ae2-drive.png");
         });
 
@@ -797,11 +836,14 @@ public final class HologramCheck {
             reportRound("48 plain");
             onServer(player -> {
                 for (HologramSpec spec : Holograms.list(player.serverLevel())) {
-                    Holograms.save(player.serverLevel(), spec.withEffects(List.of(
+                    if (spec.layers().isEmpty())
+                        continue;
+                    HologramLayer l0 = spec.layers().get(0).withEffects(List.of(
                             HologramEffect.of(HologramEffect.Type.TINT),
                             HologramEffect.of(HologramEffect.Type.FLICKER),
                             HologramEffect.of(HologramEffect.Type.TREMOR),
-                            HologramEffect.of(HologramEffect.Type.WOBBLE))));
+                            HologramEffect.of(HologramEffect.Type.WOBBLE)));
+                    Holograms.save(player.serverLevel(), spec.withLayer(0, l0));
                 }
                 return null;
             });

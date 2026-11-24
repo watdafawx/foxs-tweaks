@@ -83,9 +83,19 @@ public final class HologramStates {
         return valueName(state, property);
     }
 
-    /** The value of one named property on a saved hologram, or {@code ""} when it has no such property. */
+    /** The value of one named property on a saved hologram's first block layer, or {@code ""} when none. */
     public static String valueOf(HologramSpec spec, String propertyName) {
-        BlockState state = resolve(spec.block(), spec.props());
+        HologramLayer primary = spec.primaryLayer();
+        if (primary == null || primary.kind() != HologramLayer.Kind.BLOCK)
+            return "";
+        return valueOf(primary, propertyName);
+    }
+
+    /** The value of one named property on a block layer, or {@code ""} when it has no such property. */
+    public static String valueOf(HologramLayer layer, String propertyName) {
+        if (layer.kind() != HologramLayer.Kind.BLOCK)
+            return "";
+        BlockState state = resolve(layer.id(), layer.props());
         if (state == null)
             return "";
         Property<?> property = property(state, propertyName);
