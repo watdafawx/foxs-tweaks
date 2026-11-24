@@ -1,5 +1,14 @@
 # Changelog
 
+## 1.38.2
+
+- **Holograms: smooth animation, new FX, Reveal styles, JEI/AE2 search, 16 layers**:
+  - **Fixed frozen Hover and stuttery/low-FPS animations**: replaced `(float)(gameTime + partial)` + `Mth.sin` (which lost sub-tick precision and overflowed `Mth.sin`'s int lookup table on older worlds, freezing Hover at 0) with monotonic wall-clock `double` time and modular `Math.sin`.
+  - **JEI / AE2 search syntax in the Content Picker**: supports `@mod` (mod ID or display name), `#tooltip` (lazily cached item tooltip lines), `$tag` (block/entity tags), `&id`, `-term` negation, `|` OR branches, and `"quoted phrases"`.
+  - **New & upgraded FX** (up to 6 stacked layers): added **Scanline** (sweeping horizontal sci-fi bands per vertex, shader-safe), **Glitch** (periodic horizontal offset bursts + cyan/magenta flash), **Pulse** (rhythmic energy brightness surge), and **Rainbow** (HSV chroma cycle); upgraded **Wobble** to squash-and-stretch.
+  - **6 Walk-in Reveal styles** (`Animate > Walk-in Reveal`): `Rise`, `Pop` (elastic bounce), `Unfold` (teleporter beam), `Spin` (360° spin-in), `Drop` (landing squash), and `Glitch` (glitch-in).
+  - **Raised extra layer (part) limit from 4 to 16** with a scrollable Layers list on the `More` tab.
+
 ## 1.38.1
 
 - **Hologram editor 3D-studio UI overhaul**:
