@@ -484,6 +484,15 @@ public final class HologramCheck {
             check("wheel changes an effect's strength", strengthAfter > strengthBefore,
                     strengthBefore + " -> " + strengthAfter);
 
+            // Cycle TINT color and adjust FLICKER speed
+            int colorBefore = screen.current().effects().get(0).color();
+            screen.devCycleEffectColor(0, 1);
+            check("tint color cycles", screen.current().effects().get(0).color() != colorBefore,
+                    Integer.toHexString(colorBefore) + " -> " + Integer.toHexString(screen.current().effects().get(0).color()));
+            screen.devSetEffectSpeed(1, 4.5F);
+            check("effect speed adjusts", Math.abs(screen.current().effects().get(1).speed() - 4.5F) < 0.01F,
+                    "speed=" + screen.current().effects().get(1).speed());
+
             // Last row on the FX tab is the appear radius. Several notches, so the radius covers the
             // spot the player stands on when they come back - a 2-block radius does not.
             for (int i = 0; i < 5; i++)
@@ -589,6 +598,10 @@ public final class HologramCheck {
             check("parts get fractional offsets",
                     Math.abs(screen.current().parts().get(0).offsetY() - 1.25F) < 1.0E-4F,
                     "offsetY=" + screen.current().parts().get(0).offsetY());
+            screen.devRotatePart(0, 45.0F);
+            check("parts can rotate yaw",
+                    Math.abs(screen.current().parts().get(0).yaw() - 45.0F) < 1.0E-4F,
+                    "yaw=" + screen.current().parts().get(0).yaw());
         });
 
         add(10, () -> {

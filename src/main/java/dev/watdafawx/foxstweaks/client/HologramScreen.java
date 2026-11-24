@@ -166,6 +166,7 @@ public class HologramScreen extends Screen {
     private int addKind;
     private int pickIndex;
     private int selectedPart = -1;
+    private int selectedEffect = -1;
     private float appearRadius;
     private float appearSeconds;
 
@@ -441,6 +442,10 @@ public class HologramScreen extends Screen {
                     () -> this.effects.size() < MAX_EFFECTS ? "layer" : "max " + MAX_EFFECTS));
             for (int i = 0; i < this.effects.size(); i++)
                 built.add(new EffectRow(i, this.effects.get(i)));
+            if (this.selectedEffect >= this.effects.size())
+                this.selectedEffect = this.effects.size() - 1;
+            if (this.selectedEffect < 0 && !this.effects.isEmpty())
+                this.selectedEffect = 0;
             built.add(new NumRow("Appear radius", () -> this.appearRadius,
                     v -> this.appearRadius = (float) clamp(v, 0.0, 64.0), 2.0,
                     v -> v <= 0.0 ? "always on" : String.format(Locale.ROOT, "%.0f blocks", v),
@@ -468,11 +473,19 @@ public class HologramScreen extends Screen {
         updateLabels();
     }
 
+    private static final int[] TINT_COLORS = {
+            0x66E0FF, 0xFF4D5A, 0x5CE67A, 0xFFD24D, 0xB86BFF, 0xFF6EC7, 0xFFFFFF, 0xFF8C3B, 0x4D88FF
+    };
+    private static final String[] TINT_NAMES = {
+            "Cyan", "Red", "Green", "Gold", "Purple", "Pink", "White", "Orange", "Blue"
+    };
+
     private void addEffect() {
         if (this.effects.size() >= MAX_EFFECTS)
             return;
         this.effects = new ArrayList<>(this.effects);
         this.effects.add(HologramEffect.of(HologramEffect.nextType(this.effects)));
+        this.selectedEffect = this.effects.size() - 1;
         rebuildRows();
         refresh();
     }
@@ -483,6 +496,8 @@ public class HologramScreen extends Screen {
         List<HologramEffect> next = new ArrayList<>(this.effects);
         next.remove(index);
         this.effects = next;
+        if (this.selectedEffect >= next.size())
+            this.selectedEffect = next.size() - 1;
         rebuildRows();
         refresh();
     }
@@ -494,7 +509,46 @@ public class HologramScreen extends Screen {
         List<HologramEffect> next = new ArrayList<>(this.effects);
         next.set(index, new HologramEffect(old.type(), strength, old.speed(), old.color()));
         this.effects = next;
+        rebuildRows();
         refresh();
+    }
+
+    private void setEffectSpeed(int index, float speed) {
+        if (index < 0 || index >= this.effects.size())
+            return;
+        HologramEffect old = this.effects.get(index);
+        List<HologramEffect> next = new ArrayList<>(this.effects);
+        next.set(index, new HologramEffect(old.type(), old.strength(), speed, old.color()));
+        this.effects = next;
+        rebuildRows();
+        refresh();
+    }
+
+    private void cycleEffectColor(int index, int direction) {
+        if (index < 0 || index >= this.effects.size())
+            return;
+        HologramEffect old = this.effects.get(index);
+        int cur = 0;
+        for (int i = 0; i < TINT_COLORS.length; i++) {
+            if (TINT_COLORS[i] == old.color()) {
+                cur = i;
+                break;
+            }
+        }
+        int nextIdx = Math.floorMod(cur + (direction >= 0 ? 1 : -1), TINT_COLORS.length);
+        List<HologramEffect> next = new ArrayList<>(this.effects);
+        next.set(index, new HologramEffect(old.type(), old.strength(), old.speed(), TINT_COLORS[nextIdx]));
+        this.effects = next;
+        rebuildRows();
+        refresh();
+    }
+
+    private static String colorName(int rgb) {
+        for (int i = 0; i < TINT_COLORS.length; i++) {
+            if (TINT_COLORS[i] == rgb)
+                return TINT_NAMES[i];
+        }
+        return String.format(Locale.ROOT, "#%06X", rgb & 0xFFFFFF);
     }
 
     // ---------------------------------------------------------------- content parts
@@ -610,14 +664,14 @@ public class HologramScreen extends Screen {
         refresh();
     }
 
-    private void adjustPart(int index, float dx, float dy, float dz, float dScale) {
+    private void adjustPart(int index, float dx, float dy, float dz, float dScale, float dYaw) {
         if (index < 0 || index >= this.parts.size())
             return;
         HologramPart old = this.parts.get(index);
         List<HologramPart> next = new ArrayList<>(this.parts);
         next.set(index, new HologramPart(old.kind(), old.id(), old.props(),
                 old.offsetX() + dx, old.offsetY() + dy, old.offsetZ() + dz,
-                old.scale() + dScale, old.yaw()));
+                old.scale() + dScale, old.yaw() + dYaw));
         this.parts = next;
         rebuildRows();
         refresh();
@@ -974,9 +1028,10 @@ public class HologramScreen extends Screen {
             int y = rowY(i);
             boolean hot = isRowHot(mouseX, mouseY, i);
             Object row = this.rows.get(i);
-            boolean selectedPartRow = row instanceof PartRow pr && pr.index() == this.selectedPart;
+            boolean selectedRow = (row instanceof PartRow pr && pr.index() == this.selectedPart)
+                    || (row instanceof EffectRow er && er.index() == this.selectedEffect);
             graphics.fill(this.adjustLeft + 10, y, this.adjustLeft + width - 10, y + ROW_H - 2,
-                    selectedPartRow ? 0x7030607A : (hot ? ROW_BG_HOT : ROW_BG));
+                    selectedRow ? 0x7030607A : (hot ? ROW_BG_HOT : ROW_BG));
 
             int right = this.adjustLeft + width - 10;
             if (row instanceof NumRow num) {
@@ -999,10 +1054,19 @@ public class HologramScreen extends Screen {
                 graphics.drawString(this.font, hint, right - 5 - this.font.width(hint), y + 7,
                         available ? ACCENT : MUTED, false);
             } else if (row instanceof EffectRow effectRow) {
-                String label = effectRow.effect().label();
+                HologramEffect fx = effectRow.effect();
+                String label = fx.label();
                 graphics.drawString(this.font, label, this.adjustLeft + 15, y + 7, TEXT, false);
-                String value = String.format(Locale.ROOT, "%.2f", effectRow.effect().strength());
-                graphics.drawString(this.font, value, right - 5 - this.font.width(value), y + 7, ACCENT, false);
+                if (fx.type() == HologramEffect.Type.TINT) {
+                    String value = String.format(Locale.ROOT, "%.2f", fx.strength());
+                    int vx = right - 5 - this.font.width(value);
+                    graphics.drawString(this.font, value, vx, y + 7, ACCENT, false);
+                    graphics.fill(vx - 14, y + 6, vx - 4, y + 16, 0xFF000000 | fx.color());
+                    graphics.renderOutline(vx - 14, y + 6, 10, 10, BORDER);
+                } else {
+                    String value = String.format(Locale.ROOT, "%.2f  %.1fHz", fx.strength(), fx.speed());
+                    graphics.drawString(this.font, value, right - 5 - this.font.width(value), y + 7, ACCENT, false);
+                }
             } else if (row instanceof AddRow) {
                 String label = this.font.plainSubstrByWidth("Add " + addDescription(), width - 64);
                 graphics.drawString(this.font, label, this.adjustLeft + 15, y + 7, TEXT, false);
@@ -1018,25 +1082,51 @@ public class HologramScreen extends Screen {
             }
         }
 
-        // Inline X / Y / Z / Size fine-adjust strip for the selected part on the Parts tab
+        // Inline X / Y / Z / Size / Yaw fine-adjust strip for the selected part on the Parts tab
         if (this.tab == TAB_PARTS && this.selectedPart >= 0 && this.selectedPart < this.parts.size()) {
             HologramPart p = this.parts.get(this.selectedPart);
             int stripY = this.top + PANEL_H - 96;
             graphics.drawString(this.font, "Selected part (wheel / click):", this.adjustLeft + 12, stripY, MUTED, false);
             int boxY = stripY + 12;
-            int boxW = (width - 20 - 9) / 4;
+            int boxW = (width - 20 - 12) / 5;
             String[] labels = {
-                    String.format(Locale.ROOT, "X %.2f", p.offsetX()),
-                    String.format(Locale.ROOT, "Y %.2f", p.offsetY()),
-                    String.format(Locale.ROOT, "Z %.2f", p.offsetZ()),
-                    String.format(Locale.ROOT, "S %.2f", p.scale())
+                    String.format(Locale.ROOT, "X%.1f", p.offsetX()),
+                    String.format(Locale.ROOT, "Y%.1f", p.offsetY()),
+                    String.format(Locale.ROOT, "Z%.1f", p.offsetZ()),
+                    String.format(Locale.ROOT, "S%.1f", p.scale()),
+                    String.format(Locale.ROOT, "R%.0f", p.yaw())
             };
-            for (int c = 0; c < 4; c++) {
+            for (int c = 0; c < 5; c++) {
                 int bx = this.adjustLeft + 10 + c * (boxW + 3);
                 boolean hot = mouseX >= bx && mouseX < bx + boxW && mouseY >= boxY && mouseY < boxY + 20;
                 graphics.fill(bx, boxY, bx + boxW, boxY + 20, hot ? ROW_BG_HOT : ROW_BG);
                 graphics.drawString(this.font, this.font.plainSubstrByWidth(labels[c], boxW - 4),
-                        bx + 3, boxY + 6, ACCENT, false);
+                        bx + 2, boxY + 6, ACCENT, false);
+            }
+        }
+
+        // Inline Strength + Color/Speed fine-adjust strip for the selected effect on the FX tab
+        if (this.tab == TAB_FX && this.selectedEffect >= 0 && this.selectedEffect < this.effects.size()) {
+            HologramEffect fx = this.effects.get(this.selectedEffect);
+            int stripY = this.top + PANEL_H - 96;
+            graphics.drawString(this.font, fx.label() + " (wheel / click):", this.adjustLeft + 12, stripY, MUTED, false);
+            int boxY = stripY + 12;
+            int boxW = (width - 20 - 4) / 2;
+            for (int c = 0; c < 2; c++) {
+                int bx = this.adjustLeft + 10 + c * (boxW + 4);
+                boolean hot = mouseX >= bx && mouseX < bx + boxW && mouseY >= boxY && mouseY < boxY + 20;
+                graphics.fill(bx, boxY, bx + boxW, boxY + 20, hot ? ROW_BG_HOT : ROW_BG);
+                if (c == 0) {
+                    String lbl = String.format(Locale.ROOT, "Str %.2f", fx.strength());
+                    graphics.drawString(this.font, lbl, bx + 4, boxY + 6, ACCENT, false);
+                } else if (fx.type() == HologramEffect.Type.TINT) {
+                    graphics.fill(bx + 4, boxY + 5, bx + 14, boxY + 15, 0xFF000000 | fx.color());
+                    graphics.renderOutline(bx + 4, boxY + 5, 10, 10, BORDER);
+                    graphics.drawString(this.font, colorName(fx.color()), bx + 18, boxY + 6, ACCENT, false);
+                } else {
+                    String lbl = String.format(Locale.ROOT, "Spd %.1fHz", fx.speed());
+                    graphics.drawString(this.font, lbl, bx + 4, boxY + 6, ACCENT, false);
+                }
             }
         }
 
@@ -1090,6 +1180,9 @@ public class HologramScreen extends Screen {
         if (clickSelectedPartStrip(mouseX, mouseY, button))
             return true;
 
+        if (clickSelectedEffectStrip(mouseX, mouseY, button))
+            return true;
+
         for (int i = 0; i < this.rows.size(); i++) {
             if (!isRowHot((int) mouseX, (int) mouseY, i))
                 continue;
@@ -1107,9 +1200,11 @@ public class HologramScreen extends Screen {
             if (row instanceof EffectRow effectRow) {
                 if (button == 1)
                     removeEffect(effectRow.index());
-                else
+                else if (this.selectedEffect == effectRow.index())
                     setEffectStrength(effectRow.index(),
                             effectRow.effect().strength() + 0.1F * STEPS[this.stepIndex]);
+                else
+                    this.selectedEffect = effectRow.index();
                 return true;
             }
             if (row instanceof AddRow) {
@@ -1166,8 +1261,8 @@ public class HologramScreen extends Screen {
             return false;
         int width = adjustWidth();
         int boxY = this.top + PANEL_H - 84;
-        int boxW = (width - 20 - 9) / 4;
-        for (int c = 0; c < 4; c++) {
+        int boxW = (width - 20 - 12) / 5;
+        for (int c = 0; c < 5; c++) {
             int bx = this.adjustLeft + 10 + c * (boxW + 3);
             if (mouseX >= bx && mouseX < bx + boxW && mouseY >= boxY && mouseY < boxY + 20) {
                 int dir = button == 1 ? -1 : 1;
@@ -1176,7 +1271,31 @@ public class HologramScreen extends Screen {
                         c == 0 ? step : 0.0F,
                         c == 1 ? step : 0.0F,
                         c == 2 ? step : 0.0F,
-                        c == 3 ? 0.1F * STEPS[this.stepIndex] * dir : 0.0F);
+                        c == 3 ? 0.1F * STEPS[this.stepIndex] * dir : 0.0F,
+                        c == 4 ? 15.0F * STEPS[this.stepIndex] * dir : 0.0F);
+                return true;
+            }
+        }
+        return false;
+    }
+
+    private boolean clickSelectedEffectStrip(double mouseX, double mouseY, int button) {
+        if (this.tab != TAB_FX || this.selectedEffect < 0 || this.selectedEffect >= this.effects.size())
+            return false;
+        int width = adjustWidth();
+        int boxY = this.top + PANEL_H - 84;
+        int boxW = (width - 20 - 4) / 2;
+        HologramEffect fx = this.effects.get(this.selectedEffect);
+        for (int c = 0; c < 2; c++) {
+            int bx = this.adjustLeft + 10 + c * (boxW + 4);
+            if (mouseX >= bx && mouseX < bx + boxW && mouseY >= boxY && mouseY < boxY + 20) {
+                int dir = button == 1 ? -1 : 1;
+                if (c == 0)
+                    setEffectStrength(this.selectedEffect, fx.strength() + 0.1F * STEPS[this.stepIndex] * dir);
+                else if (fx.type() == HologramEffect.Type.TINT)
+                    cycleEffectColor(this.selectedEffect, dir);
+                else
+                    setEffectSpeed(this.selectedEffect, fx.speed() + 0.5F * STEPS[this.stepIndex] * dir);
                 return true;
             }
         }
@@ -1400,8 +1519,8 @@ public class HologramScreen extends Screen {
         if (this.tab == TAB_PARTS && this.selectedPart >= 0 && this.selectedPart < this.parts.size()) {
             int width = adjustWidth();
             int boxY = this.top + PANEL_H - 84;
-            int boxW = (width - 20 - 9) / 4;
-            for (int c = 0; c < 4; c++) {
+            int boxW = (width - 20 - 12) / 5;
+            for (int c = 0; c < 5; c++) {
                 int bx = this.adjustLeft + 10 + c * (boxW + 3);
                 if (mouseX >= bx && mouseX < bx + boxW && mouseY >= boxY && mouseY < boxY + 20) {
                     float step = 0.25F * STEPS[this.stepIndex] * direction;
@@ -1409,7 +1528,28 @@ public class HologramScreen extends Screen {
                             c == 0 ? step : 0.0F,
                             c == 1 ? step : 0.0F,
                             c == 2 ? step : 0.0F,
-                            c == 3 ? 0.1F * STEPS[this.stepIndex] * direction : 0.0F);
+                            c == 3 ? 0.1F * STEPS[this.stepIndex] * direction : 0.0F,
+                            c == 4 ? 15.0F * STEPS[this.stepIndex] * direction : 0.0F);
+                    return true;
+                }
+            }
+        }
+
+        // Selected effect fine-adjust strip
+        if (this.tab == TAB_FX && this.selectedEffect >= 0 && this.selectedEffect < this.effects.size()) {
+            int width = adjustWidth();
+            int boxY = this.top + PANEL_H - 84;
+            int boxW = (width - 20 - 4) / 2;
+            HologramEffect fx = this.effects.get(this.selectedEffect);
+            for (int c = 0; c < 2; c++) {
+                int bx = this.adjustLeft + 10 + c * (boxW + 4);
+                if (mouseX >= bx && mouseX < bx + boxW && mouseY >= boxY && mouseY < boxY + 20) {
+                    if (c == 0)
+                        setEffectStrength(this.selectedEffect, fx.strength() + 0.1F * STEPS[this.stepIndex] * direction);
+                    else if (fx.type() == HologramEffect.Type.TINT)
+                        cycleEffectColor(this.selectedEffect, direction);
+                    else
+                        setEffectSpeed(this.selectedEffect, fx.speed() + 0.5F * STEPS[this.stepIndex] * direction);
                     return true;
                 }
             }
@@ -1429,7 +1569,7 @@ public class HologramScreen extends Screen {
             else if (row instanceof AddRow)
                 cyclePick(direction);
             else if (row instanceof PartRow partRow)
-                adjustPart(partRow.index(), 0.0F, direction * 0.25F * STEPS[this.stepIndex], 0.0F, 0.0F);
+                adjustPart(partRow.index(), 0.0F, direction * 0.25F * STEPS[this.stepIndex], 0.0F, 0.0F, 0.0F);
             return true;
         }
         return false;
@@ -1629,8 +1769,21 @@ public class HologramScreen extends Screen {
         else if (row instanceof AddRow)
             cyclePick(direction);
         else if (row instanceof PartRow partRow)
-            adjustPart(partRow.index(), 0.0F, direction * 0.25F * STEPS[this.stepIndex], 0.0F, 0.0F);
+            adjustPart(partRow.index(), 0.0F, direction * 0.25F * STEPS[this.stepIndex], 0.0F, 0.0F, 0.0F);
         return true;
+    }
+
+    /** Dev-check hook: cycles tint color or adjusts speed on an effect layer. */
+    public void devCycleEffectColor(int index, int direction) {
+        cycleEffectColor(index, direction);
+    }
+
+    public void devSetEffectSpeed(int index, float speed) {
+        setEffectSpeed(index, speed);
+    }
+
+    public void devRotatePart(int index, float deltaYaw) {
+        adjustPart(index, 0.0F, 0.0F, 0.0F, 0.0F, deltaYaw);
     }
 
     /** Dev-check hook: adds a part of the current pick, exactly as clicking the Add row does. */

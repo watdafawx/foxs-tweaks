@@ -1,5 +1,20 @@
 # Changelog
 
+## 1.38.0
+
+- **Hologram editor & renderer overhaul**:
+  - **3D viewport controls**: right-click drag (or left-click drag empty viewport) turns the player camera while the editor is open; 3D Move (`G`), Rotate (`R`), and Scale (`S`) gizmos project over the hologram with `Shift` for free precision and `Ctrl+Z` undo.
+  - **Origin offset**: holograms can now move freely off their anchor block (`offsetX/Y/Z`, ±16 blocks) via the 3D Move gizmo or the `Move` tab (`Zero` button / right-click resets to 0). Picking, outline, frustum culling, appear radius and particles all follow the offset.
+  - **Entity & particle pickers**: the left panel now has **`Block` | `Entity` | `Partcl`** mode tabs with search, spawn-egg icons for entities, and double-click / `+ Add` to add parts.
+  - **Working draggable scrollbar**: click track to jump, drag thumb to scroll, or scroll wheel over the track across all three pickers.
+  - **Per-part & per-effect fine controls**: selecting a part on `Parts` exposes inline `X / Y / Z / Size / Yaw` controls; selecting an effect on `FX` exposes `Strength` plus **Tint color presets** (9 colours with swatch) or **Speed (Hz)** for animated effects.
+  - **Fixed half-rendering / missing modded blocks (Ad Astra, BER + ModelData)**:
+    - `EntityBlock`s picked fresh from the picker now instantiate a default client-side `BlockEntity` even with empty NBT so blocks with both a model and a BER (Ad Astra Oxygen Distributor, Gravity Normalizer, Energizer, etc.) draw both halves, and `RenderShape.INVISIBLE` `EntityBlock`s (flags, sliding doors, banners, beds) appear in the block picker.
+    - Client-side hologram block entities now tick properly, pass `BlockEntity#getModelData()` to `renderSingleBlock`, invalidate cache on blockstate property changes, and guard modded BER/ticker calls against crashes.
+    - Wand placement now preserves the clicked block's blockstate properties.
+  - **Generic `getUpdateTag` capture & BE data controls**: server captures `BlockEntity#getUpdateTag` alongside `saveWithoutMetadata` and replays `handleUpdateTag` client-side, reproducing client visual state (including powered **AE2 Drives** and cell models) with no per-mod shims. `Share` tab now has `Re-capture BE data` and `Clear BE data`.
+  - *(Note: the 1.37.0 release notes still said "no block entity" in one bullet; holograms do carry captured block entity data client-side without adding a block entity to the world.)*
+
 ## 1.37.0
 
 - Added **holograms**: the craftable *Hologram Wand* projects a block into the world as decoration.
