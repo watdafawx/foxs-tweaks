@@ -98,6 +98,32 @@ public final class ServerConfig {
 
     static {
         BUILDER.pop();
+        BUILDER.push("holograms");
+    }
+
+    public static final ModConfigSpec.BooleanValue HOLOGRAMS_ENABLED = BUILDER
+            .comment(
+                    "Allow the Hologram Wand to place holograms. Holograms are decoration only: a block shape drawn",
+                    "at a spot, with no collision, no light, no ticking and nothing to break.",
+                    "Turn this off to remove the feature without removing the mod.")
+            .define("hologramsEnabled", true);
+
+    public static final ModConfigSpec.IntValue HOLOGRAMS_MAX_PER_DIMENSION = BUILDER
+            .comment(
+                    "How many holograms one dimension may hold. 0 = unlimited.",
+                    "Each hologram is one saved row and one model draw per frame while it is on screen, so the",
+                    "cost is entirely in how many are visible at once.")
+            .defineInRange("hologramsMaxPerDimension", 256, 0, 10000);
+
+    public static final ModConfigSpec.IntValue HOLOGRAMS_MAX_RENDER_DISTANCE = BUILDER
+            .comment(
+                    "The furthest a single hologram may be set to render from, in blocks. The editor's range",
+                    "control is capped to this, so a player cannot make a giant hologram that every client in",
+                    "the area has to draw from the far side of the map.")
+            .defineInRange("hologramsMaxRenderDistance", 256, 16, 512);
+
+    static {
+        BUILDER.pop();
     }
 
     public static final ModConfigSpec SPEC = BUILDER.build();
@@ -141,6 +167,18 @@ public final class ServerConfig {
 
     public static int spawnAnchorsTierPlayerRange() {
         return loaded() ? SPAWN_ANCHORS_TIER_PLAYER_RANGE.get() : 128;
+    }
+
+    public static boolean hologramsEnabled() {
+        return !loaded() || HOLOGRAMS_ENABLED.get();
+    }
+
+    public static int hologramsMaxPerDimension() {
+        return loaded() ? HOLOGRAMS_MAX_PER_DIMENSION.get() : 256;
+    }
+
+    public static int hologramsMaxRenderDistance() {
+        return loaded() ? HOLOGRAMS_MAX_RENDER_DISTANCE.get() : 256;
     }
 
     private ServerConfig() {

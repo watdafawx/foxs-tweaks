@@ -110,6 +110,10 @@ quality-of-life features sharing a jar, among them:
     force-load a chunk square, run random ticks (Dreadful Dirt, crops), activate spawners and stop mobs despawning.
     It can also carry its owner's Apotheosis world tier. See
     [Mob & Chunk Loader and Apotheosis tiers](#mob--chunk-loader-and-apotheosis-tiers-anchor-and-anchortier).
+25. **Holograms** — the craftable *Hologram Wand* projects a block into the world as decoration: no collision, no
+    light, no ticking. The editor exposes the block's own blockstate properties, so every variant is reachable,
+    plus scale/rotation/spin/hover/glow/render distance. See
+    [Holograms](#holograms-hologram-holograms-hologramitem-hologramclient-hologramrenderer-hologramscreen).
 
 **Every parent mod is optional.** The mod must load and behave correctly with either, both, or
 neither installed. This is the single most important invariant in the codebase — see
@@ -920,6 +924,125 @@ the spot, so a single-block pile reports zero bosses and looks like a broken hoo
 is filtered**, so its `APOTH_DEBUG_MOBS` branch prints nothing useful — reproduce the gates in the check instead
 (the `invader sample` line does that).
 
+### Holograms (`hologram/*`, `client/Hologram{Client,Renderer,Screen}`)
+
+A hologram is a block drawn in world as decoration: no collision, no light, no block entity, no tick, nothing
+to break. That is not a special case - it is the whole design. `HologramSpec` is one saved row, `HologramData`
+is a per-dimension `SavedData`, and `HologramRenderer` draws it with a single `BlockRenderDispatcher#renderSingleBlock`
+call at `AFTER_TRANSLUCENT_BLOCKS`. An idle hologram costs nothing; a visible one costs one model draw.
+
+**Everything is server-authoritative and nothing in the world exists to click.** `HologramPick` ray-tests the
+player's eye/look against the stored `AABB`s, and both sides run it: the server to decide what a right-click did,
+the client to draw the outline. That is why there is no marker entity (unlike the Mob & Chunk Loader's armor
+stand) and no client-sent id the server has to trust.
+
+**The state picker is generic, and that is the point.** `HologramStates` turns a block name plus
+property/value pairs back into a `BlockState` and lists its properties one at a time. Never enumerate
+`BlockState`s: redstone wire has 1296 of them and glow lichen 1024. AE2's controller is the shape this was
+built for - `state` (`offline`/`online`/`conflicted`) x `type` (`block`/`column_x|y|z`/`inside_a|b`), a plain
+multipart model, with the pulsing lights baked into `controller_lights.png.mcmeta`. Its animation therefore
+runs anywhere the model is drawn, with no AE2 code and no block entity renderer. Verified against AE2 19.2.18.
+
+**Not covered (next phase):** block entity renderers. `HologramScreen` filters the picker to
+`RenderShape.MODEL` blocks, so chests/signs/ber-only blocks are simply absent rather than drawing nothing.
+A BE tier needs a fake `ClientLevel`, `BlockEntityType#create(pos, state)` and manual ticking; treat it as
+risky and keep it behind its own toggle.
+
+**Live preview, no packet per click.** The open editor pushes its edited copy through
+`HologramClient#setPreview`, which the world renderer substitutes for the saved row by id. `Done` sends
+`HologramActionPayload` (registrar `"1"`, `optional()`), `Delete` sends the same payload with `DELETE`, and
+closing with Esc drops the preview. The client is never trusted for identity: the server rebuilds the spec
+from the stored row and only takes the presentation fields.
+
+**The editor is two small edge panels, and the middle of the screen is deliberately empty.** One window
+wide enough for a block grid plus every control covered half the screen at a normal GUI scale, which
+defeats the point of editing something you are looking at. So: block grid + its blockstate properties on the
+left, values on the right (`Look` / `Motion` / `Display` tabs), and the hologram visible between them. Both
+panel widths and the grid's column count come from the screen width (`HologramScreen#init`), and the dev
+check asserts the gap stays >= 90px, because a layout that only fits one GUI scale is a bug waiting for
+someone to play at scale 4.
+
+Two more things that are not cosmetic:
+
+- **`renderBackground` is overridden to a light tint on purpose.** Vanilla's screen background blurs the
+  world, which makes the live preview unreadable. If a future change reinstates `renderBackground`, the
+  editor goes back to being useless. (Drawing into the blur stratum also washes the panel out, since the
+  blur is applied at the next flush.)
+- **Every numeric row takes the mouse wheel**, and one `Step` multiplier (x1/x2/x5/x10) scales all of them:
+  the natural increment differs per field (size 0.25, angles 15 degrees, range 8 blocks), so scrolling must
+  be fast when roughing in and fine when fixing. Property rows in the block panel cycle under the wheel too.
+  `Display > Preview in front` additionally draws the edited hologram a few blocks in front of the camera
+  (`HologramRenderer#drawAnchoredPreview`), for when the real one is behind you or out of view.
+
+**Effects are pose and colour maths, not a shader.** `HologramEffect` is a list of layers (TINT, FLICKER,
+TREMOR, WOBBLE, JUMP) and `HologramAnim` is every curve as a pure function of time, kept out of the renderer
+so the dev check can assert the maths directly. Deliberate limits, all of them because a real post-process
+would need a framebuffer per hologram and would fight every shader pack:
+
+- **No alpha fade.** Most block render types do not blend, so alpha is ignored. `FLICKER` hides whole frames
+  instead, and the walk-in animation is geometry (grow + settle), not transparency.
+- **TINT is a vertex-colour multiply** (`client/TintedBuffer` wraps the `MultiBufferSource` and scales
+  `setColor`). One multiply per vertex, no second pass, no render-type swap.
+- **No true distortion/warp.** `WOBBLE` oscillates scale and `TREMOR` jitters rotation; both read as a
+  wobbling projection without needing to sample the screen.
+
+**Walk-in reveal is client-side.** `appearRadius` (0 = always visible) plus a fixed 0.6 s grow-in:
+`HologramClient#updateAppear` advances a per-hologram progress toward whether any player is inside the
+radius, and the renderer scales/raises the hologram by the eased progress. Nothing is sent to the server -
+each client animates its own copy, which is the only correct behaviour when different players are near
+different holograms.
+
+**Measured cost** (`runHologramCheck`, rig, 1920x1080, 48 holograms all in view at once):
+`48 plain 132 us/frame`, `48 with 4 effect layers each 135 us/frame`, `after removal 4 us` - i.e. ~2.7 us of
+CPU per visible hologram, and the effect layers are inside the noise. Measure the pass, not the frame: the
+frame sat at 8.44 ms in every round because the window is vsynced/GPU-bound, which made whole-frame timing
+useless. `HologramRenderer#lastPassNanos` is what the benchmark reads.
+
+**Content parts: one hologram can hold a block, an entity and particles at once.** `HologramPart` is a list on
+the spec, and offsets are **fractional blocks** (`float`), unlike the hologram's own `BlockPos` - that is the
+whole reason the type exists, because "a zombie standing on a pedestal, with sparks at its feet" cannot be
+expressed with three holograms a block apart, and three separate holograms cannot stay in step when they
+flicker or grow in. The parent keeps transform, effects and appear radius; a part only says what it is, where
+it sits, how big and which way it faces (`HologramPart.MAX_PARTS` = 4).
+
+- **The base block stays special** (`block` + `props`, driven by the block grid). A hologram whose base is
+  `minecraft:air` is legal and draws only its parts - that is how you make an entity-only display
+  (`/foxstweaks hologram add minecraft:air`, then add an entity part). `HologramStates#blockName` exists for
+  that: `nameOf` answers `""` for air, which would make `fromTag` reject the row.
+- **Entity parts are real entities that are never added to the level** (`client/HologramEntities`): one cached
+  instance per type, `setPos` + a synthetic `tickCount` for idle animation, `setNoGravity`, and
+  `EntityRenderDispatcher#prepare` called before `render` because nametag renderers read the camera. No AI, no
+  ticking, no collisions, nothing saved. Creating an instance per draw would allocate at frame rate.
+- **Particle parts spawn from the client tick, not the render pass** (`HologramClient#emitParticles`): particles
+  are stateful, so adding them per frame would multiply the count by the frame rate. Every other tick is 10/s
+  per part. Only `SimpleParticleType` entries are offered; block/item particles need an options object the
+  editor cannot fill in yet.
+- **Editor**: the Parts tab has one "Add" row (wheel picks the entry, right-click changes block/entity/particle,
+  click adds) and one row per part (wheel = 0.25-block vertical nudge, click = cycle centre/4 sides, right-click
+  = remove). New parts start on top of the base (`offsetY = scale`) because a 2.5x hologram swallows anything
+  placed at y=1.
+
+**Batching was measured, not assumed - and it would not pay.** 48 identical blocks cost ~120 us/frame of CPU;
+the same 48 with 48 *distinct* models cost ~160-188 us. The difference is more quads per model and more render
+types, not model lookup, so batching by state (which can only merge identical states) has nothing to give back.
+Per-draw cost is vertex emission: ~2.5 us per visible hologram. What *does* pay is **frustum culling**
+(`event.getFrustum().isVisible(spec.box())` before any pose work): 48 holograms behind the player cost ~2 us,
+i.e. nothing. The dev check measures all four rounds and fails if the numbers move the wrong way.
+
+**Config**: server `hologramsEnabled`, `hologramsMaxPerDimension`, `hologramsMaxRenderDistance`; common
+`hologramRenderCap` (a client-side ceiling over every hologram's own range). All four need labels, which the
+config-check dev run asserts.
+
+**Dev check**: `build.bat runHologramCheck` (game dir `run-hologram/`; put AE2 + GuideME in `mods/` for the
+`ae2:controller` half). `client/dev/HologramCheck` creates a hologram through the real command, opens the real
+editor through the real command, asserts the panel gap, the wheel+Step arithmetic, the property cycle, the
+effect layers and the appear radius, saves, asserts the server took the change, walks out of and back into the
+appear radius, then benchmarks 48 holograms (plain, with four effect layers, and after removal) and writes
+the report. Screenshots: editor tabs, effect tab, world views, AE2. Report + screenshots: `run-hologram/`.
+The screen exposes `current()`, `currentProperties()`, `devCycleProperty`, `devSetScale`, `devSetSpin`,
+`devTab`, `devStepIndex`, `devRowCount`, `devScrollRow`, `devRemoveEffect`, `devGridCols` and `devFreeWidth`.
+Screenshots land in `run-hologram/screenshots/`, not the run root.
+
 ### Search box assist (`client/search/*`, `mixin/EditBoxSearchAssistMixin`)
 
 One mixin on vanilla `EditBox` (every mod's search field is one, or a subclass) instead of a patch per mod.
@@ -1101,7 +1224,8 @@ chest. With it off, 167 errors in 10 s and the entry stayed. Against ApotSpawner
 - **Solve-on-pickup requires the mod server-side.** `ResearchData.complete()` writes a
   server-authoritative data attachment and refuses anything that is not a `ServerPlayer`.
   Singleplayer runs an integrated server in-process, so a client-only install still works there.
-- The mod adds **no blocks, items, entities or recipes**, but it does ship some data: the
+- The mod adds **no blocks and no entities**. It does add two craftable items with recipes (the Mob & Chunk
+  Loader dummy and the Hologram Wand) and ships some data: the
   `foxstweaks:overworld_copy` dimension (datapack, behind the `overworldCopy` load condition), the two
   Curios slot definitions (behind `neoforge:mod_loaded`), and the stale-mixin guard. Config is `COMMON`
   plus a `SERVER` file (the portal frame, instant/flat/dye keys). Every network

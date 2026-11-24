@@ -1,5 +1,24 @@
 # Changelog
 
+## Unreleased
+
+- Added **holograms**: the craftable *Hologram Wand* projects a block into the world as decoration.
+  - Right-click a block to project a hologram of it on the face you touched and open the editor; right-click an existing hologram to edit it; sneak + right-click it to remove it.
+  - Show only by design: no collision, no light, no block entity, no tick, nothing to break. A hologram is one saved row and one model draw per frame while it is on screen.
+  - The editor lists the block's own blockstate properties as clickable rows (`state: online`, `type: block`, `facing: north`, ...), so any block's variants are reachable - including **AE2's controller**, whose animated lights are an animated texture on its normal model and whose `offline`/`online`/`conflicted` states are two enum properties. No AE2-specific code.
+  - Per-hologram scale, yaw/pitch/roll, spin speed and axis, hover height and period, glow, and render distance.
+  - The editor is **two small panels on the screen edges** (block grid + blockstate properties on the left, values on the right under `Look`/`Move`/`FX`/`Share` tabs) with the middle left clear, so you can see the hologram while you edit it. Every value takes the **mouse wheel**, with a `Step x1/x2/x5/x10` multiplier, and `Share > Preview in front` draws a copy a few blocks ahead for when the real one is behind you.
+  - **Copy/paste**: `Share > Copy settings` keeps a hologram's block, states, transform, effects and range; `Paste settings` applies it to the one you have open, `Paste as new` drops a copy in front of you, and **sneak + right-click a block** with the wand pastes one there directly. The clipboard is per-session.
+  - **FX tab**: stack up to four effect layers - `Tint` (vertex-colour multiply, default cyan), `Flicker` (hides frames, like a failing projector), `Tremor` (rotation jitter), `Wobble` (slow scale breathing), `Jump` (mistimed vertical snap). Wheel changes a layer's strength, right-click removes it.
+  - **Walk-in reveal**: `Appear radius` (0 = always on) grows the hologram in when a player comes within range and out again when they leave, with a 0.6 s ease. Client-side, so every player sees their own approach.
+  - **Parts tab**: one hologram can hold a block **and** an entity **and** particles at the same time. Each part has fractional offsets (0.25-block nudges), its own scale and facing, and inherits the parent's transform, effects and appear radius - so a flickering display flickers as one object instead of three. Entity parts are real entities that are never added to the level (no AI, no ticking, no collisions); particles spawn client-side at 10/s per part. A base of `minecraft:air` gives an entity-only hologram.
+  - **Batching: measured and rejected.** 48 identical blocks ~120 us/frame; 48 distinct models ~160-188 us - the cost is vertex emission, not model lookup, so state batching cannot help. What did help is **frustum culling**: 48 holograms behind you now cost ~2 us.
+  - Server config: `hologramsEnabled`, `hologramsMaxPerDimension`, `hologramsMaxRenderDistance`. Client config: `hologramRenderCap`.
+  - Admin: `/foxstweaks hologram add|remove|list|edit|tp`.
+  - **Perf** (dev check, rig, 48 holograms all in view): 132 us/frame of CPU plain, 135 us with four effect layers each, 4 us after removal - ~2.7 us per visible hologram, effects inside the noise.
+  - Dev check: `build.bat runHologramCheck` (game dir `run-hologram/`; put AE2 + GuideME in `mods/` to cover `ae2:controller`). Report, screenshots and the perf numbers land in `run-hologram/`.
+  - **Not yet**: block entity renderers (chests, signs, AE2 drive LEDs) draw nothing - only blocks with a real model are pickable; entities and particles are the next phase.
+
 ## 1.36.1
 
 - The settings screen is now **grouped into sections** instead of one long list: common (Relics, World, Apotheosis, Nearby Storage, Performance, Mod Integrations, Misc) and server (Overworld Copy Portals, Performance, Mob & Chunk Loader), each opened from its own row. **Settings written by an older version fall back to their defaults once**, because every key moved under its section in the toml; set anything you had changed again.

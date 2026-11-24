@@ -716,6 +716,22 @@ public final class Config {
         BUILDER.pop();
     }
 
+    // ---- holograms ----
+    static {
+        BUILDER.push("holograms");
+    }
+
+    public static final ModConfigSpec.IntValue HOLOGRAM_RENDER_CAP = BUILDER
+            .comment(
+                    "Client-side ceiling on how far away a hologram is drawn, in blocks. A hologram's own range",
+                    "sets the distance the player wants; this caps every one of them at once, so a big display",
+                    "can be made cheaper without editing each hologram.")
+            .defineInRange("hologramRenderCap", 256, 16, 512);
+
+    static {
+        BUILDER.pop();
+    }
+
     public static final ModConfigSpec SPEC = BUILDER.build();
 
     /**
@@ -761,6 +777,10 @@ public final class Config {
         PERF_OVERLAY_OFFSET_X.set(offsetX);
         PERF_OVERLAY_OFFSET_Y.set(offsetY);
         SPEC.save();
+    }
+
+    public static int hologramRenderCap() {
+        return SPEC.isLoaded() ? HOLOGRAM_RENDER_CAP.get() : 256;
     }
 
     private Config() {

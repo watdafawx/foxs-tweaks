@@ -52,6 +52,7 @@ public class FoxsTweaks {
         modBus.addListener(dev.watdafawx.foxstweaks.shrink.ShrinkNetwork::register);
         modBus.addListener(dev.watdafawx.foxstweaks.perf.PerfNetwork::register);
         modBus.addListener(dev.watdafawx.foxstweaks.anchor.AnchorNetwork::register);
+        modBus.addListener(dev.watdafawx.foxstweaks.hologram.HologramNetwork::register);
 
         FoxsTweaksComponents.COMPONENTS.register(modBus);
         FoxsTweaksItems.init(modBus);
@@ -61,6 +62,10 @@ public class FoxsTweaks {
 
         if (FMLEnvironment.dist.isClient())
             modBus.addListener(dev.watdafawx.foxstweaks.client.PortalTint::register);
+
+        // Hologram rendering + editor. Client only; the server half lives in `hologram/Holograms`.
+        if (FMLEnvironment.dist.isClient())
+            dev.watdafawx.foxstweaks.client.HologramClient.init();
 
         // Settings screen (Mods list "Config" button + hotkey).
         if (FMLEnvironment.dist.isClient())
@@ -123,6 +128,10 @@ public class FoxsTweaks {
         // Dev-only end-to-end check of virtual spawn anchors; `build.bat runAnchorCheck` sets the property.
         if (FMLEnvironment.dist.isClient() && !FMLEnvironment.production && Boolean.getBoolean("foxstweaks.anchorCheck"))
             dev.watdafawx.foxstweaks.client.dev.AnchorCheck.install();
+
+        // Dev-only end-to-end check of holograms; `build.bat runHologramCheck` sets the property.
+        if (FMLEnvironment.dist.isClient() && !FMLEnvironment.production && Boolean.getBoolean("foxstweaks.hologramCheck"))
+            dev.watdafawx.foxstweaks.client.dev.HologramCheck.install();
 
         // Dev-only check that an anchor carries its owner's Apotheosis world tier; `build.bat runAnchorTierCheck`.
         if (FMLEnvironment.dist.isClient() && !FMLEnvironment.production && Boolean.getBoolean("foxstweaks.anchorTierCheck"))

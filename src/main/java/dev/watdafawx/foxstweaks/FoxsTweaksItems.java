@@ -15,6 +15,9 @@ public final class FoxsTweaksItems {
     public static final DeferredItem<Item> SPAWN_ANCHOR = ITEMS.register("spawn_anchor",
             () -> new SpawnAnchorItem(new Item.Properties().stacksTo(16)));
 
+    public static final DeferredItem<Item> HOLOGRAM_WAND = ITEMS.register("hologram_wand",
+            () -> new dev.watdafawx.foxstweaks.hologram.HologramItem(new Item.Properties().stacksTo(1)));
+
     public static void init(IEventBus modBus) {
         ITEMS.register(modBus);
         modBus.addListener(FoxsTweaksItems::onCreativeTabs);
@@ -23,6 +26,7 @@ public final class FoxsTweaksItems {
     private static void onCreativeTabs(BuildCreativeModeTabContentsEvent event) {
         if (event.getTabKey() == CreativeModeTabs.FUNCTIONAL_BLOCKS) {
             event.accept(SPAWN_ANCHOR.get());
+            event.accept(HOLOGRAM_WAND.get());
         }
     }
 

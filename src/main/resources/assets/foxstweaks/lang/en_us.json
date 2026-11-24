@@ -158,5 +158,16 @@
   "item.foxstweaks.spawn_anchor.desc4": "Right-click to toggle or change radius. Sneak + Left-click to pick up.",
   "screen.foxstweaks.spawn_anchor.title": "Mob & Chunk Loader",
   "screen.foxstweaks.spawn_anchor.subtitle": "Ticks spawners, Dreadful Dirt & keeps mobs",
-  "screen.foxstweaks.spawn_anchor.pickup": "Pick Up Loader"
+  "screen.foxstweaks.spawn_anchor.pickup": "Pick Up Loader",
+  "item.foxstweaks.hologram_wand": "Hologram Wand",
+  "item.foxstweaks.hologram_wand.desc1": "Projects a decorative hologram of any block:",
+  "item.foxstweaks.hologram_wand.desc2": " Right-click a block to project it and open the editor",
+  "item.foxstweaks.hologram_wand.desc3": " Right-click a hologram to edit it, sneak + right-click to remove",
+  "item.foxstweaks.hologram_wand.desc4": "Show only: no collision, no light, nothing to break.",
+  "screen.foxstweaks.hologram.title": "Hologram",
+  "foxstweaks.configuration.holograms": "Holograms",
+  "foxstweaks.configuration.hologramsEnabled": "Holograms Enabled",
+  "foxstweaks.configuration.hologramsMaxPerDimension": "Holograms Max Per Dimension",
+  "foxstweaks.configuration.hologramsMaxRenderDistance": "Hologram Max Render Distance",
+  "foxstweaks.configuration.hologramRenderCap": "Hologram Render Cap"
 }
