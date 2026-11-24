@@ -1,5 +1,17 @@
 # Changelog
 
+## 1.41.0
+
+- **Holograms: stackable animations on layers and groups.** The Anim tab is now a list instead of one Spin and one Hover:
+  - Add as many as you like to a layer or a group: **Spin, Sway, Bob, Orbit, Slide, Breathe, Heartbeat, Flip, Bounce**. The same one can be added twice on different axes (Spin on X *and* Y), each with its own amount, speed (Hz), phase and axis. Up to 12 per target.
+  - **Entity animations** for entity layers and groups: **Walk, Attack, Hurt, Death, Sneak** play the entity's own game animation.
+  - **Presets** (`~Float`, `~Coin`, `~Orbit`, `~Roll`, `~Beat`, `~Hop`), **Copy / Paste anims** between layers and groups, and a button that converts an old single Spin/Hover into list entries. Old holograms keep working unchanged.
+  - Editor top bar: **Pause / Play** and **T=0** to scrub the animation clock while editing.
+- **Holograms: editor camera starts framed.** Creating or editing no longer drops the camera inside your head: it starts behind and above, looking at the hologram. **F** re-frames it.
+- **Holograms: chat works while editing.** Press the chat key (or `/` for a command) in the editor; closing chat puts you back in the same editor with your edits and undo history.
+- **Holograms: smoother animation.** Entity layers aged with the hologram clock but interpolated with the game's partial tick, so idle animations jumped back a few times a second. They now use one clock. Rig check: 710 frames, none backwards or stalled, age tracks real time within 1%.
+- Dev check `runHologramCheck` grew an editor-UI section (real button clicks, camera framing, chat round trip) and a frame-smoothness section.
+
 ## 1.40.0
 
 - **FPS hotspots: report screen, by-type totals, clickable chat, clearer overlay** (`/foxstweaks fps`):

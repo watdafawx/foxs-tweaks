@@ -1,6 +1,7 @@
 package dev.watdafawx.foxstweaks.client;
 
 import com.mojang.blaze3d.vertex.PoseStack;
+import dev.watdafawx.foxstweaks.hologram.HologramEffect;
 import dev.watdafawx.foxstweaks.hologram.HologramLayer;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.renderer.MultiBufferSource;
@@ -10,9 +11,14 @@ import net.minecraft.core.registries.Registries;
 import net.minecraft.resources.ResourceLocation;
 import net.minecraft.world.entity.Entity;
 import net.minecraft.world.entity.EntityType;
+import net.minecraft.world.entity.LivingEntity;
+import net.minecraft.world.entity.Pose;
+import net.minecraft.world.InteractionHand;
 
 import javax.annotation.Nullable;
 import java.util.HashMap;
+import java.util.IdentityHashMap;
+import java.util.List;
 import java.util.Map;
 
 /**
@@ -73,6 +79,99 @@ public final class HologramEntities {
         return entity;
     }
 
+    /** Last synthetic tick each walk animation was advanced to, so it steps once per game tick, not per frame. */
+    private static final Map<Entity, Integer> WALK_TICK = new IdentityHashMap<>();
+
+    /**
+     * Drives the entity's own model animations from WALK / ATTACK / HURT / DEATH / SNEAK entries, taken from
+     * the layer and, when it sits in one, its group. Idle animations (breathing, wing flaps, tail wags) need
+     * nothing: they already run off the synthetic {@code tickCount}.
+     *
+     * <p>The instance is shared per entity type, so every field touched here is reset each call - one layer's
+     * pose must never leak into another layer of the same type.
+     */
+    public static void applyAnimations(Entity entity, List<HologramEffect> layerEffects,
+                                       List<HologramEffect> groupEffects, double seconds) {
+        if (!(entity instanceof LivingEntity living))
+            return;
+
+        float walk = -1.0F;
+        float attackHz = 0.0F;
+        float hurtHz = 0.0F;
+        float deathHz = 0.0F;
+        float attackPhase = 0.0F;
+        float hurtPhase = 0.0F;
+        float deathPhase = 0.0F;
+        boolean sneak = false;
+        for (int pass = 0; pass < 2; pass++) {
+            for (HologramEffect effect : pass == 0 ? groupEffects : layerEffects) {
+                switch (effect.type()) {
+                    case WALK -> walk = Math.max(walk, effect.strength());
+                    case ATTACK -> {
+                        attackHz = effect.speed();
+                        attackPhase = effect.phase();
+                    }
+                    case HURT -> {
+                        hurtHz = effect.speed();
+                        hurtPhase = effect.phase();
+                    }
+                    case DEATH -> {
+                        deathHz = effect.speed();
+                        deathPhase = effect.phase();
+                    }
+                    case SNEAK -> sneak = true;
+                    default -> {
+                    }
+                }
+            }
+        }
+
+        // Walk cycle: advance it the way the game does, once per tick.
+        int tick = living.tickCount;
+        if (walk >= 0.0F) {
+            int last = WALK_TICK.getOrDefault(living, tick);
+            int steps = Math.min(4, Math.max(0, tick - last));
+            for (int i = 0; i < steps; i++)
+                living.walkAnimation.update(Math.min(1.0F, walk), 0.4F);
+            WALK_TICK.put(living, tick);
+        } else if (WALK_TICK.remove(living) != null) {
+            { living.walkAnimation.update(0.0F, 1.0F); living.walkAnimation.update(0.0F, 1.0F); }
+        }
+
+        float swing = 0.0F;
+        if (attackHz > 0.0F) {
+            double c = seconds * attackHz + attackPhase;
+            c -= Math.floor(c);
+            swing = c < 0.5 ? (float) (c / 0.5) : 0.0F;
+        }
+        living.swingingArm = InteractionHand.MAIN_HAND;
+        living.attackAnim = swing;
+        living.oAttackAnim = swing;
+
+        int hurt = 0;
+        if (hurtHz > 0.0F) {
+            double c = seconds * hurtHz + hurtPhase;
+            c -= Math.floor(c);
+            hurt = c < 0.3 ? 10 : 0;
+        }
+        living.hurtDuration = 10;
+        living.hurtTime = hurt;
+
+        int death = 0;
+        if (deathHz > 0.0F) {
+            double c = seconds * deathHz + deathPhase;
+            c -= Math.floor(c);
+            // Topple over for the first half of the cycle, lie there, then pop back up.
+            death = c < 0.85 ? 1 + (int) (Math.min(1.0, c / 0.5) * 20.0) : 0;
+        }
+        living.deathTime = death;
+
+        if (sneak)
+            living.setPose(Pose.CROUCHING);
+        else if (living.getPose() == Pose.CROUCHING)
+            living.setPose(Pose.STANDING);
+    }
+
     static void markFailed(String id) {
         FAILED.add(id);
         CACHE.remove(id);
@@ -95,6 +194,7 @@ public final class HologramEntities {
 
     /** Drops the cached instances (dimension change, or the level's renderers were rebuilt). */
     public static void clear() {
+        WALK_TICK.clear();
         CACHE.clear();
         FAILED.clear();
     }

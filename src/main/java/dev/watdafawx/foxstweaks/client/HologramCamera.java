@@ -28,17 +28,42 @@ public final class HologramCamera {
     private HologramCamera() {
     }
 
-    public static void begin(Vec3 hologramCenter) {
+    public static void begin(Vec3 hologramCenter, float size) {
         Minecraft mc = Minecraft.getInstance();
         if (mc.player == null)
             return;
-        anchor = hologramCenter;
-        pos = mc.player.getEyePosition();
-        yaw = mc.player.getYRot();
-        pitch = mc.player.getXRot();
         lastFrameNanos = System.nanoTime();
         active = true;
         movementBlocked = false;
+        frame(hologramCenter, size);
+    }
+
+    /**
+     * Puts the camera a comfortable distance from the hologram, on the player's side of it, a little above and
+     * looking at it. Starting inside the player's head means the first thing every edit session needs is a
+     * walk backwards.
+     */
+    public static void frame(Vec3 center, float size) {
+        Minecraft mc = Minecraft.getInstance();
+        if (mc.player == null)
+            return;
+        anchor = center;
+
+        double dist = Mth.clamp(2.6 + 2.0 * Math.max(1.0F, size), 3.5, 14.0);
+        Vec3 away = mc.player.getEyePosition().subtract(center);
+        away = new Vec3(away.x, 0.0, away.z);
+        if (away.lengthSqr() < 0.25) {
+            Vec3 look = mc.player.getViewVector(1.0F);
+            away = new Vec3(-look.x, 0.0, -look.z);
+        }
+        if (away.lengthSqr() < 1.0E-4)
+            away = new Vec3(0.0, 0.0, 1.0);
+        away = away.normalize();
+
+        pos = center.add(away.scale(dist)).add(0.0, dist * 0.28, 0.0);
+        Vec3 d = center.subtract(pos).normalize();
+        pitch = (float) Math.toDegrees(-Math.asin(d.y));
+        yaw = (float) Math.toDegrees(Math.atan2(-d.x, d.z));
     }
 
     public static void resetToPlayer() {
@@ -67,7 +92,7 @@ public final class HologramCamera {
         if (!active)
             return false;
         Minecraft mc = Minecraft.getInstance();
-        if (mc.level == null || !(mc.screen instanceof HologramScreen)) {
+        if (mc.level == null || !(mc.screen instanceof HologramScreen || mc.screen instanceof HologramChatScreen)) {
             active = false;
             return false;
         }
@@ -130,7 +155,8 @@ public final class HologramCamera {
 
         Minecraft mc = Minecraft.getInstance();
         Window window = mc.getWindow();
-        if (window == null)
+        // Typing in the chat that opens over the editor must not fly the camera.
+        if (window == null || !(mc.screen instanceof HologramScreen))
             return;
         long handle = window.getWindow();
 

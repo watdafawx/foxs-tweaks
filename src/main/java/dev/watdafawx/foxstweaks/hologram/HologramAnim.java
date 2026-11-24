@@ -192,6 +192,122 @@ public final class HologramAnim {
         return total;
     }
 
+    /**
+     * The summed result of every motion animation on a layer or group: a translation in blocks, a rotation
+     * in degrees per axis, and a uniform scale factor. Applied on top of the layer's own transform.
+     */
+    public record Motion(float dx, float dy, float dz, float rx, float ry, float rz, float scale) {
+        public static final Motion NONE = new Motion(0.0F, 0.0F, 0.0F, 0.0F, 0.0F, 0.0F, 1.0F);
+    }
+
+    /** Sums every SPIN/SWAY/BOB/ORBIT/SLIDE/BREATHE/HEARTBEAT/FLIP/BOUNCE entry; {@link Motion#NONE} when there are none. */
+    public static Motion motion(List<HologramEffect> effects, double seconds) {
+        float dx = 0.0F, dy = 0.0F, dz = 0.0F;
+        float rx = 0.0F, ry = 0.0F, rz = 0.0F;
+        float scale = 1.0F;
+        boolean any = false;
+
+        for (HologramEffect effect : effects) {
+            if (!effect.type().isMotion())
+                continue;
+            any = true;
+
+            float amount = effect.strength();
+            double cycles = seconds * effect.speed() + effect.phase();
+            double frac = cycles - Math.floor(cycles);
+            float sine = (float) Math.sin(frac * (Math.PI * 2.0));
+            int axis = effect.axis();
+
+            switch (effect.type()) {
+                case SPIN -> {
+                    float angle = (float) ((seconds * amount + effect.phase() * 360.0) % 360.0);
+                    switch (axis) {
+                        case HologramSpec.AXIS_X -> rx += angle;
+                        case HologramSpec.AXIS_Z -> rz += angle;
+                        default -> ry += angle;
+                    }
+                }
+                case SWAY -> {
+                    float angle = amount * sine;
+                    switch (axis) {
+                        case HologramSpec.AXIS_X -> rx += angle;
+                        case HologramSpec.AXIS_Z -> rz += angle;
+                        default -> ry += angle;
+                    }
+                }
+                case FLIP -> {
+                    // Turn during the first 40% of each cycle, hold still for the rest.
+                    float angle = amount * ease((float) (frac / 0.4));
+                    switch (axis) {
+                        case HologramSpec.AXIS_X -> rx += angle;
+                        case HologramSpec.AXIS_Z -> rz += angle;
+                        default -> ry += angle;
+                    }
+                }
+                case BOB -> {
+                    float d = amount * sine;
+                    switch (axis) {
+                        case HologramSpec.AXIS_X -> dx += d;
+                        case HologramSpec.AXIS_Z -> dz += d;
+                        default -> dy += d;
+                    }
+                }
+                case SLIDE -> {
+                    // Triangle wave through smoothstep: dwells at each end instead of reversing instantly.
+                    float tri = (float) (1.0 - 4.0 * Math.abs(frac - 0.5)) * -1.0F;
+                    float d = amount * (ease((tri + 1.0F) * 0.5F) * 2.0F - 1.0F);
+                    switch (axis) {
+                        case HologramSpec.AXIS_X -> dx += d;
+                        case HologramSpec.AXIS_Z -> dz += d;
+                        default -> dy += d;
+                    }
+                }
+                case BOUNCE -> {
+                    float d = amount * (float) Math.abs(Math.sin(frac * Math.PI));
+                    switch (axis) {
+                        case HologramSpec.AXIS_X -> dx += d;
+                        case HologramSpec.AXIS_Z -> dz += d;
+                        default -> dy += d;
+                    }
+                }
+                case ORBIT -> {
+                    float cos = (float) Math.cos(frac * (Math.PI * 2.0)) * amount;
+                    float sin = sine * amount;
+                    switch (axis) {
+                        case HologramSpec.AXIS_X -> {
+                            dy += cos;
+                            dz += sin;
+                        }
+                        case HologramSpec.AXIS_Z -> {
+                            dx += cos;
+                            dy += sin;
+                        }
+                        default -> {
+                            dx += cos;
+                            dz += sin;
+                        }
+                    }
+                }
+                case BREATHE -> scale *= Math.max(0.05F, 1.0F + amount * sine);
+                case HEARTBEAT -> {
+                    float beat = bump(frac, 0.0, 0.16) + 0.7F * bump(frac, 0.24, 0.16);
+                    scale *= Math.max(0.05F, 1.0F + amount * beat);
+                }
+                default -> {
+                }
+            }
+        }
+
+        return any ? new Motion(dx, dy, dz, rx, ry, rz, scale) : Motion.NONE;
+    }
+
+    /** A half-sine hump of width {@code length} starting at {@code start}, 0 elsewhere. */
+    private static float bump(double frac, double start, double length) {
+        if (frac < start || frac >= start + length)
+            return 0.0F;
+        return (float) Math.sin((frac - start) / length * Math.PI);
+    }
+
     /** Brightness multiplier from PULSE layers (0.35 .. 1.35). */
     public static float pulseMultiplier(List<HologramEffect> effects, double seconds) {
         float mult = 1.0F;

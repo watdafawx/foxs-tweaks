@@ -257,16 +257,18 @@ public final class HologramClient {
                     float gHover = HologramRenderer.hoverOffset(group.hover(), group.hoverPeriod(), seconds);
                     float gSpin = HologramRenderer.spinAngle(group.spin(), seconds);
                     float gJump = HologramAnim.jumpOffset(group.effects(), seconds);
-                    m.translate(group.offsetX(), group.offsetY() + gHover + gJump, group.offsetZ())
-                            .rotateY((float) Math.toRadians(group.yaw() + (group.spinAxis() == HologramSpec.AXIS_Y ? gSpin : 0.0F)))
-                            .rotateX((float) Math.toRadians(group.pitch() + (group.spinAxis() == HologramSpec.AXIS_X ? gSpin : 0.0F)))
-                            .rotateZ((float) Math.toRadians(group.roll() + (group.spinAxis() == HologramSpec.AXIS_Z ? gSpin : 0.0F)))
-                            .scale(group.scale());
+                    HologramAnim.Motion gm = HologramAnim.motion(group.effects(), seconds);
+                    m.translate(group.offsetX() + gm.dx(), group.offsetY() + gHover + gJump + gm.dy(), group.offsetZ() + gm.dz())
+                            .rotateY((float) Math.toRadians(group.yaw() + gm.ry() + (group.spinAxis() == HologramSpec.AXIS_Y ? gSpin : 0.0F)))
+                            .rotateX((float) Math.toRadians(group.pitch() + gm.rx() + (group.spinAxis() == HologramSpec.AXIS_X ? gSpin : 0.0F)))
+                            .rotateZ((float) Math.toRadians(group.roll() + gm.rz() + (group.spinAxis() == HologramSpec.AXIS_Z ? gSpin : 0.0F)))
+                            .scale(group.scale() * gm.scale());
                 }
 
                 float lHover = HologramRenderer.hoverOffset(layer.hover(), layer.hoverPeriod(), seconds);
                 float lJump = HologramAnim.jumpOffset(layer.effects(), seconds);
-                posBuf.set(layer.offsetX(), layer.offsetY() + lHover + lJump, layer.offsetZ());
+                HologramAnim.Motion lm = HologramAnim.motion(layer.effects(), seconds);
+                posBuf.set(layer.offsetX() + lm.dx(), layer.offsetY() + lHover + lJump + lm.dy(), layer.offsetZ() + lm.dz());
                 m.transformPosition(posBuf);
 
                 double spread = layer.scale() * spec.scale() * (group != null ? group.scale() : 1.0F);

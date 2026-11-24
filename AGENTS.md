@@ -1082,6 +1082,15 @@ The screen exposes `current()`, `currentProperties()`, `devCycleProperty`, `devS
 `devTab`, `devStepIndex`, `devRowCount`, `devScrollRow`, `devRemoveEffect`, `devGridCols` and `devFreeWidth`.
 Screenshots land in `run-hologram/screenshots/`, not the run root.
 
+**Animations (1.41.0).** Layers and groups hold a list of `HologramEffect`s that mixes FX, motion (SPIN, SWAY, BOB, ORBIT,
+SLIDE, BREATHE, HEARTBEAT, FLIP, BOUNCE) and entity animations (WALK, ATTACK, HURT, DEATH, SNEAK); each has strength, speed,
+axis and phase. `HologramAnim.motion(effects, seconds)` is the pure maths, `HologramEntities.applyAnimations` drives the
+entity pose. Legacy `spin`/`hover` fields still render (saves are not migrated; the editor offers a convert button).
+Entity age **must** come from the hologram clock for both ticks and partial tick, never the game timer's partial tick,
+or idle animation stutters. The editor opens the studio camera framed on the hologram (`HologramCamera.frame`, key F);
+chat opens through `HologramChatScreen`, which restores the same editor instance. `runHologramCheck` covers the editor UI
+(`devClick` presses real buttons) and frame smoothness (`HologramRenderer.lastEntityTicks`).
+
 ### Search box assist (`client/search/*`, `mixin/EditBoxSearchAssistMixin`)
 
 One mixin on vanilla `EditBox` (every mod's search field is one, or a subclass) instead of a patch per mod.

@@ -77,6 +77,9 @@ public final class HologramCheck {
     private static final Map<String, Double> ROUND_PASS = new LinkedHashMap<>();
     private static final StringBuilder SUMMARY = new StringBuilder();
     private static boolean recording;
+    private static final List<double[]> SMOOTH = new ArrayList<>();
+    private static boolean smoothing;
+    private static HologramScreen uiScreen;
     private static long lastFrameNanos;
     private static int drawnMax;
     private static int failures;
@@ -106,6 +109,8 @@ public final class HologramCheck {
             return;
 
         long now = System.nanoTime();
+        if (smoothing)
+            SMOOTH.add(new double[] { HologramRenderer.lastEntityTicks(), now / 1.0E9 });
         if (recording) {
             if (lastFrameNanos != 0L) {
                 FRAMES.add(now - lastFrameNanos);
@@ -919,6 +924,164 @@ public final class HologramCheck {
             log("perf summary: " + SUMMARY);
         });
 
+        // ---- editor UI: real buttons, camera framing, chat over the editor ----
+        add(6, () -> onServer(player -> {
+            // An earlier section leaves "preview in front" on; the studio camera is off while it is.
+            HologramClient.setPreviewAnchored(false);
+            player.teleportTo(player.serverLevel(), 0.5, -60.0, 13.5, 0.0F, 0.0F);
+            player.server.getCommands().performPrefixedCommand(
+                    player.createCommandSourceStack().withPermission(4),
+                    "foxstweaks hologram edit " + hologramId);
+            return null;
+        }));
+
+        add(10, () -> {
+            Minecraft mc = Minecraft.getInstance();
+            check("ui: editor opened again", mc.screen instanceof HologramScreen, String.valueOf(mc.screen));
+            if (!(mc.screen instanceof HologramScreen screen))
+                return;
+            uiScreen = screen;
+
+            screen.devTab(HologramScreen.TAB_ANIMATE);
+            screen.devSelectLayer(0);
+            while (!screen.devEffects().isEmpty())
+                screen.devRemoveEffect(0);
+
+            check("ui: Anim tab has preset, motion and copy buttons",
+                    screen.devHasButton("~Coin") && screen.devHasButton("Spin") && screen.devHasButton("Sway")
+                            && screen.devHasButton("Copy anims") && screen.devHasButton("Paste anims"),
+                    "buttons missing");
+
+            check("ui: click Spin", screen.devClick("Spin"), "no click");
+            check("ui: click Spin again", screen.devClick("Spin"), "no click");
+            List<HologramEffect> fx = screen.devEffects();
+            check("ui: two Spins stack on different axes",
+                    fx.size() == 2 && fx.get(0).type() == HologramEffect.Type.SPIN
+                            && fx.get(1).type() == HologramEffect.Type.SPIN && fx.get(0).axis() != fx.get(1).axis(),
+                    "fx=" + fx);
+            screen.devClick("Sway");
+            screen.devClick("Bob");
+            check("ui: four motions on one layer", screen.devEffects().size() == 4, "fx=" + screen.devEffects());
+
+            screen.devSetEffectPhase(0, 0.5F);
+            check("ui: phase sticks", Math.abs(screen.devEffects().get(0).phase() - 0.5F) < 0.01F,
+                    "phase=" + screen.devEffects().get(0).phase());
+
+            check("ui: click preset ~Coin", screen.devClick("~Coin"), "no click");
+            List<HologramEffect> coin = HologramEffect.preset("Coin");
+            check("ui: preset replaces the motions",
+                    screen.devEffects().size() == coin.size() && !coin.isEmpty()
+                            && screen.devEffects().stream().allMatch(e -> e.type().isMotion()),
+                    "fx=" + screen.devEffects());
+
+            check("ui: click Copy anims", screen.devClick("Copy anims"), "no click");
+            screen.devAddLayer(HologramLayer.Kind.ENTITY, "minecraft:zombie");
+            check("ui: click Paste anims", screen.devClick("Paste anims"), "no click");
+            check("ui: paste copies the animations onto another layer",
+                    screen.devEffects().size() == coin.size()
+                            && screen.devEffects().get(0).type() == coin.get(0).type(),
+                    "fx=" + screen.devEffects());
+
+            check("ui: entity layer offers Walk", screen.devHasButton("Walk"), "no Walk button");
+            screen.devClick("Walk");
+            check("ui: Walk added next to the motions",
+                    screen.devEffects().stream().anyMatch(e -> e.type() == HologramEffect.Type.WALK),
+                    "fx=" + screen.devEffects());
+
+            String gid = screen.devAddGroup();
+            screen.devSelectGroup(gid);
+            check("ui: group Anim tab shows Float preset", screen.devHasButton("~Float"), "no preset");
+            screen.devClick("~Float");
+            check("ui: preset applies to a group", !screen.devEffects().isEmpty(), "fx=" + screen.devEffects());
+
+            check("ui: Pause button starts paused", screen.devClick("Pause") && HologramRenderer.isPaused(),
+                    "paused=" + HologramRenderer.isPaused());
+            check("ui: Play button resumes", screen.devClick("Play") && !HologramRenderer.isPaused(),
+                    "paused=" + HologramRenderer.isPaused());
+            screen.devClick("T=0");
+            check("ui: T=0 restarts the clock", HologramRenderer.animSeconds() < 0.2,
+                    "t=" + HologramRenderer.animSeconds());
+            screen.devSelectRoot();
+        });
+
+        add(8, () -> {
+            Minecraft mc = Minecraft.getInstance();
+            if (uiScreen == null)
+                return;
+            shoot("hologram-ui-anim.png");
+
+            // Camera: push it away, then F must bring it back to a framed shot (not inside the player's head).
+            dev.watdafawx.foxstweaks.client.HologramCamera.dolly(8.0);
+            uiScreen.devKey(org.lwjgl.glfw.GLFW.GLFW_KEY_F);
+            var camPos = dev.watdafawx.foxstweaks.client.HologramCamera.pos();
+            double fromPlayer = camPos.distanceTo(mc.player.getEyePosition());
+            double fromHolo = camPos.distanceTo(net.minecraft.world.phys.Vec3.atCenterOf(new BlockPos(0, -59, 17)));
+            check("ui: F frames the camera at a sane distance from the hologram",
+                    fromHolo > 3.0 && fromHolo < 15.0, String.format(java.util.Locale.ROOT, "%.2f", fromHolo));
+            log(String.format(java.util.Locale.ROOT, "camera framed: %.2f from hologram, %.2f from player eye",
+                    fromHolo, fromPlayer));
+
+            // Chat key opens real chat over the editor.
+            uiScreen.devKey(mc.options.keyChat.getKey().getValue());
+        });
+
+        add(6, () -> {
+            Minecraft mc = Minecraft.getInstance();
+            check("ui: chat key opens the chat box over the editor",
+                    mc.screen instanceof dev.watdafawx.foxstweaks.client.HologramChatScreen, String.valueOf(mc.screen));
+            check("ui: studio camera stays active under chat",
+                    dev.watdafawx.foxstweaks.client.HologramCamera.isActive(),
+                    "camera dropped, anchoredPreview=" + HologramClient.previewAnchored() + " screen=" + mc.screen);
+            shoot("hologram-ui-chat.png");
+            // Esc in vanilla chat closes to no screen; the editor must come back.
+            mc.setScreen(null);
+        });
+
+        add(6, () -> {
+            Minecraft mc = Minecraft.getInstance();
+            check("ui: closing chat returns to the same editor", mc.screen == uiScreen, String.valueOf(mc.screen));
+            if (mc.screen instanceof HologramScreen screen)
+                screen.saveAndClose();
+            check("ui: camera released after leaving the editor",
+                    !dev.watdafawx.foxstweaks.client.HologramCamera.isActive(), "still active");
+        });
+
+        // ---- animation smoothness: real frames, real clock ----
+        add(10, () -> onServer(player -> {
+            player.teleportTo(player.serverLevel(), 0.5, -60.0, 13.5, 0.0F, 0.0F);
+            var level = player.serverLevel();
+            for (HologramSpec spec : new ArrayList<>(Holograms.list(level))) {
+                if (!spec.id().equals(hologramId))
+                    Holograms.remove(level, spec.id());
+            }
+            HologramSpec spec = Holograms.create(level, new BlockPos(0, -59, 17),
+                    Blocks.SEA_LANTERN.defaultBlockState(), player);
+            HologramLayer block = spec.layers().get(0).withEffects(List.of(
+                    HologramEffect.of(HologramEffect.Type.SPIN),
+                    HologramEffect.of(HologramEffect.Type.SWAY),
+                    HologramEffect.of(HologramEffect.Type.BOB)));
+            HologramLayer zombie = HologramLayer.entity("minecraft:zombie", 1.5F).withEffects(List.of(
+                    HologramEffect.of(HologramEffect.Type.WALK),
+                    HologramEffect.of(HologramEffect.Type.SPIN)));
+            List<HologramLayer> layers = new ArrayList<>(spec.layers());
+            layers.set(0, block);
+            layers.add(zombie);
+            Holograms.save(level, spec.withLayers(layers));
+            return null;
+        }));
+
+        add(20, () -> {
+            SMOOTH.clear();
+            smoothing = true;
+        });
+
+        add(120, () -> {
+            smoothing = false;
+            smoothnessChecks();
+        });
+
+        add(4, () -> shoot("hologram-smooth.png"));
+
         add(6, () -> {
             log("done: " + (failures == 0 ? "ALL PASS" : failures + " FAILURE(S)"));
             try {
@@ -928,6 +1091,53 @@ public final class HologramCheck {
             }
             Minecraft.getInstance().stop();
         });
+    }
+
+    private static void smoothnessChecks() {
+        // Pure maths: motion must be continuous at 144 fps steps, and SPIN must advance evenly.
+        List<HologramEffect> fx = List.of(
+                HologramEffect.of(HologramEffect.Type.SPIN), HologramEffect.of(HologramEffect.Type.SWAY),
+                HologramEffect.of(HologramEffect.Type.BOB), HologramEffect.of(HologramEffect.Type.ORBIT),
+                HologramEffect.of(HologramEffect.Type.BREATHE), HologramEffect.of(HologramEffect.Type.BOUNCE));
+        double maxJump = 0.0;
+        HologramAnim.Motion prev = HologramAnim.motion(fx, 0.0);
+        for (int i = 1; i < 144 * 10; i++) {
+            HologramAnim.Motion cur = HologramAnim.motion(fx, i / 144.0);
+            double d = Math.abs(cur.dx() - prev.dx()) + Math.abs(cur.dy() - prev.dy())
+                    + Math.abs(cur.dz() - prev.dz()) + Math.abs(cur.scale() - prev.scale());
+            maxJump = Math.max(maxJump, d);
+            prev = cur;
+        }
+        check("motion maths has no jumps at 144 fps over 10 s", maxJump < 0.05,
+                String.format(java.util.Locale.ROOT, "max step %.4f", maxJump));
+
+        // Real frames: entity age must never go backwards and must track wall-clock.
+        int n = SMOOTH.size();
+        check("smoothness sampled enough frames", n > 30, "frames=" + n);
+        int backwards = 0;
+        int stalled = 0;
+        List<Double> ratios = new ArrayList<>();
+        for (int i = 1; i < n; i++) {
+            double dTicks = SMOOTH.get(i)[0] - SMOOTH.get(i - 1)[0];
+            double dSec = SMOOTH.get(i)[1] - SMOOTH.get(i - 1)[1];
+            if (dTicks < 0.0)
+                backwards++;
+            else if (dTicks == 0.0)
+                stalled++;
+            if (dSec > 0.0 && dTicks >= 0.0)
+                ratios.add((dTicks / 20.0) / dSec);
+        }
+        ratios.sort(Double::compare);
+        double lo = ratios.isEmpty() ? 0.0 : ratios.get((int) (ratios.size() * 0.05));
+        double mid = ratios.isEmpty() ? 0.0 : ratios.get(ratios.size() / 2);
+        double hi = ratios.isEmpty() ? 0.0 : ratios.get(Math.min(ratios.size() - 1, (int) (ratios.size() * 0.95)));
+        log(String.format(java.util.Locale.ROOT,
+                "smooth: %d frames, %d backwards, %d stalled, age/clock ratio p5 %.2f median %.2f p95 %.2f",
+                n, backwards, stalled, lo, mid, hi));
+        check("entity age never goes backwards", backwards == 0, backwards + " frames");
+        check("entity age advances every frame", stalled <= n / 20, stalled + " stalled");
+        check("entity age tracks the clock evenly", lo > 0.6 && hi < 1.6 && Math.abs(mid - 1.0) < 0.2,
+                String.format(java.util.Locale.ROOT, "p5 %.2f median %.2f p95 %.2f", lo, mid, hi));
     }
 
     private static void shoot(String name) {

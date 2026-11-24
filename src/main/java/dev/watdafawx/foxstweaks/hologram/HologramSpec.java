@@ -52,7 +52,7 @@ public record HologramSpec(
     public static final int REVEAL_DROP = 4;
     public static final int REVEAL_GLITCH = 5;
     public static final int REVEAL_COUNT = 6;
-    public static final int MAX_EFFECTS = 6;
+    public static final int MAX_EFFECTS = 12;
 
     /** Clamps live in the canonical constructor so a hand-written packet cannot produce garbage. */
     public HologramSpec {

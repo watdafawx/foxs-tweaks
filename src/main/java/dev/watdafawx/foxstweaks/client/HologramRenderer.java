@@ -42,6 +42,22 @@ public final class HologramRenderer {
     private static final Matrix4f lastProjection = new Matrix4f();
     private static Vec3 lastCamera = Vec3.ZERO;
 
+    private static boolean paused;
+
+    /** Editor-only: freezes every hologram's animation clock so a pose can be lined up. */
+    public static void setPaused(boolean value) {
+        paused = value;
+    }
+
+    public static boolean isPaused() {
+        return paused;
+    }
+
+    /** Editor-only: restarts the animation clock, so every animation begins at its start again. */
+    public static void restartClock() {
+        animSeconds = 0.0;
+    }
+
     public static double animSeconds() {
         return animSeconds;
     }
@@ -68,6 +84,13 @@ public final class HologramRenderer {
 
     public static long lastPassNanos() {
         return lastPassNanos;
+    }
+
+    private static float lastEntityTicks = -1.0F;
+
+    /** Age (in ticks, with fraction) the last entity layer was drawn at. Dev check only. */
+    public static float lastEntityTicks() {
+        return lastEntityTicks;
     }
 
     static float hoverOffset(float hover, float period, double seconds) {
@@ -113,7 +136,7 @@ public final class HologramRenderer {
         float partial = event.getPartialTick().getGameTimeDeltaPartialTick(false);
 
         long now = System.nanoTime();
-        if (lastAnimNanos != 0L && !mc.isPaused()) {
+        if (lastAnimNanos != 0L && !mc.isPaused() && !paused) {
             double dt = Math.min(0.1, (now - lastAnimNanos) * 1.0E-9);
             if (dt > 0.0)
                 animSeconds += dt;
@@ -237,13 +260,16 @@ public final class HologramRenderer {
             float gAngleZ = group.roll() + (group.spinAxis() == HologramSpec.AXIS_Z ? gSpin : 0.0F) - gJitter * 0.5F;
             float gWobbleY = HologramAnim.wobbleScaleY(gEffects, seconds);
             float gWobbleXZ = HologramAnim.wobbleScaleXZ(gEffects, seconds);
+            HologramAnim.Motion gm = HologramAnim.motion(gEffects, seconds);
 
             pose.pushPose();
-            pose.translate(group.offsetX() + gGlitchX, group.offsetY() + gHover + gJump, group.offsetZ() + gGlitchZ);
-            pose.mulPose(Axis.YP.rotationDegrees(gAngleY));
-            pose.mulPose(Axis.XP.rotationDegrees(gAngleX));
-            pose.mulPose(Axis.ZP.rotationDegrees(gAngleZ));
-            pose.scale(group.scale() * gWobbleXZ, group.scale() * gWobbleY, group.scale() * gWobbleXZ);
+            pose.translate(group.offsetX() + gGlitchX + gm.dx(), group.offsetY() + gHover + gJump + gm.dy(),
+                    group.offsetZ() + gGlitchZ + gm.dz());
+            pose.mulPose(Axis.YP.rotationDegrees(gAngleY + gm.ry()));
+            pose.mulPose(Axis.XP.rotationDegrees(gAngleX + gm.rx()));
+            pose.mulPose(Axis.ZP.rotationDegrees(gAngleZ + gm.rz()));
+            pose.scale(group.scale() * gWobbleXZ * gm.scale(), group.scale() * gWobbleY * gm.scale(),
+                    group.scale() * gWobbleXZ * gm.scale());
 
             MultiBufferSource groupOut = TintedBuffer.wrap(buffer, gEffects, seconds);
             int groupLight = group.fullbright() ? 0xF000F0 : worldLight;
@@ -290,10 +316,17 @@ public final class HologramRenderer {
         float lAngleZ = layer.roll() + (layer.spinAxis() == HologramSpec.AXIS_Z ? lSpin : 0.0F) - lJitter * 0.5F;
         float lWobbleY = HologramAnim.wobbleScaleY(effects, seconds);
         float lWobbleXZ = HologramAnim.wobbleScaleXZ(effects, seconds);
+        HologramAnim.Motion lm = HologramAnim.motion(effects, seconds);
+        lAngleY += lm.ry();
+        lAngleX += lm.rx();
+        lAngleZ += lm.rz();
+        float offX = layer.offsetX() + lGlitchX + lm.dx();
+        float offY = layer.offsetY() + lHover + lJump + lm.dy();
+        float offZ = layer.offsetZ() + lGlitchZ + lm.dz();
 
-        float sx = layer.scale() * lWobbleXZ;
-        float sy = layer.scale() * lWobbleY;
-        float sz = layer.scale() * lWobbleXZ;
+        float sx = layer.scale() * lWobbleXZ * lm.scale();
+        float sy = layer.scale() * lWobbleY * lm.scale();
+        float sz = layer.scale() * lWobbleXZ * lm.scale();
         if (sy <= 0.01F)
             return;
 
@@ -312,7 +345,7 @@ public final class HologramRenderer {
                     return;
 
                 pose.pushPose();
-                pose.translate(layer.offsetX() + lGlitchX, layer.offsetY() + lHover + lJump, layer.offsetZ() + lGlitchZ);
+                pose.translate(offX, offY, offZ);
                 pose.mulPose(Axis.YP.rotationDegrees(lAngleY));
                 pose.mulPose(Axis.XP.rotationDegrees(lAngleX));
                 pose.mulPose(Axis.ZP.rotationDegrees(lAngleZ));
@@ -333,13 +366,21 @@ public final class HologramRenderer {
                 var entity = HologramEntities.get(layer, 0.0, 0.0, 0.0, 0.0F, (float) seconds);
                 if (entity == null)
                     return;
+                HologramEntities.applyAnimations(entity, effects,
+                        group == null ? List.of() : group.effects(), seconds);
                 pose.pushPose();
-                pose.translate(layer.offsetX() + lGlitchX, layer.offsetY() + lHover + lJump, layer.offsetZ() + lGlitchZ);
+                pose.translate(offX, offY, offZ);
                 pose.mulPose(Axis.YP.rotationDegrees(lAngleY));
                 pose.mulPose(Axis.XP.rotationDegrees(lAngleX));
                 pose.mulPose(Axis.ZP.rotationDegrees(lAngleZ));
                 pose.scale(sx, sy, sz);
-                HologramEntities.render(pose, out, entity, partialTick, light, 0.0, 0.0, 0.0, 0.0F);
+                // The entity's age is driven by the hologram clock, so its partial tick must come from the same
+                // clock. Mixing in the game timer's partial tick makes the age jump backwards a few times a
+                // second, which is exactly what stuttering idle animations look like.
+                float entityTicks = (float) seconds * 20.0F;
+                float entityPartial = entityTicks - (int) entityTicks;
+                lastEntityTicks = entityTicks;
+                HologramEntities.render(pose, out, entity, entityPartial, light, 0.0, 0.0, 0.0, 0.0F);
                 pose.popPose();
             }
             case PARTICLE -> {
