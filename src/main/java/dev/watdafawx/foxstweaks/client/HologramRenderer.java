@@ -11,6 +11,7 @@ import dev.watdafawx.foxstweaks.hologram.HologramStates;
 import dev.watdafawx.foxstweaks.hologram.Holograms;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.renderer.LevelRenderer;
+import net.minecraft.world.level.block.entity.BlockEntity;
 import net.minecraft.client.renderer.MultiBufferSource;
 import net.minecraft.client.renderer.RenderType;
 import net.minecraft.client.renderer.texture.OverlayTexture;
@@ -39,6 +40,7 @@ import java.util.List;
 public final class HologramRenderer {
 
     private static int lastDrawn;
+    private static int drawnBlockEntities;
     private static long lastPassNanos;
 
     /** How many holograms the last frame actually drew; the dev check's benchmark reports this. */
@@ -47,6 +49,11 @@ public final class HologramRenderer {
     }
 
     /** CPU nanoseconds the hologram pass took last frame. The benchmark's real number. */
+    /** How many block-entity bases were drawn last frame. */
+    public static int lastDrawnBlockEntityCount() {
+        return drawnBlockEntities;
+    }
+
     public static long lastPassNanos() {
         return lastPassNanos;
     }
@@ -82,6 +89,7 @@ public final class HologramRenderer {
 
         int globalCap = Config.hologramRenderCap();
         int drawn = 0;
+        drawnBlockEntities = 0;
         for (int i = 0; i < specs.size(); i++) {
             HologramSpec spec = specs.get(i);
             if (!spec.enabled())
@@ -100,7 +108,7 @@ public final class HologramRenderer {
             if (event.getFrustum() != null && !event.getFrustum().isVisible(spec.box()))
                 continue;
 
-            draw(pose, buffer, spec, seconds, camera, null);
+            draw(pose, buffer, spec, seconds, camera, null, partial);
             if (HologramClient.appearProgress(spec.id()) > 0.01F)
                 drawn++;
         }
@@ -143,7 +151,7 @@ public final class HologramRenderer {
                 .add(right.scale(0.15))
                 .add(0.0, -drop, 0.0);
 
-        drawAt(pose, buffer, spec, seconds, camera, anchor, 0xF000F0, null, 1.0F);
+        drawAt(pose, buffer, spec, seconds, camera, anchor, 0xF000F0, null, 1.0F, 0.0F);
     }
 
     /**
@@ -151,16 +159,17 @@ public final class HologramRenderer {
      * (the editor preview), otherwise the saved block and property values are resolved.
      */
     public static void draw(PoseStack pose, MultiBufferSource buffer, HologramSpec spec, float seconds,
-                            Vec3 camera, @Nullable BlockState override) {
+                            Vec3 camera, @Nullable BlockState override, float partialTick) {
         int light = spec.fullbright()
                 ? 0xF000F0
                 : LevelRenderer.getLightColor(Minecraft.getInstance().level, spec.pos());
         drawAt(pose, buffer, spec, seconds, camera, Vec3.atLowerCornerOf(spec.pos()), light, override,
-                HologramClient.appearProgress(spec.id()));
+                HologramClient.appearProgress(spec.id()), partialTick);
     }
 
     private static void drawAt(PoseStack pose, MultiBufferSource buffer, HologramSpec spec, float seconds,
-                               Vec3 camera, Vec3 origin, int light, @Nullable BlockState override, float appear) {
+                               Vec3 camera, Vec3 origin, int light, @Nullable BlockState override, float appear,
+                               float partialTick) {
         if (appear <= 0.01F)
             return;
 
@@ -169,8 +178,15 @@ public final class HologramRenderer {
             return;
 
         BlockState state = override != null ? override : Holograms.stateOf(spec);
-        boolean hasBase = state != null && state.getRenderShape() == RenderShape.MODEL;
-        if (!hasBase && spec.parts().isEmpty())
+        boolean hasModel = state != null && state.getRenderShape() == RenderShape.MODEL;
+
+        // Blocks whose look is a block entity renderer (chests, signs, machine LEDs) have no model at
+        // all, so they are drawn from a block entity carrying the data captured when the hologram was
+        // placed. A block can be both (a beacon: model plus beam), so neither path excludes the other.
+        var blockEntity = override == null ? HologramBlockEntities.get(spec) : null;
+        var blockEntityRenderer = blockEntity == null ? null : HologramBlockEntities.renderer(blockEntity);
+
+        if (!hasModel && blockEntityRenderer == null && spec.parts().isEmpty())
             return;
 
         // Sphere of appearance: grow from a point and settle into place. Alpha cannot do this - most
@@ -205,14 +221,24 @@ public final class HologramRenderer {
         MultiBufferSource out = tint == null ? buffer
                 : new TintedBuffer(buffer, tint.color(), tint.strength());
 
-        if (hasBase) {
-            float scale = spec.scale() * settle * wobble;
+        float scale = spec.scale() * settle * wobble;
+
+        if (hasModel) {
             pose.pushPose();
             pose.scale(scale, scale, scale);
             pose.translate(-0.5, 0.0, -0.5);
             Minecraft.getInstance().getBlockRenderer()
                     .renderSingleBlock(state, pose, out, light, OverlayTexture.NO_OVERLAY, ModelData.EMPTY, null);
             pose.popPose();
+        }
+
+        if (blockEntityRenderer != null) {
+            pose.pushPose();
+            pose.scale(scale, scale, scale);
+            pose.translate(-0.5, 0.0, -0.5);
+            renderBlockEntity(pose, out, blockEntity, blockEntityRenderer, partialTick, light);
+            pose.popPose();
+            drawnBlockEntities++;
         }
 
         for (HologramPart part : spec.parts())
@@ -264,6 +290,15 @@ public final class HologramRenderer {
                 // and must not be added per frame.
             }
         }
+    }
+
+    @SuppressWarnings({ "unchecked", "rawtypes" })
+    private static void renderBlockEntity(PoseStack pose, MultiBufferSource buffer, BlockEntity entity,
+                                          net.minecraft.client.renderer.blockentity.BlockEntityRenderer renderer,
+                                          float partialTick, int light) {
+        // The dispatcher's own render() translates by (be pos - camera), which would fight the pose we
+        // already built; the renderer itself expects a pose at the block's corner, same as a model.
+        renderer.render(entity, partialTick, pose, buffer, light, OverlayTexture.NO_OVERLAY);
     }
 
     private static void drawOutline(PoseStack pose, MultiBufferSource.BufferSource buffer, HologramSpec spec,

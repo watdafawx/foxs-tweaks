@@ -1,6 +1,7 @@
 package dev.watdafawx.foxstweaks.client.dev;
 
 import com.mojang.logging.LogUtils;
+import dev.watdafawx.foxstweaks.client.HologramBlockEntities;
 import dev.watdafawx.foxstweaks.client.HologramClient;
 import dev.watdafawx.foxstweaks.client.HologramEntities;
 import dev.watdafawx.foxstweaks.client.HologramRenderer;
@@ -25,10 +26,13 @@ import net.minecraft.world.level.GameRules;
 import net.minecraft.world.level.GameType;
 import net.minecraft.world.level.LevelSettings;
 import net.minecraft.world.level.WorldDataConfiguration;
+import net.minecraft.resources.ResourceLocation;
+import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.item.Items;
 import net.minecraft.world.level.block.Block;
 import net.minecraft.world.level.block.Blocks;
 import net.minecraft.world.level.block.RenderShape;
+import net.minecraft.world.level.block.entity.ChestBlockEntity;
 import net.minecraft.world.level.block.state.properties.Property;
 import net.minecraft.world.level.levelgen.WorldOptions;
 import net.minecraft.world.level.levelgen.presets.WorldPresets;
@@ -81,6 +85,8 @@ public final class HologramCheck {
     private static int index;
     private static String hologramId;
     private static String ae2Id;
+    private static String berId;
+    private static String driveId = "";
 
     public static void install() {
         NeoForge.EVENT_BUS.addListener(HologramCheck::onTick);
@@ -575,6 +581,103 @@ public final class HologramCheck {
                                 && saved.parts().get(1).id().equals("minecraft:end_rod"),
                         "parts=" + saved.parts());
             }
+        });
+
+        // ---- block entities: a chest hologram that carries real contents ----
+        add(10, () -> {
+            berId = onServer(player -> {
+                var level = player.serverLevel();
+                var chestPos = new BlockPos(4, -60, 2);
+                level.setBlockAndUpdate(chestPos, Blocks.CHEST.defaultBlockState());
+                if (level.getBlockEntity(chestPos) instanceof ChestBlockEntity chest) {
+                    chest.setItem(0, new ItemStack(Items.DIAMOND, 3));
+                    chest.setChanged();
+                }
+                player.teleportTo(level, 6.5, -60.0, 8.5, 180.0F, 0.0F);
+                // The chest is the data source; the hologram stands beside it for comparison.
+                var spec = Holograms.create(level, new BlockPos(6, -60, 2), Blocks.CHEST.defaultBlockState(),
+                        chestPos, player);
+                return spec.id();
+            });
+
+            HologramSpec saved = onServer(player -> Holograms.get(player.serverLevel(), berId));
+            check("chest hologram captured block entity data", saved != null && !saved.data().isEmpty(),
+                    saved == null ? "gone" : "data=" + saved.data().size() + " keys");
+        });
+
+        add(10, () -> {
+            HologramSpec spec = HologramClient.specs().stream()
+                    .filter(candidate -> candidate.id().equals(berId)).findFirst().orElse(null);
+            check("client has the chest hologram", spec != null, "count=" + HologramClient.specs().size());
+            if (spec == null)
+                return;
+
+            var blockEntity = HologramBlockEntities.get(spec);
+            check("block entity was built from the captured data", blockEntity != null,
+                    "null entity for " + spec.block());
+            if (blockEntity == null)
+                return;
+            check("block entity has a renderer", HologramBlockEntities.renderer(blockEntity) != null,
+                    "no renderer");
+        });
+
+        add(10, () -> {
+            check("the render pass drew a block entity", HologramRenderer.lastDrawnBlockEntityCount() > 0,
+                    "count=" + HologramRenderer.lastDrawnBlockEntityCount());
+            shoot("hologram-block-entity.png");
+        });
+
+        // ---- AE2 drive: the case that may need per-mod work, because its LEDs are capability-backed ----
+        add(10, () -> {
+            if (!AE2) {
+                log("SKIP ae2 drive (AE2 not installed)");
+                return;
+            }
+            driveId = onServer(player -> {
+                var level = player.serverLevel();
+                var drivePos = new BlockPos(10, -60, 2);
+                var drive = HologramStates.blockOf("ae2:drive");
+                if (drive == null)
+                    return "";
+                level.setBlockAndUpdate(drivePos, drive.defaultBlockState());
+
+                // A cell, so the drive has something to report. Generic capability call: no AE2 type here.
+                var handler = level.getCapability(net.neoforged.neoforge.capabilities.Capabilities.ItemHandler.BLOCK,
+                        drivePos, null);
+                var cell = BuiltInRegistries.ITEM.get(ResourceLocation.parse("ae2:item_storage_cell_1k"));
+                if (handler != null && cell != null)
+                    handler.insertItem(0, new ItemStack(cell), false);
+
+                player.teleportTo(level, 11.5, -60.0, 8.5, 180.0F, 0.0F);
+                var spec = Holograms.create(level, new BlockPos(12, -60, 2), drive.defaultBlockState(),
+                        drivePos, player);
+                return spec.id();
+            });
+            check("ae2 drive hologram created", !driveId.isEmpty(), "id=" + driveId);
+        });
+
+        add(10, () -> {
+            if (!AE2 || driveId.isEmpty())
+                return;
+            HologramSpec spec = HologramClient.specs().stream()
+                    .filter(candidate -> candidate.id().equals(driveId)).findFirst().orElse(null);
+            if (spec == null) {
+                check("client has the ae2 drive hologram", false, "missing");
+                return;
+            }
+            log("ae2 drive captured keys: " + spec.data().getAllKeys());
+            var blockEntity = HologramBlockEntities.get(spec);
+            check("ae2 drive block entity was built", blockEntity != null, "null entity");
+            check("ae2 drive has a renderer",
+                    blockEntity != null && HologramBlockEntities.renderer(blockEntity) != null, "no renderer");
+            shoot("hologram-ae2-drive.png");
+        });
+
+        add(6, () -> {
+            if (!AE2 || driveId.isEmpty())
+                return;
+            check("ae2 drive drew through its own renderer", HologramRenderer.lastDrawnBlockEntityCount() > 0,
+                    "count=" + HologramRenderer.lastDrawnBlockEntityCount());
         });
 
         // ---- performance: 48 in view, then with four effect layers, then removed ----

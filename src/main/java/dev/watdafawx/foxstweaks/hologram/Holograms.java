@@ -3,9 +3,11 @@ package dev.watdafawx.foxstweaks.hologram;
 import dev.watdafawx.foxstweaks.FoxsTweaks;
 import dev.watdafawx.foxstweaks.ServerConfig;
 import net.minecraft.core.BlockPos;
+import net.minecraft.nbt.CompoundTag;
 import net.minecraft.server.level.ServerLevel;
 import net.minecraft.server.level.ServerPlayer;
 import net.minecraft.world.entity.player.Player;
+import net.minecraft.world.level.block.entity.BlockEntity;
 import net.minecraft.world.level.block.state.BlockState;
 import net.neoforged.bus.api.SubscribeEvent;
 import net.neoforged.fml.common.EventBusSubscriber;
@@ -57,12 +59,49 @@ public final class Holograms {
         return base + "_" + UUID.randomUUID().toString().substring(0, 6);
     }
 
+    /**
+     * Captured block-entity tags larger than this are dropped: a chest hologram of a chest full of
+     * shulker boxes would otherwise be synced to every client and saved in the world for a decoration.
+     */
+    public static final int MAX_DATA_BYTES = 64 * 1024;
+
+    /**
+     * The block entity's own data, so a hologram of a chest/sign/machine can render its real state
+     * instead of nothing (those blocks have no model at all).
+     */
+    @Nullable
+    public static CompoundTag capture(ServerLevel level, BlockPos source) {
+        BlockEntity blockEntity = level.getBlockEntity(source);
+        if (blockEntity == null)
+            return null;
+        CompoundTag tag = blockEntity.saveWithoutMetadata(level.registryAccess());
+        if (tag.isEmpty() || tag.sizeInBytes() > MAX_DATA_BYTES)
+            return null;
+        return tag;
+    }
+
     /** Creates a hologram at {@code pos} showing {@code state}. Does not enforce limits - see {@link #capacityLeft}. */
     public static HologramSpec create(ServerLevel level, BlockPos pos, BlockState state, @Nullable Player placer) {
+        return create(level, pos, state, null, placer);
+    }
+
+    /**
+     * @param dataSource the block whose block entity data should be copied, or null. The wand passes the
+     *                   block it clicked; a chest is copied with its contents and open state, which is
+     *                   what makes it draw at all.
+     */
+    public static HologramSpec create(ServerLevel level, BlockPos pos, BlockState state, @Nullable BlockPos dataSource,
+                                      @Nullable Player placer) {
         String block = HologramStates.blockName(state);
         HologramSpec spec = HologramSpec.create(newId(level, block), pos, block,
                 placer == null ? null : placer.getUUID(),
                 placer == null ? "" : placer.getGameProfile().getName());
+
+        if (dataSource != null) {
+            CompoundTag data = capture(level, dataSource);
+            if (data != null)
+                spec = spec.withData(data);
+        }
 
         save(level, spec.withRenderDistance(Math.min(spec.renderDistance(), ServerConfig.hologramsMaxRenderDistance())));
         return get(level, spec.id());

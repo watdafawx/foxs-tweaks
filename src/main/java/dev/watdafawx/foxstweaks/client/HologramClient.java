@@ -262,6 +262,7 @@ public final class HologramClient {
         HologramClient.dimension = null;
         HologramClient.appear.clear();
         HologramEntities.clear();
+        HologramBlockEntities.clear();
         HologramClient.lastAppearNanos = 0L;
     }
 

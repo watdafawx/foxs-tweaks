@@ -13,6 +13,7 @@ import net.minecraft.client.gui.components.EditBox;
 import net.minecraft.client.gui.screens.Screen;
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.registries.BuiltInRegistries;
+import net.minecraft.nbt.CompoundTag;
 import net.minecraft.core.particles.SimpleParticleType;
 import net.minecraft.network.chat.Component;
 import net.minecraft.resources.ResourceLocation;
@@ -130,6 +131,7 @@ public class HologramScreen extends Screen {
     private int renderDistance;
     private List<HologramEffect> effects;
     private List<HologramPart> parts;
+    private CompoundTag data;
     private int addKind;
     private int pickIndex;
     private float appearRadius;
@@ -170,6 +172,7 @@ public class HologramScreen extends Screen {
         this.renderDistance = spec.renderDistance();
         this.effects = new ArrayList<>(spec.effects());
         this.parts = new ArrayList<>(spec.parts());
+        this.data = spec.data().copy();
         this.appearRadius = spec.appearRadius();
         this.appearSeconds = spec.appearSeconds();
         this.maxRenderDistance = Math.max(16, payload.maxRenderDistance());
@@ -492,7 +495,7 @@ public class HologramScreen extends Screen {
         return new HologramSpec(this.id, this.pos, this.block, this.props, this.scale, this.yaw, this.pitch,
                 this.roll, this.spin, this.spinAxis, this.hover, this.hoverPeriod, this.fullbright, true,
                 this.renderDistance, this.owner, this.ownerName, this.effects, this.appearRadius,
-                this.appearSeconds, this.parts);
+                this.appearSeconds, this.parts, this.data);
     }
 
     @Nullable
@@ -523,7 +526,7 @@ public class HologramScreen extends Screen {
                     // Only blocks with a real model: a block whose look is a block entity renderer
                     // would draw nothing here, and a picker full of invisible entries is worse than
                     // a short one. Tier 2 (BER blocks) is a later phase.
-                    .filter(block -> block.defaultBlockState().getRenderShape() == RenderShape.MODEL)
+                    // ENTITYBLOCK_ANIMATED blocks (chests, signs, beds, shulker boxes) have no model at\n                    // all: they draw from a block entity, which a hologram now carries the data for.\n                    .filter(block -> block.defaultBlockState().getRenderShape() == RenderShape.MODEL\n                            || block.defaultBlockState().getRenderShape() == RenderShape.ENTITYBLOCK_ANIMATED)
                     .sorted(Comparator.comparing(block -> BuiltInRegistries.BLOCK.getKey(block).toString()))
                     .toList();
         }
@@ -852,6 +855,7 @@ public class HologramScreen extends Screen {
         this.renderDistance = Math.min(clip.renderDistance(), this.maxRenderDistance);
         this.effects = new ArrayList<>(clip.effects());
         this.parts = new ArrayList<>(clip.parts());
+        this.data = clip.data().copy();
         this.appearRadius = clip.appearRadius();
         this.appearSeconds = clip.appearSeconds();
 

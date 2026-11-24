@@ -94,7 +94,8 @@ public class HologramItem extends Item {
             return InteractionResult.FAIL;
         }
 
-        HologramSpec created = Holograms.create(server, target, shown, player);
+        // The clicked block is the data source: a chest keeps its contents and open state, a sign its text.
+        HologramSpec created = Holograms.create(server, target, shown, context.getClickedPos(), player);
         server.playSound(null, target, SoundEvents.AMETHYST_BLOCK_CHIME, SoundSource.BLOCKS, 0.7F, 1.2F);
         HologramNetwork.openEditor((ServerPlayer) player, created);
         return InteractionResult.CONSUME;

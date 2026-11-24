@@ -1029,6 +1029,29 @@ Per-draw cost is vertex emission: ~2.5 us per visible hologram. What *does* pay 
 (`event.getFrustum().isVisible(spec.box())` before any pose work): 48 holograms behind the player cost ~2 us,
 i.e. nothing. The dev check measures all four rounds and fails if the numbers move the wrong way.
 
+**Block entities: the hologram carries data, not just a block id.** Chests, signs, beds, banners, shulker boxes
+and most modded machines draw **only** through a `BlockEntityRenderer`, so `renderSingleBlock` gives nothing.
+`HologramSpec#data` is a `CompoundTag` captured with `saveWithoutMetadata` from the block the wand was pointed
+at, and `client/HologramBlockEntities` turns it back into an instance on the client:
+
+- created via `EntityBlock#newBlockEntity(pos, state)` (not `BlockEntityType#create`, which needs the type id),
+- `setLevel(clientLevel)` so renderers that ask for a level work, `loadWithComponents(data, registries)`,
+- cached per hologram id and rebuilt when the tag's hash changes,
+- ticked by hand through `EntityBlock#getTicker` so chest lids open and machine LEDs blink,
+- rendered by calling `BlockEntityRenderer#render` **directly**: the dispatcher's own `render` translates by
+  `be pos - camera`, which fights the pose the hologram already built. The renderer expects a pose at the
+  block's corner, exactly like a model, so both paths share the same pose.
+
+`Holograms.MAX_DATA_BYTES` (64 KB) caps what is kept: a chest hologram otherwise copies its whole contents
+into the world file and syncs them to every client for a decoration. The picker now offers
+`ENTITYBLOCK_ANIMATED` blocks, which it previously filtered out entirely.
+
+**Verified**: a chest with diamonds in it round-trips its contents and renders; the same block placed next to
+its hologram looks identical. **Not verified**: capability/grid-backed state. AE2's drive captures only
+`inv` + `priority` (its LED status is derived at render time from the grid, not saved), so a *powered* drive's
+lights reproducing is still open - that needs a networked AE2 setup to settle, and is the per-mod work this
+approach cannot avoid. Its casing builds, renders and draws through its own renderer.
+
 **Config**: server `hologramsEnabled`, `hologramsMaxPerDimension`, `hologramsMaxRenderDistance`; common
 `hologramRenderCap` (a client-side ceiling over every hologram's own range). All four need labels, which the
 config-check dev run asserts.

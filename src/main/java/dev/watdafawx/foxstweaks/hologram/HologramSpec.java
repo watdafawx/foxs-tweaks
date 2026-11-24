@@ -45,7 +45,8 @@ public record HologramSpec(
         List<HologramEffect> effects,
         float appearRadius,
         float appearSeconds,
-        List<HologramPart> parts
+        List<HologramPart> parts,
+        CompoundTag data
 ) {
     public static final int AXIS_Y = 0;
     public static final int AXIS_X = 1;
@@ -64,11 +65,14 @@ public record HologramSpec(
         props = Map.copyOf(props);
         effects = List.copyOf(effects);
         parts = List.copyOf(parts);
+        // Copied so a caller cannot mutate saved data through the tag it handed in.
+        data = data.copy();
     }
 
     public static HologramSpec create(String id, BlockPos pos, String block, @Nullable UUID owner, String ownerName) {
         return new HologramSpec(id, pos, block, Map.of(), 1.0F, 0.0F, 0.0F, 0.0F, 0.0F, AXIS_Y,
-                0.0F, 4.0F, false, true, 48, owner, ownerName, List.of(), 0.0F, 0.6F, List.of());
+                0.0F, 4.0F, false, true, 48, owner, ownerName, List.of(), 0.0F, 0.6F, List.of(),
+                new CompoundTag());
     }
 
     /**
@@ -79,28 +83,35 @@ public record HologramSpec(
         return new HologramSpec(newId, newPos, this.block, this.props, this.scale, this.yaw, this.pitch,
                 this.roll, this.spin, this.spinAxis, this.hover, this.hoverPeriod, this.fullbright,
                 this.enabled, this.renderDistance, newOwner, newOwnerName, this.effects, this.appearRadius,
-                this.appearSeconds, this.parts);
+                this.appearSeconds, this.parts, this.data);
     }
 
     public HologramSpec withRenderDistance(int distance) {
         return new HologramSpec(this.id, this.pos, this.block, this.props, this.scale, this.yaw, this.pitch,
                 this.roll, this.spin, this.spinAxis, this.hover, this.hoverPeriod, this.fullbright,
                 this.enabled, distance, this.owner, this.ownerName, this.effects, this.appearRadius,
-                this.appearSeconds, this.parts);
+                this.appearSeconds, this.parts, this.data);
     }
 
     public HologramSpec withEffects(List<HologramEffect> effects) {
         return new HologramSpec(this.id, this.pos, this.block, this.props, this.scale, this.yaw, this.pitch,
                 this.roll, this.spin, this.spinAxis, this.hover, this.hoverPeriod, this.fullbright,
                 this.enabled, this.renderDistance, this.owner, this.ownerName, effects, this.appearRadius,
-                this.appearSeconds, this.parts);
+                this.appearSeconds, this.parts, this.data);
+    }
+
+    public HologramSpec withData(CompoundTag data) {
+        return new HologramSpec(this.id, this.pos, this.block, this.props, this.scale, this.yaw, this.pitch,
+                this.roll, this.spin, this.spinAxis, this.hover, this.hoverPeriod, this.fullbright,
+                this.enabled, this.renderDistance, this.owner, this.ownerName, this.effects, this.appearRadius,
+                this.appearSeconds, this.parts, data);
     }
 
     public HologramSpec withParts(List<HologramPart> parts) {
         return new HologramSpec(this.id, this.pos, this.block, this.props, this.scale, this.yaw, this.pitch,
                 this.roll, this.spin, this.spinAxis, this.hover, this.hoverPeriod, this.fullbright,
                 this.enabled, this.renderDistance, this.owner, this.ownerName, this.effects, this.appearRadius,
-                this.appearSeconds, parts);
+                this.appearSeconds, parts, this.data);
     }
 
     /** The box the block actually occupies, used for both the selection outline and the click test. */
@@ -139,6 +150,8 @@ public record HologramSpec(
             tag.put("effects", HologramEffect.listToTag(this.effects));
         if (!this.parts.isEmpty())
             tag.put("parts", HologramPart.listToTag(this.parts));
+        if (!this.data.isEmpty())
+            tag.put("blockEntity", this.data.copy());
         tag.putFloat("appearRadius", this.appearRadius);
         tag.putFloat("appearSeconds", this.appearSeconds);
         return tag;
@@ -176,7 +189,7 @@ public record HologramSpec(
                 tag.getBoolean("fullbright"), !tag.contains("enabled") || tag.getBoolean("enabled"),
                 tag.getInt("renderDistance"), owner, tag.getString("ownerName"), effects,
                 tag.getFloat("appearRadius"), tag.contains("appearSeconds") ? tag.getFloat("appearSeconds") : 0.6F,
-                savedParts);
+                savedParts, tag.contains("blockEntity") ? tag.getCompound("blockEntity") : new CompoundTag());
     }
 
     /** True when this tag carries the fields the renderer needs; used to skip junk in a saved list. */

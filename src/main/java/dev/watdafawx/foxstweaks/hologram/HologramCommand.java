@@ -83,7 +83,7 @@ public final class HologramCommand {
         // One block in front of the player's eyes, so the hologram lands where it can be seen.
         Vec3 target = player.getEyePosition().add(player.getViewVector(1.0F).scale(3.0));
         BlockPos pos = BlockPos.containing(target);
-        HologramSpec spec = Holograms.create(level, pos, block.defaultBlockState(), player);
+        HologramSpec spec = Holograms.create(level, pos, block.defaultBlockState(), pos, player);
         source.sendSuccess(() -> Component.literal("Hologram '" + spec.id() + "' at " + pos.toShortString()
                 + ", showing " + spec.block() + "."), false);
         return 1;
