@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 1.37.0
 
 - Added **holograms**: the craftable *Hologram Wand* projects a block into the world as decoration.
   - Right-click a block to project a hologram of it on the face you touched and open the editor; right-click an existing hologram to edit it; sneak + right-click it to remove it.
