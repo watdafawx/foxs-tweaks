@@ -76,7 +76,8 @@ public class HologramScreen extends Screen {
     private static final int LIST_VISIBLE = 6; // 6 * 15 == 90 == GRID_ROWS * CELL
     private static final int PROP_ROWS = 5;
     private static final int PROP_PITCH = 15;
-    private static final int MAX_EFFECTS = 4;
+    private static final int MAX_EFFECTS = HologramSpec.MAX_EFFECTS;
+    private static final String[] REVEAL_NAMES = { "Rise", "Pop", "Unfold", "Spin", "Drop", "Glitch" };
 
     public static final int TAB_TRANSFORM = 0;
     public static final int TAB_ANIMATE = 1;
@@ -154,12 +155,15 @@ public class HologramScreen extends Screen {
     private CompoundTag data;
     private float appearRadius;
     private float appearSeconds;
+    private int appearStyle;
 
     // ---- UI state ----
     private int tab = TAB_TRANSFORM;
     private int pickMode = PICK_BLOCKS;
     private boolean pickerCollapsed;
     private int scroll;
+    private int layerScroll;
+    private int fxScroll;
     private boolean draggingScrollbar;
 
     private String selectedEntityId = "";
@@ -228,6 +232,7 @@ public class HologramScreen extends Screen {
         this.data = spec.data().copy();
         this.appearRadius = spec.appearRadius();
         this.appearSeconds = spec.appearSeconds();
+        this.appearStyle = spec.appearStyle();
         this.maxRenderDistance = Math.max(16, payload.maxRenderDistance());
         this.owner = spec.owner();
         this.ownerName = spec.ownerName();
@@ -486,32 +491,59 @@ public class HologramScreen extends Screen {
 
             // Walk-in appear
             y += 11;
-            this.numControls.add(new NumControl(rx, y, rw, 18, "Appear", TEXT, true,
+            this.numControls.add(new NumControl(rx, y, rw, 16, "Appear", TEXT, true,
                     0.0, 64.0, 2.0, 0.0, () -> this.appearRadius,
                     v -> this.appearRadius = (float) clamp(v, 0.0, 64.0), "m", 0));
-            y += 23;
+            y += 19;
 
-            this.numControls.add(new NumControl(rx, y, rw, 18, "Ease", TEXT, true,
+            this.numControls.add(new NumControl(rx, y, rw, 16, "Ease", TEXT, true,
                     0.0, 5.0, 0.2, 0.6, () -> this.appearSeconds,
                     v -> this.appearSeconds = (float) clamp(v, 0.0, 10.0), "s", 1));
+            y += 19;
+
+            // 6 Reveal Styles in 2 rows of 3 pills
+            int rW = (rw - 4) / 3;
+            for (int i = 0; i < REVEAL_NAMES.length; i++) {
+                int st = i;
+                int bx = rx + (i % 3) * (rW + 2);
+                int by = y + (i / 3) * 16;
+                this.flatBtns.add(new FlatBtn(bx, by, rW, 14, REVEAL_NAMES[i],
+                        this.appearStyle == st, false, true, () -> {
+                    this.appearStyle = st;
+                    rebuildInspector();
+                    refresh();
+                }));
+            }
         } else if (this.tab == TAB_FX) {
-            // 5 direct toggle pills for each effect type
+            // 9 direct effect toggle pills in 2 compact rows (5 + 4)
             HologramEffect.Type[] allTypes = HologramEffect.Type.values();
-            int pillW = (rw - 8) / 5;
-            String[] shortNames = { "Tint", "Flkr", "Trmr", "Wbl", "Jump" };
-            for (int i = 0; i < allTypes.length; i++) {
+            String[] shortNames = { "Tint", "Scan", "Gltch", "Pulse", "Chrma", "Flkr", "Trmr", "Wbl", "Jump" };
+            int row1W = (rw - 8) / 5;
+            for (int i = 0; i < 5; i++) {
                 HologramEffect.Type type = allTypes[i];
                 boolean has = indexOfEffect(type) >= 0;
-                this.flatBtns.add(new FlatBtn(rx + i * (pillW + 2), y, pillW, 16, shortNames[i],
+                this.flatBtns.add(new FlatBtn(rx + i * (row1W + 2), y, row1W, 15, shortNames[i],
                         has, false, has || this.effects.size() < MAX_EFFECTS, () -> toggleEffect(type)));
             }
-            y += 22;
+            y += 17;
+            int row2W = (rw - 6) / 4;
+            for (int i = 5; i < allTypes.length; i++) {
+                HologramEffect.Type type = allTypes[i];
+                boolean has = indexOfEffect(type) >= 0;
+                this.flatBtns.add(new FlatBtn(rx + (i - 5) * (row2W + 2), y, row2W, 15, shortNames[i],
+                        has, false, has || this.effects.size() < MAX_EFFECTS, () -> toggleEffect(type)));
+            }
+            y += 20;
 
-            // Cards for each active effect
-            for (int i = 0; i < this.effects.size(); i++) {
+            // Scrollable active effect cards
+            int maxCardY = this.top + PANEL_H - 34;
+            this.fxScroll = Mth.clamp(this.fxScroll, 0, Math.max(0, this.effects.size() - 1));
+            for (int i = this.fxScroll; i < this.effects.size(); i++) {
                 int idx = i;
                 HologramEffect fx = this.effects.get(i);
-                int cardH = fx.type() == HologramEffect.Type.TINT ? 42 : 24;
+                int cardH = fx.type() == HologramEffect.Type.TINT ? 40 : 22;
+                if (y + cardH > maxCardY)
+                    break;
                 int strW = fx.type() == HologramEffect.Type.TINT ? rw - 20 : (rw - 24) * 60 / 100;
                 this.numControls.add(new NumControl(rx, y, strW, 18, fx.label(), TEXT, true,
                         0.0, 2.0, 0.1, 0.5,
@@ -527,10 +559,10 @@ public class HologramScreen extends Screen {
                 }
                 this.flatBtns.add(new FlatBtn(rx + rw - 17, y, 17, 18, "x", false, true, true,
                         () -> removeEffect(idx)));
-                y += cardH + 4;
+                y += cardH + 3;
             }
         } else {
-            // More tab: Clipboard, BE Data, and Stacked Layers (Parts)
+            // More tab: Clipboard, BE Data, and Stacked Layers (Parts, up to 16, scrollable)
             int thirdW = (rw - 4) / 3;
             this.flatBtns.add(new FlatBtn(rx, y, thirdW, 18, "Copy", false, false, true, () -> {
                 HologramClipboard.copy(buildSpec());
@@ -555,13 +587,17 @@ public class HologramScreen extends Screen {
             }));
             y += 28;
 
-            // Extra Layers (Parts) list
-            y += 11; // section label "Layers (N/4)"
-            for (int i = 0; i < this.parts.size(); i++) {
-                int idx = i;
-                HologramPart p = this.parts.get(i);
+            // Extra Layers (Parts) list (3 visible rows, wheel scrolls when > 3)
+            y += 11; // section label "Layers (N/16)"
+            int maxVisLayers = 4;
+            this.layerScroll = Mth.clamp(this.layerScroll, 0, Math.max(0, this.parts.size() - maxVisLayers));
+            for (int row = 0; row < maxVisLayers; row++) {
+                int idx = this.layerScroll + row;
+                if (idx >= this.parts.size())
+                    break;
+                HologramPart p = this.parts.get(idx);
                 this.flatBtns.add(new FlatBtn(rx, y, rw - 20, 17,
-                        p.label() + (idx == 0 && this.primaryPartOverride ? " (main)" : ""),
+                        (idx + 1) + ". " + p.label() + (idx == 0 && this.primaryPartOverride ? " (main)" : ""),
                         idx == this.selectedPart, false, true, () -> {
                     this.selectedPart = idx;
                     rebuildInspector();
@@ -1127,14 +1163,18 @@ public class HologramScreen extends Screen {
             graphics.drawString(this.font, "Walk-in Reveal", rx, this.top + 142, MUTED, false);
         } else if (this.tab == TAB_FX) {
             if (this.effects.isEmpty()) {
-                graphics.drawString(this.font, "Click an effect above to enable", rx, this.top + 76, MUTED, false);
+                graphics.drawString(this.font, "Click an effect above to enable", rx, this.top + 92, MUTED, false);
             } else {
-                // Draw TINT color swatches under any TINT card
-                int y = this.top + 66;
-                for (int i = 0; i < this.effects.size(); i++) {
+                // Draw TINT color swatches under any visible TINT card
+                int y = this.top + 81;
+                int maxCardY = this.top + PANEL_H - 34;
+                for (int i = this.fxScroll; i < this.effects.size(); i++) {
                     HologramEffect fx = this.effects.get(i);
+                    int cardH = fx.type() == HologramEffect.Type.TINT ? 40 : 22;
+                    if (y + cardH > maxCardY)
+                        break;
                     if (fx.type() == HologramEffect.Type.TINT) {
-                        int swY = y + 22;
+                        int swY = y + 21;
                         int swW = (rw - (TINT_COLORS.length - 1) * 2) / TINT_COLORS.length;
                         for (int c = 0; c < TINT_COLORS.length; c++) {
                             int sx = rx + c * (swW + 2);
@@ -1142,10 +1182,8 @@ public class HologramScreen extends Screen {
                             graphics.fill(sx, swY, sx + swW, swY + 14, 0xFF000000 | TINT_COLORS[c]);
                             graphics.renderOutline(sx, swY, swW, 14, sel ? 0xFFFFFFFF : 0x55000000);
                         }
-                        y += 46;
-                    } else {
-                        y += 28;
                     }
+                    y += cardH + 3;
                 }
             }
         } else {
@@ -1205,11 +1243,15 @@ public class HologramScreen extends Screen {
         if (this.tab == TAB_FX && button == 0) {
             int rx = this.rightX + 8;
             int rw = this.rightW - 16;
-            int y = this.top + 66;
-            for (int i = 0; i < this.effects.size(); i++) {
+            int y = this.top + 81;
+            int maxCardY = this.top + PANEL_H - 34;
+            for (int i = this.fxScroll; i < this.effects.size(); i++) {
                 HologramEffect fx = this.effects.get(i);
+                int cardH = fx.type() == HologramEffect.Type.TINT ? 40 : 22;
+                if (y + cardH > maxCardY)
+                    break;
                 if (fx.type() == HologramEffect.Type.TINT) {
-                    int swY = y + 22;
+                    int swY = y + 21;
                     int swW = (rw - (TINT_COLORS.length - 1) * 2) / TINT_COLORS.length;
                     for (int c = 0; c < TINT_COLORS.length; c++) {
                         int sx = rx + c * (swW + 2);
@@ -1218,10 +1260,8 @@ public class HologramScreen extends Screen {
                             return true;
                         }
                     }
-                    y += 46;
-                } else {
-                    y += 28;
                 }
+                y += cardH + 3;
             }
         }
 
@@ -1439,6 +1479,21 @@ public class HologramScreen extends Screen {
             }
         }
 
+        // Scrollable Layers list on More tab or FX list on FX tab when mouse is inside right panel
+        if (mouseX >= this.rightX && mouseX < this.rightX + this.rightW
+                && mouseY >= this.top + 42 && mouseY < this.top + PANEL_H - 30) {
+            if (this.tab == TAB_MORE && this.parts.size() > 4) {
+                this.layerScroll = Mth.clamp(this.layerScroll - dir, 0, Math.max(0, this.parts.size() - 4));
+                rebuildInspector();
+                return true;
+            }
+            if (this.tab == TAB_FX && this.effects.size() > 3) {
+                this.fxScroll = Mth.clamp(this.fxScroll - dir, 0, Math.max(0, this.effects.size() - 1));
+                rebuildInspector();
+                return true;
+            }
+        }
+
         if (!this.pickerCollapsed) {
             // Property rows in Block mode
             if (this.pickMode == PICK_BLOCKS) {
@@ -1560,7 +1615,7 @@ public class HologramScreen extends Screen {
                 this.block, this.props, this.scale, this.yaw, this.pitch,
                 this.roll, this.spin, this.spinAxis, this.hover, this.hoverPeriod, this.fullbright, true,
                 this.renderDistance, this.owner, this.ownerName, this.effects, this.appearRadius,
-                this.appearSeconds, this.parts, this.data);
+                this.appearSeconds, this.appearStyle, this.parts, this.data);
     }
 
     @Nullable
@@ -1592,6 +1647,7 @@ public class HologramScreen extends Screen {
         this.data = clip.data().copy();
         this.appearRadius = clip.appearRadius();
         this.appearSeconds = clip.appearSeconds();
+        this.appearStyle = clip.appearStyle();
         this.primaryPartOverride = "minecraft:air".equals(this.block) && !this.parts.isEmpty();
         rebuildInspector();
         refresh();

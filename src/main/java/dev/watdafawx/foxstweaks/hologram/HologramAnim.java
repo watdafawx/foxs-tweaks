@@ -6,10 +6,10 @@ import javax.annotation.Nullable;
 import java.util.List;
 
 /**
- * All of the hologram's motion maths, as pure functions of time and distance.
+ * All of the hologram's motion and effect maths, as pure functions of time and distance.
  *
- * <p>Kept separate from the renderer so the dev check can assert the actual curves (an appear radius
- * that never reaches 1.0 is invisible in a screenshot) and so nothing here needs a client to run.
+ * <p>Kept separate from the renderer so the dev check can assert the actual curves and so nothing
+ * here needs a client to run.
  */
 public final class HologramAnim {
 
@@ -36,23 +36,116 @@ public final class HologramAnim {
         return p * p * (3.0F - 2.0F * p);
     }
 
-    /** Deterministic -1..1 noise from two out-of-phase sines; no per-frame randomness to jitter. */
-    public static float wave(double seconds, float speed, double phase) {
-        double t = seconds * speed;
-        return (float) (0.5 * Math.sin((t + phase) * Mth.TWO_PI) + 0.5 * Math.sin((t * 2.37 + phase) * Mth.TWO_PI));
+    /** Overshoot bounce ease for the POP reveal style. */
+    public static float easeOutBack(float progress) {
+        float p = Mth.clamp(progress, 0.0F, 1.0F);
+        float c1 = 1.70158F;
+        float c3 = c1 + 1.0F;
+        float u = p - 1.0F;
+        return Math.max(0.01F, 1.0F + c3 * u * u * u + c1 * u * u);
     }
 
-    /** True while a FLICKER layer wants the hologram hidden. */
+    /**
+     * Computed transform for the 6 Walk-in Reveal styles at progress {@code p} in 0..1.
+     */
+    public record RevealPose(float sx, float sy, float sz, float dy, float spinY, float glitchX) {
+    }
+
+    public static RevealPose revealPose(int style, float progress, double seconds) {
+        float p = Mth.clamp(progress, 0.0F, 1.0F);
+        if (p >= 0.999F)
+            return new RevealPose(1.0F, 1.0F, 1.0F, 0.0F, 0.0F, 0.0F);
+        float e = ease(p);
+        return switch (style) {
+            case HologramSpec.REVEAL_POP -> {
+                float s = easeOutBack(p);
+                yield new RevealPose(s, s, s, 0.0F, 0.0F, 0.0F);
+            }
+            case HologramSpec.REVEAL_UNFOLD -> {
+                // Sci-fi teleporter beam: thin & tall -> expands into full shape.
+                float sxz = 0.06F + 0.94F * e;
+                float sy = 2.2F - 1.2F * e;
+                yield new RevealPose(sxz, sy, sxz, 0.0F, 0.0F, 0.0F);
+            }
+            case HologramSpec.REVEAL_SPIN -> {
+                float s = 0.1F + 0.9F * e;
+                float spin = (1.0F - e) * 360.0F;
+                yield new RevealPose(s, s, s, -(1.0F - e) * 0.4F, spin, 0.0F);
+            }
+            case HologramSpec.REVEAL_DROP -> {
+                // Drops from above and settles with a slight landing squash.
+                float dropY = (1.0F - e) * 2.5F;
+                float squash = p > 0.75F ? (float) Math.sin((p - 0.75F) * 4.0F * Math.PI) * 0.15F : 0.0F;
+                yield new RevealPose(1.0F + squash, 1.0F - squash, 1.0F + squash, dropY, 0.0F, 0.0F);
+            }
+            case HologramSpec.REVEAL_GLITCH -> {
+                float s = 0.35F + 0.65F * e;
+                float jitter = (1.0F - e) * wave(seconds, 18.0F, 0.23) * 0.65F;
+                yield new RevealPose(s, s, s, 0.0F, 0.0F, jitter);
+            }
+            default -> {
+                // REVEAL_RISE: smooth grow + rise into place.
+                float s = 0.15F + 0.85F * e;
+                yield new RevealPose(s, s, s, -(1.0F - e) * 0.65F, 0.0F, 0.0F);
+            }
+        };
+    }
+
+    /** Deterministic -1..1 noise from two out-of-phase sines; no per-frame randomness to jitter. */
+    public static float wave(double seconds, float speed, double phase) {
+        double t = (seconds * speed) % 1000.0;
+        return (float) (0.5 * Math.sin((t + phase) * (Math.PI * 2.0))
+                + 0.5 * Math.sin((t * 2.37 + phase) * (Math.PI * 2.0)));
+    }
+
+    /** True while a FLICKER or GLITCH layer wants the hologram briefly hidden. */
     public static boolean flickerHidden(List<HologramEffect> effects, double seconds) {
         for (HologramEffect effect : effects) {
-            if (effect.type() != HologramEffect.Type.FLICKER)
-                continue;
-            float shake = wave(seconds, effect.speed(), 0.11);
-            // Only the bottom of the wave hides it, so a strength of 1 is a strobe and 0.2 is a stutter.
-            if (shake < -1.0F + effect.strength() * 1.2F)
-                return true;
+            if (effect.type() == HologramEffect.Type.FLICKER) {
+                float shake = wave(seconds, effect.speed(), 0.11);
+                if (shake < -1.0F + effect.strength() * 1.2F)
+                    return true;
+            } else if (effect.type() == HologramEffect.Type.GLITCH) {
+                if (glitchBurst(seconds, effect.speed()) > 0.92F && effect.strength() > 0.6F)
+                    return true;
+            }
         }
         return false;
+    }
+
+    /** 0..1 spike during periodic cyber-glitch bursts. */
+    public static float glitchBurst(double seconds, float speed) {
+        double t = (seconds * speed) % 1000.0;
+        double cycle = t - Math.floor(t);
+        if (cycle > 0.18)
+            return 0.0F;
+        return (float) Math.sin((cycle / 0.18) * Math.PI);
+    }
+
+    /** Horizontal X glitch snap in blocks. */
+    public static float glitchOffsetX(List<HologramEffect> effects, double seconds) {
+        float total = 0.0F;
+        for (HologramEffect effect : effects) {
+            if (effect.type() != HologramEffect.Type.GLITCH)
+                continue;
+            float burst = glitchBurst(seconds, effect.speed());
+            if (burst > 0.01F)
+                total += Math.signum(wave(seconds, effect.speed() * 11.0F, 0.19)) * burst * 0.28F * effect.strength();
+        }
+        return total;
+    }
+
+    /** Horizontal Z glitch snap in blocks. */
+    public static float glitchOffsetZ(List<HologramEffect> effects, double seconds) {
+        float total = 0.0F;
+        for (HologramEffect effect : effects) {
+            if (effect.type() != HologramEffect.Type.GLITCH)
+                continue;
+            float burst = glitchBurst(seconds, effect.speed());
+            if (burst > 0.01F)
+                total += wave(seconds, effect.speed() * 13.0F, 0.63) * burst * 0.22F * effect.strength();
+        }
+        return total;
     }
 
     /** Degrees of jitter for TREMOR layers, summed. */
@@ -60,19 +153,30 @@ public final class HologramAnim {
         float total = 0.0F;
         for (HologramEffect effect : effects) {
             if (effect.type() == HologramEffect.Type.TREMOR)
-                total += wave(seconds, effect.speed(), 0.37) * 2.5F * effect.strength();
+                total += wave(seconds, effect.speed(), 0.37) * 5.0F * effect.strength();
         }
         return total;
     }
 
-    /** Multiplier for WOBBLE layers, around 1.0. */
-    public static float wobbleScale(List<HologramEffect> effects, double seconds) {
+    /** Vertical squash-and-stretch multiplier for WOBBLE layers, around 1.0. */
+    public static float wobbleScaleY(List<HologramEffect> effects, double seconds) {
         float total = 1.0F;
         for (HologramEffect effect : effects) {
             if (effect.type() == HologramEffect.Type.WOBBLE)
-                total += wave(seconds, effect.speed(), 0.71) * 0.06F * effect.strength();
+                total += wave(seconds, effect.speed(), 0.71) * 0.14F * effect.strength();
         }
-        return total;
+        return Math.max(0.4F, total);
+    }
+
+    /** Horizontal squash-and-stretch (inverse of Y so volume feels preserved). */
+    public static float wobbleScaleXZ(List<HologramEffect> effects, double seconds) {
+        float sy = wobbleScaleY(effects, seconds);
+        return 1.0F / (float) Math.sqrt(sy);
+    }
+
+    /** Backwards-compatible helper returning Y wobble scale. */
+    public static float wobbleScale(List<HologramEffect> effects, double seconds) {
+        return wobbleScaleY(effects, seconds);
     }
 
     /** Vertical offset in blocks for JUMP layers, summed. */
@@ -81,22 +185,53 @@ public final class HologramAnim {
         for (HologramEffect effect : effects) {
             if (effect.type() != HologramEffect.Type.JUMP)
                 continue;
-            // A sawtooth: hold, then snap. That reads as a mistimed projection, not a bobbing float.
-            double t = seconds * effect.speed();
+            double t = (seconds * effect.speed()) % 1000.0;
             float snap = (float) (t - Math.floor(t));
-            total += (snap < 0.4 ? 0.0F : effect.strength() * 0.35F);
+            total += (snap < 0.45 ? 0.0F : effect.strength() * 0.45F);
         }
         return total;
+    }
+
+    /** Brightness multiplier from PULSE layers (0.35 .. 1.35). */
+    public static float pulseMultiplier(List<HologramEffect> effects, double seconds) {
+        float mult = 1.0F;
+        for (HologramEffect effect : effects) {
+            if (effect.type() != HologramEffect.Type.PULSE)
+                continue;
+            double phase = ((seconds * effect.speed()) % 1.0) * (Math.PI * 2.0);
+            float wave = (float) (0.5 + 0.5 * Math.sin(phase)); // 0..1
+            float depth = Mth.clamp(effect.strength() * 0.55F, 0.0F, 0.75F);
+            mult *= (1.0F - depth) + depth * 1.45F * wave;
+        }
+        return mult;
+    }
+
+    /** Packed RGB for RAINBOW layer, or -1 if none. */
+    public static int rainbowColor(List<HologramEffect> effects, double seconds) {
+        for (HologramEffect effect : effects) {
+            if (effect.type() == HologramEffect.Type.RAINBOW) {
+                float hue = (float) ((seconds * effect.speed()) % 1.0);
+                if (hue < 0.0F)
+                    hue += 1.0F;
+                return Mth.hsvToRgb(hue, Mth.clamp(effect.strength() * 0.85F, 0.1F, 1.0F), 1.0F);
+            }
+        }
+        return -1;
+    }
+
+    @Nullable
+    public static HologramEffect firstOf(List<HologramEffect> effects, HologramEffect.Type type) {
+        for (HologramEffect effect : effects) {
+            if (effect.type() == type)
+                return effect;
+        }
+        return null;
     }
 
     /** The colour multiplier of the first TINT layer, or null when there is none. */
     @Nullable
     public static HologramEffect tint(List<HologramEffect> effects) {
-        for (HologramEffect effect : effects) {
-            if (effect.type() == HologramEffect.Type.TINT)
-                return effect;
-        }
-        return null;
+        return firstOf(effects, HologramEffect.Type.TINT);
     }
 
     private HologramAnim() {

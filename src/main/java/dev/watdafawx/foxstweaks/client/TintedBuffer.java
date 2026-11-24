@@ -1,53 +1,138 @@
 package dev.watdafawx.foxstweaks.client;
 
 import com.mojang.blaze3d.vertex.VertexConsumer;
+import dev.watdafawx.foxstweaks.hologram.HologramAnim;
+import dev.watdafawx.foxstweaks.hologram.HologramEffect;
 import net.minecraft.client.renderer.MultiBufferSource;
 import net.minecraft.client.renderer.RenderType;
+import net.minecraft.util.Mth;
+
+import java.util.List;
 
 /**
- * Colour-tints whatever is drawn through it, by multiplying each vertex colour.
- *
- * <p>This is how the {@code TINT} effect works: block models are drawn with white vertices, so scaling
- * their colour is a full tint that costs one multiply per vertex and needs no shader, no second pass and
- * no render-type swap. Alpha is passed through untouched - most block render types do not blend, so
- * fading via alpha would do nothing (which is why FLICKER hides frames instead).
+ * Single-pass vertex color processor for hologram visual FX: combines TINT, RAINBOW, PULSE,
+ * GLITCH chromatic flash, and sweeping horizontal SCANLINE bands in one vertex pass with zero
+ * extra draw calls and full shader-pack compatibility.
  */
 final class TintedBuffer implements MultiBufferSource {
     private final MultiBufferSource delegate;
     private final float red;
     private final float green;
     private final float blue;
+    private final float scanStrength;
+    private final float scanPhase;
 
-    /**
-     * @param color    packed RGB to tint toward
-     * @param strength 0 = untouched, 1 = fully {@code color}
-     */
-    TintedBuffer(MultiBufferSource delegate, int color, float strength) {
+    TintedBuffer(MultiBufferSource delegate, float red, float green, float blue,
+                 float scanStrength, float scanPhase) {
         this.delegate = delegate;
-        float mix = Math.max(0.0F, Math.min(1.0F, strength));
-        this.red = 1.0F - mix + mix * ((color >> 16 & 0xFF) / 255.0F);
-        this.green = 1.0F - mix + mix * ((color >> 8 & 0xFF) / 255.0F);
-        this.blue = 1.0F - mix + mix * ((color & 0xFF) / 255.0F);
+        this.red = red;
+        this.green = green;
+        this.blue = blue;
+        this.scanStrength = scanStrength;
+        this.scanPhase = scanPhase;
+    }
+
+    /** Wraps {@code delegate} when any vertex-colour FX is active, otherwise returns {@code delegate}. */
+    static MultiBufferSource wrap(MultiBufferSource delegate, List<HologramEffect> effects, double seconds) {
+        if (effects.isEmpty())
+            return delegate;
+
+        float r = 1.0F;
+        float g = 1.0F;
+        float b = 1.0F;
+        boolean needed = false;
+
+        HologramEffect tint = HologramAnim.tint(effects);
+        if (tint != null) {
+            float mix = Mth.clamp(tint.strength(), 0.0F, 1.0F);
+            r *= 1.0F - mix + mix * ((tint.color() >> 16 & 0xFF) / 255.0F);
+            g *= 1.0F - mix + mix * ((tint.color() >> 8 & 0xFF) / 255.0F);
+            b *= 1.0F - mix + mix * ((tint.color() & 0xFF) / 255.0F);
+            needed = true;
+        }
+
+        int rainbow = HologramAnim.rainbowColor(effects, seconds);
+        if (rainbow >= 0) {
+            r *= ((rainbow >> 16) & 0xFF) / 255.0F;
+            g *= ((rainbow >> 8) & 0xFF) / 255.0F;
+            b *= (rainbow & 0xFF) / 255.0F;
+            needed = true;
+        }
+
+        float pulse = HologramAnim.pulseMultiplier(effects, seconds);
+        if (Math.abs(pulse - 1.0F) > 0.005F) {
+            r *= pulse;
+            g *= pulse;
+            b *= pulse;
+            needed = true;
+        }
+
+        HologramEffect glitch = HologramAnim.firstOf(effects, HologramEffect.Type.GLITCH);
+        if (glitch != null) {
+            float burst = HologramAnim.glitchBurst(seconds, glitch.speed());
+            if (burst > 0.1F) {
+                // Brief cyan/magenta cyber-glitch flash during burst spikes.
+                boolean cyan = HologramAnim.wave(seconds, glitch.speed() * 17.0F, 0.41) > 0.0F;
+                float m = Mth.clamp(burst * glitch.strength() * 0.7F, 0.0F, 0.85F);
+                r *= cyan ? (1.0F - 0.65F * m) : (1.0F + 0.35F * m);
+                g *= cyan ? (1.0F + 0.25F * m) : (1.0F - 0.75F * m);
+                b *= 1.0F + 0.35F * m;
+                needed = true;
+            }
+        }
+
+        float scanStrength = 0.0F;
+        float scanPhase = 0.0F;
+        HologramEffect scan = HologramAnim.firstOf(effects, HologramEffect.Type.SCANLINE);
+        if (scan != null) {
+            scanStrength = Mth.clamp(scan.strength() * 0.42F, 0.0F, 0.75F);
+            scanPhase = (float) ((seconds * scan.speed()) % 1.0) * Mth.TWO_PI;
+            needed = true;
+        }
+
+        return needed ? new TintedBuffer(delegate, r, g, b, scanStrength, scanPhase) : delegate;
     }
 
     @Override
     public VertexConsumer getBuffer(RenderType type) {
-        return new TintedVertex(this.delegate.getBuffer(type), this.red, this.green, this.blue);
+        return new TintedVertex(this.delegate.getBuffer(type),
+                this.red, this.green, this.blue, this.scanStrength, this.scanPhase);
     }
 
-    private record TintedVertex(VertexConsumer delegate, float red, float green, float blue)
-            implements VertexConsumer {
+    private static final class TintedVertex implements VertexConsumer {
+        private final VertexConsumer delegate;
+        private final float red, green, blue;
+        private final float scanStrength, scanPhase;
+        private float lastY;
+
+        TintedVertex(VertexConsumer delegate, float red, float green, float blue,
+                     float scanStrength, float scanPhase) {
+            this.delegate = delegate;
+            this.red = red;
+            this.green = green;
+            this.blue = blue;
+            this.scanStrength = scanStrength;
+            this.scanPhase = scanPhase;
+        }
 
         @Override
         public VertexConsumer addVertex(float x, float y, float z) {
+            this.lastY = y;
             this.delegate.addVertex(x, y, z);
             return this;
         }
 
         @Override
         public VertexConsumer setColor(int r, int g, int b, int a) {
-            this.delegate.setColor(Math.round(r * this.red), Math.round(g * this.green),
-                    Math.round(b * this.blue), a);
+            float band = 1.0F;
+            if (this.scanStrength > 0.0F) {
+                float wave = Mth.sin(this.lastY * 14.0F - this.scanPhase);
+                band = 1.0F - this.scanStrength * (0.5F - 0.5F * wave);
+            }
+            int cr = Mth.clamp(Math.round(r * this.red * band), 0, 255);
+            int cg = Mth.clamp(Math.round(g * this.green * band), 0, 255);
+            int cb = Mth.clamp(Math.round(b * this.blue * band), 0, 255);
+            this.delegate.setColor(cr, cg, cb, a);
             return this;
         }
 

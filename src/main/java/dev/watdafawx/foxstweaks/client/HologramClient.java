@@ -191,7 +191,7 @@ public final class HologramClient {
         for (HologramSpec spec : HologramClient.visible) {
             if (spec.parts().isEmpty() || appearProgress(spec.id()) <= 0.01F)
                 continue;
-            if (HologramAnim.flickerHidden(spec.effects(), mc.level.getGameTime() / 20.0))
+            if (HologramAnim.flickerHidden(spec.effects(), HologramRenderer.animSeconds()))
                 continue;
 
             var centre = spec.box().getCenter();

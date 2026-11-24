@@ -48,12 +48,22 @@ public record HologramSpec(
         List<HologramEffect> effects,
         float appearRadius,
         float appearSeconds,
+        int appearStyle,
         List<HologramPart> parts,
         CompoundTag data
 ) {
     public static final int AXIS_Y = 0;
     public static final int AXIS_X = 1;
     public static final int AXIS_Z = 2;
+
+    public static final int REVEAL_RISE = 0;
+    public static final int REVEAL_POP = 1;
+    public static final int REVEAL_UNFOLD = 2;
+    public static final int REVEAL_SPIN = 3;
+    public static final int REVEAL_DROP = 4;
+    public static final int REVEAL_GLITCH = 5;
+    public static final int REVEAL_COUNT = 6;
+    public static final int MAX_EFFECTS = 6;
 
     /** Clamps live in the canonical constructor so a hand-written packet cannot produce garbage. */
     public HologramSpec {
@@ -68,8 +78,9 @@ public record HologramSpec(
         renderDistance = Mth.clamp(renderDistance, 8, 512);
         appearRadius = Mth.clamp(appearRadius, 0.0F, 64.0F);
         appearSeconds = Mth.clamp(appearSeconds, 0.0F, 10.0F);
+        appearStyle = Mth.clamp(appearStyle, 0, REVEAL_COUNT - 1);
         props = Map.copyOf(props);
-        effects = effects.size() > 4 ? List.copyOf(effects.subList(0, 4)) : List.copyOf(effects);
+        effects = effects.size() > MAX_EFFECTS ? List.copyOf(effects.subList(0, MAX_EFFECTS)) : List.copyOf(effects);
         parts = parts.size() > HologramPart.MAX_PARTS
                 ? List.copyOf(parts.subList(0, HologramPart.MAX_PARTS))
                 : List.copyOf(parts);
@@ -79,7 +90,7 @@ public record HologramSpec(
 
     public static HologramSpec create(String id, BlockPos pos, String block, @Nullable UUID owner, String ownerName) {
         return new HologramSpec(id, pos, 0.0F, 0.0F, 0.0F, block, Map.of(), 1.0F, 0.0F, 0.0F, 0.0F, 0.0F, AXIS_Y,
-                0.0F, 4.0F, false, true, 48, owner, ownerName, List.of(), 0.0F, 0.6F, List.of(),
+                0.0F, 4.0F, false, true, 48, owner, ownerName, List.of(), 0.0F, 0.6F, REVEAL_RISE, List.of(),
                 new CompoundTag());
     }
 
@@ -91,42 +102,42 @@ public record HologramSpec(
         return new HologramSpec(newId, newPos, this.offsetX, this.offsetY, this.offsetZ, this.block, this.props,
                 this.scale, this.yaw, this.pitch, this.roll, this.spin, this.spinAxis, this.hover,
                 this.hoverPeriod, this.fullbright, this.enabled, this.renderDistance, newOwner, newOwnerName,
-                this.effects, this.appearRadius, this.appearSeconds, this.parts, this.data);
+                this.effects, this.appearRadius, this.appearSeconds, this.appearStyle, this.parts, this.data);
     }
 
     public HologramSpec withProps(Map<String, String> props) {
         return new HologramSpec(this.id, this.pos, this.offsetX, this.offsetY, this.offsetZ, this.block, props,
                 this.scale, this.yaw, this.pitch, this.roll, this.spin, this.spinAxis, this.hover,
                 this.hoverPeriod, this.fullbright, this.enabled, this.renderDistance, this.owner, this.ownerName,
-                this.effects, this.appearRadius, this.appearSeconds, this.parts, this.data);
+                this.effects, this.appearRadius, this.appearSeconds, this.appearStyle, this.parts, this.data);
     }
 
     public HologramSpec withRenderDistance(int distance) {
         return new HologramSpec(this.id, this.pos, this.offsetX, this.offsetY, this.offsetZ, this.block, this.props,
                 this.scale, this.yaw, this.pitch, this.roll, this.spin, this.spinAxis, this.hover,
                 this.hoverPeriod, this.fullbright, this.enabled, distance, this.owner, this.ownerName,
-                this.effects, this.appearRadius, this.appearSeconds, this.parts, this.data);
+                this.effects, this.appearRadius, this.appearSeconds, this.appearStyle, this.parts, this.data);
     }
 
     public HologramSpec withEffects(List<HologramEffect> effects) {
         return new HologramSpec(this.id, this.pos, this.offsetX, this.offsetY, this.offsetZ, this.block, this.props,
                 this.scale, this.yaw, this.pitch, this.roll, this.spin, this.spinAxis, this.hover,
                 this.hoverPeriod, this.fullbright, this.enabled, this.renderDistance, this.owner, this.ownerName,
-                effects, this.appearRadius, this.appearSeconds, this.parts, this.data);
+                effects, this.appearRadius, this.appearSeconds, this.appearStyle, this.parts, this.data);
     }
 
     public HologramSpec withData(CompoundTag data) {
         return new HologramSpec(this.id, this.pos, this.offsetX, this.offsetY, this.offsetZ, this.block, this.props,
                 this.scale, this.yaw, this.pitch, this.roll, this.spin, this.spinAxis, this.hover,
                 this.hoverPeriod, this.fullbright, this.enabled, this.renderDistance, this.owner, this.ownerName,
-                this.effects, this.appearRadius, this.appearSeconds, this.parts, data);
+                this.effects, this.appearRadius, this.appearSeconds, this.appearStyle, this.parts, data);
     }
 
     public HologramSpec withParts(List<HologramPart> parts) {
         return new HologramSpec(this.id, this.pos, this.offsetX, this.offsetY, this.offsetZ, this.block, this.props,
                 this.scale, this.yaw, this.pitch, this.roll, this.spin, this.spinAxis, this.hover,
                 this.hoverPeriod, this.fullbright, this.enabled, this.renderDistance, this.owner, this.ownerName,
-                this.effects, this.appearRadius, this.appearSeconds, parts, this.data);
+                this.effects, this.appearRadius, this.appearSeconds, this.appearStyle, parts, this.data);
     }
 
     /** The box the hologram and its parts occupy, used for frustum culling, selection outline and click pick. */
@@ -186,6 +197,8 @@ public record HologramSpec(
             tag.put("blockEntity", this.data.copy());
         tag.putFloat("appearRadius", this.appearRadius);
         tag.putFloat("appearSeconds", this.appearSeconds);
+        if (this.appearStyle != REVEAL_RISE)
+            tag.putByte("appearStyle", (byte) this.appearStyle);
         return tag;
     }
 
@@ -223,6 +236,7 @@ public record HologramSpec(
                 tag.getBoolean("fullbright"), !tag.contains("enabled") || tag.getBoolean("enabled"),
                 tag.getInt("renderDistance"), owner, tag.getString("ownerName"), effects,
                 tag.getFloat("appearRadius"), tag.contains("appearSeconds") ? tag.getFloat("appearSeconds") : 0.6F,
+                tag.getByte("appearStyle"),
                 savedParts, tag.contains("blockEntity") ? tag.getCompound("blockEntity") : new CompoundTag());
     }
 

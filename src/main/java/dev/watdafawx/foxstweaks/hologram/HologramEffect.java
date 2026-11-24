@@ -25,11 +25,19 @@ public record HologramEffect(Type type, float strength, float speed, int color) 
     public enum Type {
         /** Multiplies the block's colours. The stored {@code color} is the tint. */
         TINT,
+        /** Sweeping horizontal sci-fi hologram scanline bands. */
+        SCANLINE,
+        /** Cyber-glitch bursts: brief horizontal offset snaps + chromatic flash. */
+        GLITCH,
+        /** Smooth rhythmic energy brightness pulse. */
+        PULSE,
+        /** Smooth HSV rainbow chroma cycle. */
+        RAINBOW,
         /** Hides the hologram for a few frames at a time. Works on solid render types, unlike alpha. */
         FLICKER,
         /** Small, fast rotation jitter. */
         TREMOR,
-        /** Slow scale/skew breathing. */
+        /** Squash-and-stretch breathing. */
         WOBBLE,
         /** Periodic vertical snap, like a mistimed projection. */
         JUMP
@@ -48,10 +56,14 @@ public record HologramEffect(Type type, float strength, float speed, int color) 
     public static HologramEffect of(Type type) {
         return switch (type) {
             case TINT -> new HologramEffect(type, 0.65F, 1.0F, DEFAULT_COLOR);
+            case SCANLINE -> new HologramEffect(type, 0.75F, 1.8F, DEFAULT_COLOR);
+            case GLITCH -> new HologramEffect(type, 0.7F, 2.5F, DEFAULT_COLOR);
+            case PULSE -> new HologramEffect(type, 0.65F, 1.5F, DEFAULT_COLOR);
+            case RAINBOW -> new HologramEffect(type, 0.85F, 0.4F, DEFAULT_COLOR);
             case FLICKER -> new HologramEffect(type, 0.5F, 7.0F, DEFAULT_COLOR);
             case TREMOR -> new HologramEffect(type, 0.6F, 5.0F, DEFAULT_COLOR);
-            case WOBBLE -> new HologramEffect(type, 0.35F, 0.6F, DEFAULT_COLOR);
-            case JUMP -> new HologramEffect(type, 0.4F, 0.8F, DEFAULT_COLOR);
+            case WOBBLE -> new HologramEffect(type, 0.6F, 1.2F, DEFAULT_COLOR);
+            case JUMP -> new HologramEffect(type, 0.55F, 1.0F, DEFAULT_COLOR);
         };
     }
 

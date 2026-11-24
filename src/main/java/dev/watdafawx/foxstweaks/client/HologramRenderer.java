@@ -44,9 +44,15 @@ public final class HologramRenderer {
     private static int lastDrawn;
     private static int drawnBlockEntities;
     private static long lastPassNanos;
+    private static long lastAnimNanos;
+    private static double animSeconds;
     private static final Matrix4f lastView = new Matrix4f();
     private static final Matrix4f lastProjection = new Matrix4f();
     private static Vec3 lastCamera = Vec3.ZERO;
+
+    public static double animSeconds() {
+        return animSeconds;
+    }
 
     public static Matrix4f lastView() {
         return lastView;
@@ -106,7 +112,18 @@ public final class HologramRenderer {
         PoseStack pose = event.getPoseStack();
         MultiBufferSource.BufferSource buffer = mc.renderBuffers().bufferSource();
         float partial = event.getPartialTick().getGameTimeDeltaPartialTick(false);
-        float seconds = (mc.level.getGameTime() + partial) / 20.0F;
+
+        // Smooth wall-clock double time (pauses when game is paused). Never use (float) gameTime:
+        // on older worlds float loses partialTick precision (stutter) and overflows Mth.sin's int
+        // lookup table (freezing hover completely).
+        long now = System.nanoTime();
+        if (lastAnimNanos != 0L && !mc.isPaused()) {
+            double dt = Math.min(0.1, (now - lastAnimNanos) * 1.0E-9);
+            if (dt > 0.0)
+                animSeconds += dt;
+        }
+        lastAnimNanos = now;
+        double seconds = animSeconds;
 
         int globalCap = Config.hologramRenderCap();
         int drawn = 0;
@@ -141,7 +158,7 @@ public final class HologramRenderer {
 
         HologramSpec preview = HologramClient.previewSpec();
         if (preview != null && HologramClient.previewAnchored())
-            drawAnchoredPreview(pose, buffer, preview, seconds, camera, mc);
+            drawAnchoredPreview(pose, buffer, preview, seconds, camera, mc, partial);
 
         buffer.endBatch();
     }
@@ -152,7 +169,7 @@ public final class HologramRenderer {
      * wall, or too small at its own scale.
      */
     private static void drawAnchoredPreview(PoseStack pose, MultiBufferSource buffer, HologramSpec spec,
-                                            float seconds, Vec3 camera, Minecraft mc) {
+                                            double seconds, Vec3 camera, Minecraft mc, float partialTick) {
         if (mc.player == null)
             return;
 
@@ -172,14 +189,14 @@ public final class HologramRenderer {
                 .add(right.scale(0.15))
                 .add(0.0, -drop, 0.0);
 
-        drawAt(pose, buffer, spec, seconds, camera, anchor, 0xF000F0, null, 1.0F, 0.0F);
+        drawAt(pose, buffer, spec, seconds, camera, anchor, 0xF000F0, null, 1.0F, partialTick);
     }
 
     /**
      * Draws one hologram, camera-relative. {@code override} lets a caller force the state it wants
      * (the editor preview), otherwise the saved block and property values are resolved.
      */
-    public static void draw(PoseStack pose, MultiBufferSource buffer, HologramSpec spec, float seconds,
+    public static void draw(PoseStack pose, MultiBufferSource buffer, HologramSpec spec, double seconds,
                             Vec3 camera, @Nullable BlockState override, float partialTick) {
         Vec3 origin = Vec3.atLowerCornerOf(spec.pos()).add(spec.offsetX(), spec.offsetY(), spec.offsetZ());
         int light = spec.fullbright()
@@ -190,7 +207,7 @@ public final class HologramRenderer {
                 HologramClient.appearProgress(spec.id()), partialTick);
     }
 
-    private static void drawAt(PoseStack pose, MultiBufferSource buffer, HologramSpec spec, float seconds,
+    private static void drawAt(PoseStack pose, MultiBufferSource buffer, HologramSpec spec, double seconds,
                                Vec3 camera, Vec3 origin, int light, @Nullable BlockState override, float appear,
                                float partialTick) {
         if (appear <= 0.01F)
@@ -212,44 +229,47 @@ public final class HologramRenderer {
         if (!hasModel && blockEntityRenderer == null && spec.parts().isEmpty())
             return;
 
-        // Sphere of appearance: grow from a point and settle into place. Alpha cannot do this - most
-        // block render types do not blend - so the fade is geometry, not transparency.
-        float eased = HologramAnim.ease(appear);
-        float settle = 0.18F + 0.82F * eased;
-        float drop = (1.0F - eased) * 0.5F;
+        // Walk-in reveal pose (6 styles: Rise, Pop, Unfold, Spin, Drop, Glitch)
+        HologramAnim.RevealPose reveal = HologramAnim.revealPose(spec.appearStyle(), appear, seconds);
 
         float jitter = HologramAnim.tremorDegrees(effects, seconds);
-        float spinAngle = spec.spin() * seconds;
-        float angleY = spec.yaw() + (spec.spinAxis() == HologramSpec.AXIS_Y ? spinAngle : 0.0F) + jitter;
+        float spinAngle = (float) ((seconds * spec.spin()) % 360.0);
+        float angleY = spec.yaw() + (spec.spinAxis() == HologramSpec.AXIS_Y ? spinAngle : 0.0F)
+                + reveal.spinY() + jitter;
         float angleX = spec.pitch() + (spec.spinAxis() == HologramSpec.AXIS_X ? spinAngle : 0.0F) + jitter * 0.7F;
         float angleZ = spec.roll() + (spec.spinAxis() == HologramSpec.AXIS_Z ? spinAngle : 0.0F) - jitter * 0.5F;
 
         float hoverOffset = 0.0F;
-        if (spec.hover() > 0.0F)
-            hoverOffset = Mth.sin(seconds * Mth.TWO_PI / spec.hoverPeriod()) * spec.hover();
+        if (spec.hover() > 0.0F) {
+            double phase = (seconds % spec.hoverPeriod()) / spec.hoverPeriod();
+            hoverOffset = (float) (Math.sin(phase * (Math.PI * 2.0)) * spec.hover());
+        }
 
-        float wobble = HologramAnim.wobbleScale(effects, seconds);
+        float wobbleY = HologramAnim.wobbleScaleY(effects, seconds);
+        float wobbleXZ = HologramAnim.wobbleScaleXZ(effects, seconds);
+        float gx = HologramAnim.glitchOffsetX(effects, seconds) + reveal.glitchX();
+        float gz = HologramAnim.glitchOffsetZ(effects, seconds);
 
         pose.pushPose();
         // Translate to the cell's centre at its floor FIRST so yaw/pitch/roll/spin rotate in place
         // around the hologram's centre instead of orbiting around the NW block corner.
-        pose.translate(origin.x + 0.5 - camera.x,
-                origin.y - camera.y + hoverOffset + HologramAnim.jumpOffset(effects, seconds) - drop,
-                origin.z + 0.5 - camera.z);
+        pose.translate(origin.x + 0.5 - camera.x + gx,
+                origin.y - camera.y + hoverOffset + HologramAnim.jumpOffset(effects, seconds) + reveal.dy(),
+                origin.z + 0.5 - camera.z + gz);
         pose.mulPose(Axis.YP.rotationDegrees(angleY));
         pose.mulPose(Axis.XP.rotationDegrees(angleX));
         pose.mulPose(Axis.ZP.rotationDegrees(angleZ));
 
-        HologramEffect tint = HologramAnim.tint(effects);
-        MultiBufferSource out = tint == null ? buffer
-                : new TintedBuffer(buffer, tint.color(), tint.strength());
+        MultiBufferSource out = TintedBuffer.wrap(buffer, effects, seconds);
 
-        float scale = spec.scale() * settle * wobble;
+        float scaleX = spec.scale() * reveal.sx() * wobbleXZ;
+        float scaleY = spec.scale() * reveal.sy() * wobbleY;
+        float scaleZ = spec.scale() * reveal.sz() * wobbleXZ;
 
         if (hasModel) {
             ModelData modelData = blockEntity != null ? blockEntity.getModelData() : ModelData.EMPTY;
             pose.pushPose();
-            pose.scale(scale, scale, scale);
+            pose.scale(scaleX, scaleY, scaleZ);
             pose.translate(-0.5, 0.0, -0.5);
             Minecraft.getInstance().getBlockRenderer()
                     .renderSingleBlock(state, pose, out, light, OverlayTexture.NO_OVERLAY, modelData, null);
@@ -258,7 +278,7 @@ public final class HologramRenderer {
 
         if (blockEntityRenderer != null) {
             pose.pushPose();
-            pose.scale(scale, scale, scale);
+            pose.scale(scaleX, scaleY, scaleZ);
             pose.translate(-0.5, 0.0, -0.5);
             renderBlockEntity(pose, out, blockEntity, blockEntityRenderer, partialTick, light);
             pose.popPose();
@@ -266,10 +286,10 @@ public final class HologramRenderer {
         }
 
         boolean hasBase = hasModel || blockEntityRenderer != null;
+        float partScaleMult = (hasBase ? 1.0F : spec.scale()) * reveal.sy() * wobbleY;
         List<HologramPart> parts = spec.parts();
         for (int i = 0; i < parts.size(); i++)
-            drawPart(pose, out, spec, parts.get(i), i, light, seconds,
-                    (hasBase ? 1.0F : spec.scale()) * settle * wobble, partialTick);
+            drawPart(pose, out, spec, parts.get(i), i, light, seconds, partScaleMult, partialTick);
 
         pose.popPose();
     }
@@ -280,7 +300,7 @@ public final class HologramRenderer {
      * 4x dragon head nobody asked for).
      */
     private static void drawPart(PoseStack pose, MultiBufferSource buffer, HologramSpec spec, HologramPart part,
-                                 int partIndex, int light, float seconds, float settle, float partialTick) {
+                                 int partIndex, int light, double seconds, float settle, float partialTick) {
         float partScale = part.scale() * settle;
         if (partScale <= 0.01F)
             return;
@@ -312,7 +332,7 @@ public final class HologramRenderer {
             case ENTITY -> {
                 // Rendered at the pose origin, so the transform above places it. EntityRenderDispatcher
                 // translates by the coordinates it is given, so they are zero here.
-                var entity = HologramEntities.get(part, 0.0, 0.0, 0.0, part.yaw(), seconds);
+                var entity = HologramEntities.get(part, 0.0, 0.0, 0.0, part.yaw(), (float) seconds);
                 if (entity == null)
                     return;
                 pose.pushPose();

@@ -39,8 +39,8 @@ public record HologramPart(
         PARTICLE
     }
 
-    /** Parts are cheap to draw but not free; this is the cap the editor enforces. */
-    public static final int MAX_PARTS = 4;
+    /** Cap enforced by the editor and server validation. */
+    public static final int MAX_PARTS = 16;
 
     public HologramPart {
         offsetX = Mth.clamp(offsetX, -16.0F, 16.0F);

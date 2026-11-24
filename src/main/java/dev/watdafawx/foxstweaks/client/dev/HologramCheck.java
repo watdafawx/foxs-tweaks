@@ -303,7 +303,7 @@ public final class HologramCheck {
                             cur.scale(), cur.yaw(), cur.pitch(), cur.roll(), cur.spin(), cur.spinAxis(),
                             cur.hover(), cur.hoverPeriod(), cur.fullbright(), cur.enabled(), cur.renderDistance(),
                             cur.owner(), cur.ownerName(), cur.effects(), cur.appearRadius(), cur.appearSeconds(),
-                            cur.parts(), cur.data());
+                            cur.appearStyle(), cur.parts(), cur.data());
                     Holograms.save(player.serverLevel(), zeroed);
                 }
                 return null;
