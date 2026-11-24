@@ -97,7 +97,7 @@ public class HologramScreen extends Screen {
     private static List<EntityEntry> ALL_ENTITIES;
     private static List<String> ALL_PARTICLES;
 
-    private record EntityEntry(String id, String displayName, ItemStack icon) {
+    private record EntityEntry(EntityType<?> type, String id, String displayName, ItemStack icon) {
     }
 
     private record TransformSnapshot(float ox, float oy, float oz, float yaw, float pitch, float roll, float scale) {
@@ -328,9 +328,9 @@ public class HologramScreen extends Screen {
         if (this.search == null)
             return;
         String hint = switch (this.pickMode) {
-            case PICK_ENTITIES -> "search entities...";
-            case PICK_PARTICLES -> "search particles...";
-            default -> "search blocks...";
+            case PICK_ENTITIES -> "search (@mod $tag)...";
+            case PICK_PARTICLES -> "search (@mod)...";
+            default -> "search (@mod #tip $tag)";
         };
         this.search.setHint(Component.literal(hint).withStyle(style -> style.withColor(MUTED)));
     }
@@ -801,7 +801,7 @@ public class HologramScreen extends Screen {
                 ResourceLocation key = entry.getKey().location();
                 EntityType<?> type = entry.getValue();
                 Item egg = SpawnEggItem.byId(type);
-                list.add(new EntityEntry(key.toString(), type.getDescription().getString(),
+                list.add(new EntityEntry(type, key.toString(), type.getDescription().getString(),
                         egg != null ? new ItemStack(egg) : ItemStack.EMPTY));
             }
             list.sort(Comparator.comparing(EntityEntry::id));
@@ -821,7 +821,7 @@ public class HologramScreen extends Screen {
     }
 
     private void refreshFilter() {
-        String query = this.search == null ? "" : this.search.getValue().trim().toLowerCase(Locale.ROOT);
+        HologramSearch query = HologramSearch.parse(this.search == null ? "" : this.search.getValue());
         if (this.pickMode == PICK_BLOCKS) {
             List<Block> blocks = allBlocks();
             if (query.isEmpty()) {
@@ -829,8 +829,7 @@ public class HologramScreen extends Screen {
             } else {
                 List<Block> matches = new ArrayList<>();
                 for (Block b : blocks) {
-                    if (BuiltInRegistries.BLOCK.getKey(b).toString().contains(query)
-                            || b.getName().getString().toLowerCase(Locale.ROOT).contains(query))
+                    if (query.matchesBlock(b))
                         matches.add(b);
                 }
                 this.filteredBlocks = matches;
@@ -842,7 +841,7 @@ public class HologramScreen extends Screen {
             } else {
                 List<EntityEntry> matches = new ArrayList<>();
                 for (EntityEntry e : entities) {
-                    if (e.id().contains(query) || e.displayName().toLowerCase(Locale.ROOT).contains(query))
+                    if (query.matchesEntity(e.type(), e.id(), e.displayName()))
                         matches.add(e);
                 }
                 this.filteredEntities = matches;
@@ -854,7 +853,7 @@ public class HologramScreen extends Screen {
             } else {
                 List<String> matches = new ArrayList<>();
                 for (String p : particles) {
-                    if (p.contains(query))
+                    if (query.matchesParticle(p))
                         matches.add(p);
                 }
                 this.filteredParticles = matches;
@@ -1711,6 +1710,17 @@ public class HologramScreen extends Screen {
 
     public void devLeftMode(int mode) {
         setPickMode(mode);
+    }
+
+    public int devSearch(String query) {
+        if (this.search != null)
+            this.search.setValue(query);
+        refreshFilter();
+        return switch (this.pickMode) {
+            case PICK_ENTITIES -> this.filteredEntities.size();
+            case PICK_PARTICLES -> this.filteredParticles.size();
+            default -> this.filteredBlocks.size();
+        };
     }
 
     public void devCollapsePicker(boolean collapsed) {

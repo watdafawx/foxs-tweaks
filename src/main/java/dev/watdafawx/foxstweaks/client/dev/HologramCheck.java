@@ -257,10 +257,19 @@ public final class HologramCheck {
                     HologramClient.specs().stream().anyMatch(spec -> spec.id().equals(hologramId) && spec.scale() == 2.5F),
                     "preview=" + HologramClient.specs());
 
-            // Scrollbar drag + Entity/Particle pickers
+            // Scrollbar drag + Entity/Particle pickers + JEI/AE2 search prefixes (@mod #tip $tag -neg | or)
             screen.devLeftMode(0);
             screen.devDragScrollbar(0.5);
             check("block picker scrollbar drags", screen.devScroll() > 0, "scroll=" + screen.devScroll());
+            int mcBlocks = screen.devSearch("@minecraft stairs -oak");
+            int allStairs = screen.devSearch("@minecraft stairs");
+            check("search supports @mod and -negation", mcBlocks > 0 && mcBlocks < allStairs,
+                    "filtered=" + mcBlocks + " vs allStairs=" + allStairs);
+            check("search supports $tag", screen.devSearch("$logs") > 0, "logs=" + screen.devSearch("$logs"));
+            check("search supports #tooltip", screen.devSearch("#oak") > 0, "tip=" + screen.devSearch("#oak"));
+            check("search supports | OR", screen.devSearch("oak_stairs | birch_stairs") >= 2,
+                    "or=" + screen.devSearch("oak_stairs | birch_stairs"));
+            screen.devSearch("");
             screen.devLeftMode(1);
             screen.devDragScrollbar(0.5);
             check("entity picker scrollbar drags", screen.devScroll() > 0, "scroll=" + screen.devScroll());
