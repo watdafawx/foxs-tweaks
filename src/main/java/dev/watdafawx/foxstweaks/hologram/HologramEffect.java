@@ -27,7 +27,7 @@ import java.util.List;
  * read by the types for which {@link Type#usesAxis()} is true.
  */
 public record HologramEffect(Type type, float strength, float speed, int color, int axis, float phase,
-                             Trigger trigger) {
+                             Trigger trigger, int color2) {
 
     /** When an effect plays. Everything but {@code ALWAYS} is decided on the client from the world around it. */
     public enum Trigger {
@@ -73,6 +73,8 @@ public record HologramEffect(Type type, float strength, float speed, int color, 
         // ---- Visual FX (the FX tab) ----
         /** Multiplies the block's colours. The stored {@code color} is the tint. */
         TINT,
+        /** Two-colour tint from the bottom ({@code color}) to the top ({@code color2}) of the layer. */
+        GRADIENT,
         /** Sweeping horizontal sci-fi hologram scanline bands. */
         SCANLINE,
         /** Cyber-glitch bursts: brief horizontal offset snaps + chromatic flash. */
@@ -156,7 +158,7 @@ public record HologramEffect(Type type, float strength, float speed, int color, 
         }
 
         public boolean usesSpeed() {
-            return this != SPIN && this != WALK && this != SNEAK;
+            return this != SPIN && this != WALK && this != SNEAK && this != TINT && this != GRADIENT;
         }
 
         public float minAmount() {
@@ -198,6 +200,7 @@ public record HologramEffect(Type type, float strength, float speed, int color, 
         public String shortName() {
             return switch (this) {
                 case TINT -> "Tint";
+                case GRADIENT -> "Grad";
                 case SCANLINE -> "Scan";
                 case GLITCH -> "Gltch";
                 case PULSE -> "Pulse";
@@ -253,6 +256,9 @@ public record HologramEffect(Type type, float strength, float speed, int color, 
     /** The default hologram cyan, used by {@link Type#TINT}. */
     public static final int DEFAULT_COLOR = 0x66E0FF;
 
+    /** The default top colour of a {@link Type#GRADIENT}: violet, so a fresh gradient reads as one. */
+    public static final int DEFAULT_COLOR2 = 0x8B5CFF;
+
     /** The axis a new animation starts on (Y, the vertical one). */
     public static final int DEFAULT_AXIS = HologramSpec.AXIS_Y;
 
@@ -266,6 +272,11 @@ public record HologramEffect(Type type, float strength, float speed, int color, 
         phase = phase - (float) Math.floor(phase);
         if (trigger == null)
             trigger = Trigger.ALWAYS;
+        color2 &= 0xFFFFFF;
+    }
+
+    public HologramEffect(Type type, float strength, float speed, int color, int axis, float phase, Trigger trigger) {
+        this(type, strength, speed, color, axis, phase, trigger, DEFAULT_COLOR2);
     }
 
     public HologramEffect(Type type, float strength, float speed, int color, int axis, float phase) {
@@ -282,28 +293,32 @@ public record HologramEffect(Type type, float strength, float speed, int color, 
     }
 
     public HologramEffect withStrength(float strength) {
-        return new HologramEffect(this.type, strength, this.speed, this.color, this.axis, this.phase, this.trigger);
+        return new HologramEffect(this.type, strength, this.speed, this.color, this.axis, this.phase, this.trigger, this.color2);
     }
 
     public HologramEffect withSpeed(float speed) {
-        return new HologramEffect(this.type, this.strength, speed, this.color, this.axis, this.phase, this.trigger);
+        return new HologramEffect(this.type, this.strength, speed, this.color, this.axis, this.phase, this.trigger, this.color2);
     }
 
     public HologramEffect withColor(int color) {
-        return new HologramEffect(this.type, this.strength, this.speed, color, this.axis, this.phase, this.trigger);
+        return new HologramEffect(this.type, this.strength, this.speed, color, this.axis, this.phase, this.trigger, this.color2);
     }
 
     public HologramEffect withAxis(int axis) {
-        return new HologramEffect(this.type, this.strength, this.speed, this.color, axis, this.phase, this.trigger);
+        return new HologramEffect(this.type, this.strength, this.speed, this.color, axis, this.phase, this.trigger, this.color2);
     }
 
     /** Where in its cycle this animation starts, 0..1. Lets two copies of one animation run out of step. */
     public HologramEffect withPhase(float phase) {
-        return new HologramEffect(this.type, this.strength, this.speed, this.color, this.axis, phase, this.trigger);
+        return new HologramEffect(this.type, this.strength, this.speed, this.color, this.axis, phase, this.trigger, this.color2);
     }
 
     public HologramEffect withTrigger(Trigger trigger) {
-        return new HologramEffect(this.type, this.strength, this.speed, this.color, this.axis, this.phase, trigger);
+        return new HologramEffect(this.type, this.strength, this.speed, this.color, this.axis, this.phase, trigger, this.color2);
+    }
+
+    public HologramEffect withColor2(int color2) {
+        return new HologramEffect(this.type, this.strength, this.speed, this.color, this.axis, this.phase, this.trigger, color2);
     }
 
     public String axisLabel() {
@@ -318,6 +333,7 @@ public record HologramEffect(Type type, float strength, float speed, int color, 
     public static HologramEffect of(Type type) {
         return switch (type) {
             case TINT -> new HologramEffect(type, 0.65F, 1.0F, DEFAULT_COLOR);
+            case GRADIENT -> new HologramEffect(type, 0.75F, 1.0F, DEFAULT_COLOR);
             case SCANLINE -> new HologramEffect(type, 0.75F, 1.8F, DEFAULT_COLOR);
             case GLITCH -> new HologramEffect(type, 0.7F, 2.5F, DEFAULT_COLOR);
             case PULSE -> new HologramEffect(type, 0.65F, 1.5F, DEFAULT_COLOR);
@@ -425,6 +441,8 @@ public record HologramEffect(Type type, float strength, float speed, int color, 
             tag.putFloat("phase", this.phase);
         if (this.trigger != Trigger.ALWAYS)
             tag.putString("when", this.trigger.name());
+        if (this.type == Type.GRADIENT)
+            tag.putInt("color2", this.color2);
         return tag;
     }
 
@@ -449,7 +467,8 @@ public record HologramEffect(Type type, float strength, float speed, int color, 
                     tag.contains("color") ? tag.getInt("color") : DEFAULT_COLOR,
                     tag.contains("axis") ? tag.getByte("axis") : DEFAULT_AXIS,
                     tag.contains("phase") ? tag.getFloat("phase") : 0.0F,
-                    triggerOf(tag.getString("when"))));
+                    triggerOf(tag.getString("when")),
+                    tag.contains("color2") ? tag.getInt("color2") : DEFAULT_COLOR2));
         }
         return effects;
     }

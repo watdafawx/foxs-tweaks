@@ -331,7 +331,13 @@ public final class HologramRenderer {
         if (sy <= 0.01F)
             return;
 
-        MultiBufferSource out = TintedBuffer.wrap(parentBuffer, effects, seconds);
+        // GRADIENT ramps over the layer's own height: measured through the current pose, so the parent's
+        // transform and scale are included. Entities are about a body tall, blocks one block.
+        float contentH = layer.kind() == HologramLayer.Kind.ENTITY ? 1.8F : 1.0F;
+        var mat = pose.last().pose();
+        float bottomY = mat.m01() * offX + mat.m11() * offY + mat.m21() * offZ + mat.m31();
+        float topY = bottomY + (mat.m11()) * sy * contentH;
+        MultiBufferSource out = TintedBuffer.wrap(parentBuffer, effects, seconds, bottomY, topY);
         int light = layer.fullbright() ? 0xF000F0 : parentLight;
 
         switch (layer.kind()) {

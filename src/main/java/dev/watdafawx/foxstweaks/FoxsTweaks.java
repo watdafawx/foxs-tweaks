@@ -137,6 +137,10 @@ public class FoxsTweaks {
         if (FMLEnvironment.dist.isClient() && !FMLEnvironment.production && Boolean.getBoolean("foxstweaks.hologramCheck"))
             dev.watdafawx.foxstweaks.client.dev.HologramCheck.install();
 
+        // Dev-only check of the simple hologram editor; `build.bat runHologramCreatorCheck` sets the property.
+        if (FMLEnvironment.dist.isClient() && !FMLEnvironment.production && Boolean.getBoolean("foxstweaks.hologramCreatorCheck"))
+            dev.watdafawx.foxstweaks.client.dev.HologramCreatorCheck.install();
+
         // Dev-only check that an anchor carries its owner's Apotheosis world tier; `build.bat runAnchorTierCheck`.
         if (FMLEnvironment.dist.isClient() && !FMLEnvironment.production && Boolean.getBoolean("foxstweaks.anchorTierCheck"))
             dev.watdafawx.foxstweaks.client.dev.AnchorTierCheck.install();

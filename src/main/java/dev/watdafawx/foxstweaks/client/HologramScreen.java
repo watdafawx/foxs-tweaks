@@ -284,7 +284,8 @@ public class HologramScreen extends Screen {
     public static void open(HologramOpenPayload payload) {
         if (payload.spec() == null)
             return;
-        Minecraft.getInstance().setScreen(new HologramScreen(payload));
+        HologramScreen editor = new HologramScreen(payload);
+        Minecraft.getInstance().setScreen(HologramEditorPrefs.startInCreator() ? new HologramCreatorScreen(editor) : editor);
     }
 
     // ---------------------------------------------------------------- layout & lifecycle
@@ -675,6 +676,7 @@ public class HologramScreen extends Screen {
         }));
         this.flatBtns.add(new FlatBtn(ux + 212, 5, 26, 15, "T=0", false, false, true,
                 HologramRenderer::restartClock));
+        this.flatBtns.add(new FlatBtn(ux + 240, 5, 46, 15, "< Simple", false, false, true, this::openCreator));
 
         // ---- Left panel header / collapse & add-layer button ----
         if (this.pickerCollapsed) {
@@ -2917,6 +2919,138 @@ public class HologramScreen extends Screen {
     @Override
     public boolean isPauseScreen() {
         return false;
+    }
+
+    // ---------------------------------------------------------------- Creator bridge
+    //
+    // HologramCreatorScreen is the simple editor. It owns no hologram state: it drives this instance through
+    // the methods below, so switching between the two modes keeps every edit, the undo history and the camera.
+    // Package-private on purpose; nothing else should reach into the editor this way.
+
+    List<HologramLayer> creatorLayers() {
+        return List.copyOf(this.layers);
+    }
+
+    int creatorSelectedLayer() {
+        return this.targetKind == TargetKind.LAYER ? this.selectedLayer : -1;
+    }
+
+    void creatorSelectLayer(int index) {
+        selectLayer(index);
+    }
+
+    List<HologramEffect> creatorEffects() {
+        ensureLayerTarget();
+        return getTargetEffects();
+    }
+
+    /** Replaces the selected layer's effects. The caller pushes undo first when this starts a new edit. */
+    void creatorSetEffects(List<HologramEffect> effects) {
+        ensureLayerTarget();
+        setTargetEffects(List.copyOf(effects));
+        refresh();
+    }
+
+    void creatorUpdateLayer(int index, java.util.function.UnaryOperator<HologramLayer> fn) {
+        if (index < 0 || index >= this.layers.size())
+            return;
+        this.layers.set(index, fn.apply(this.layers.get(index)));
+        refresh();
+    }
+
+    void creatorPushUndo() {
+        pushUndo();
+    }
+
+    boolean creatorCanUndo() {
+        return !this.undoStack.isEmpty();
+    }
+
+    boolean creatorCanRedo() {
+        return !this.redoStack.isEmpty();
+    }
+
+    void creatorAddLayer(HologramLayer layer) {
+        if (this.layers.size() >= HologramLayer.MAX_LAYERS)
+            return;
+        pushUndo();
+        float topY = 0.0F;
+        for (HologramLayer l : this.layers)
+            topY = Math.max(topY, l.offsetY() + (l.kind() == HologramLayer.Kind.PARTICLE ? 0.5F : l.scale()));
+        this.layers.add(layer.withOffset(layer.offsetX(), topY, layer.offsetZ()));
+        this.targetKind = TargetKind.LAYER;
+        this.selectedLayer = this.layers.size() - 1;
+        syncPickerToSelection();
+        rebuildInspector();
+        refresh();
+    }
+
+    void creatorRemoveLayer(int index) {
+        if (this.layers.size() <= 1)
+            return;
+        removeLayer(index);
+    }
+
+    void creatorDuplicateLayer(int index) {
+        duplicateLayer(index);
+    }
+
+    float creatorScale() {
+        ensureLayerTarget();
+        return (float) getTargetScale();
+    }
+
+    void creatorSetScale(float scale) {
+        ensureLayerTarget();
+        setTargetScale(scale);
+        refresh();
+    }
+
+    float creatorAppearRadius() {
+        return this.appearRadius;
+    }
+
+    int creatorAppearStyle() {
+        return this.appearStyle;
+    }
+
+    void creatorSetAppear(float radius, int style) {
+        this.appearRadius = (float) clamp(radius, 0.0, 64.0);
+        this.appearStyle = style;
+        refresh();
+    }
+
+    void creatorFrameCamera() {
+        frameCamera();
+    }
+
+    Vec3 creatorTargetCenter() {
+        return targetWorldCenter();
+    }
+
+    /** Keeps the live multiplayer preview flowing while the Creator screen is the one ticking. */
+    void creatorTick() {
+        tick();
+    }
+
+    void creatorPickBlock(String blockId) {
+        Block block = BuiltInRegistries.BLOCK.getOptional(ResourceLocation.tryParse(blockId)).orElse(null);
+        if (block != null)
+            pickBlock(block);
+    }
+
+    /** Switches to the full editor, remembering the choice for the next time a hologram is opened. */
+    void openStudio() {
+        HologramEditorPrefs.setStartInCreator(false);
+        if (this.minecraft != null)
+            this.minecraft.setScreen(this);
+    }
+
+    private void openCreator() {
+        commitInlineBox();
+        HologramEditorPrefs.setStartInCreator(true);
+        if (this.minecraft != null)
+            this.minecraft.setScreen(new HologramCreatorScreen(this));
     }
 
     // ---------------------------------------------------------------- dev-check hooks

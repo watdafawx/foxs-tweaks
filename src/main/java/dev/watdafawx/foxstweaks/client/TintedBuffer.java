@@ -21,19 +21,38 @@ final class TintedBuffer implements MultiBufferSource {
     private final float blue;
     private final float scanStrength;
     private final float scanPhase;
+    @org.jetbrains.annotations.Nullable
+    private final Gradient gradient;
+
+    /**
+     * A bottom-to-top colour ramp in the vertex space the buffer sees (camera-relative world y). The ends
+     * are measured once per draw from the pose, so a rotated layer still ramps along world up, which is
+     * what a viewer reads as "bottom" and "top".
+     */
+    record Gradient(float bottomY, float topY, float mix, int bottom, int top) {
+    }
 
     TintedBuffer(MultiBufferSource delegate, float red, float green, float blue,
-                 float scanStrength, float scanPhase) {
+                 float scanStrength, float scanPhase, @org.jetbrains.annotations.Nullable Gradient gradient) {
         this.delegate = delegate;
         this.red = red;
         this.green = green;
         this.blue = blue;
         this.scanStrength = scanStrength;
         this.scanPhase = scanPhase;
+        this.gradient = gradient;
     }
 
-    /** Wraps {@code delegate} when any vertex-colour FX is active, otherwise returns {@code delegate}. */
     static MultiBufferSource wrap(MultiBufferSource delegate, List<HologramEffect> effects, double seconds) {
+        return wrap(delegate, effects, seconds, 0.0F, 1.0F);
+    }
+
+    /**
+     * Wraps {@code delegate} when any vertex-colour FX is active, otherwise returns {@code delegate}.
+     * {@code bottomY}/{@code topY} are the drawn content's vertical extent in vertex space, read only by GRADIENT.
+     */
+    static MultiBufferSource wrap(MultiBufferSource delegate, List<HologramEffect> effects, double seconds,
+                                  float bottomY, float topY) {
         if (effects.isEmpty())
             return delegate;
 
@@ -90,24 +109,38 @@ final class TintedBuffer implements MultiBufferSource {
             needed = true;
         }
 
-        return needed ? new TintedBuffer(delegate, r, g, b, scanStrength, scanPhase) : delegate;
+        Gradient gradient = null;
+        HologramEffect grad = HologramAnim.firstOf(effects, HologramEffect.Type.GRADIENT);
+        if (grad != null && grad.strength() > 0.001F) {
+            float lo = Math.min(bottomY, topY);
+            float hi = Math.max(bottomY, topY);
+            if (hi - lo < 0.01F)
+                hi = lo + 0.01F;
+            gradient = new Gradient(lo, hi, Mth.clamp(grad.strength(), 0.0F, 1.0F), grad.color(), grad.color2());
+            needed = true;
+        }
+
+        return needed ? new TintedBuffer(delegate, r, g, b, scanStrength, scanPhase, gradient) : delegate;
     }
 
     @Override
     public VertexConsumer getBuffer(RenderType type) {
         return new TintedVertex(this.delegate.getBuffer(type),
-                this.red, this.green, this.blue, this.scanStrength, this.scanPhase);
+                this.red, this.green, this.blue, this.scanStrength, this.scanPhase, this.gradient);
     }
 
     private static final class TintedVertex implements VertexConsumer {
         private final VertexConsumer delegate;
         private final float red, green, blue;
         private final float scanStrength, scanPhase;
+        @org.jetbrains.annotations.Nullable
+        private final Gradient gradient;
         private float lastY;
 
         TintedVertex(VertexConsumer delegate, float red, float green, float blue,
-                     float scanStrength, float scanPhase) {
+                     float scanStrength, float scanPhase, @org.jetbrains.annotations.Nullable Gradient gradient) {
             this.delegate = delegate;
+            this.gradient = gradient;
             this.red = red;
             this.green = green;
             this.blue = blue;
@@ -129,9 +162,18 @@ final class TintedBuffer implements MultiBufferSource {
                 float wave = Mth.sin(this.lastY * 14.0F - this.scanPhase);
                 band = 1.0F - this.scanStrength * (0.5F - 0.5F * wave);
             }
-            int cr = Mth.clamp(Math.round(r * this.red * band), 0, 255);
-            int cg = Mth.clamp(Math.round(g * this.green * band), 0, 255);
-            int cb = Mth.clamp(Math.round(b * this.blue * band), 0, 255);
+            float gr = 1.0F, gg = 1.0F, gb = 1.0F;
+            Gradient grad = this.gradient;
+            if (grad != null) {
+                float t = Mth.clamp((this.lastY - grad.bottomY()) / (grad.topY() - grad.bottomY()), 0.0F, 1.0F);
+                float m = grad.mix();
+                gr = 1.0F - m + m * Mth.lerp(t, (grad.bottom() >> 16 & 0xFF), (grad.top() >> 16 & 0xFF)) / 255.0F;
+                gg = 1.0F - m + m * Mth.lerp(t, (grad.bottom() >> 8 & 0xFF), (grad.top() >> 8 & 0xFF)) / 255.0F;
+                gb = 1.0F - m + m * Mth.lerp(t, (grad.bottom() & 0xFF), (grad.top() & 0xFF)) / 255.0F;
+            }
+            int cr = Mth.clamp(Math.round(r * this.red * gr * band), 0, 255);
+            int cg = Mth.clamp(Math.round(g * this.green * gg * band), 0, 255);
+            int cb = Mth.clamp(Math.round(b * this.blue * gb * band), 0, 255);
             this.delegate.setColor(cr, cg, cb, a);
             return this;
         }
