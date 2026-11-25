@@ -1,5 +1,9 @@
 # Changelog
 
+## 1.42.1
+
+- **FPS report:** the title and help text now sit on a dark panel, so they can be read over any world. The chat `[Open report]` button opens the report straight away instead of waiting for you to close the chat.
+
 ## 1.42.0
 
 - **Holograms: triggers.** Every animation and FX can now play only when the world says so. Each card in the Anim and FX tabs has a small button (default **Any**); click it to cycle:
