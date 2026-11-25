@@ -1078,8 +1078,9 @@ public class HologramScreen extends Screen {
             boolean speed = type.usesSpeed();
             boolean phase = type.usesPhase();
             int controls = (amount ? 1 : 0) + (speed ? 1 : 0) + (phase ? 1 : 0);
-            int items = controls + (type.usesAxis() ? 1 : 0) + 1;
-            int avail = rw - xBtn - axisW - 3 * (items - 1);
+            int trigW = 30;
+            int items = controls + (type.usesAxis() ? 1 : 0) + 2;
+            int avail = rw - xBtn - axisW - trigW - 3 * (items - 1);
             int weightSum = (amount ? 4 : 0) + (speed ? 3 : 0) + (phase ? 3 : 0);
             int amountW = amount ? avail * 4 / Math.max(1, weightSum) : 0;
             int speedW = speed ? avail * 3 / Math.max(1, weightSum) : 0;
@@ -1121,6 +1122,9 @@ public class HologramScreen extends Screen {
                         v -> setEffectPhase(idx, (float) v), "", 2));
                 cx += phaseW + 3;
             }
+            this.flatBtns.add(new FlatBtn(cx, y, trigW, 17, fx.trigger().shortLabel(),
+                    fx.trigger() != HologramEffect.Trigger.ALWAYS, false, true, () -> cycleEffectTrigger(idx)));
+            cx += trigW + 3;
             if (type.usesAxis()) {
                 this.flatBtns.add(new FlatBtn(cx, y, axisW, 17, fx.axisLabel(), false, false, true,
                         () -> cycleEffectAxis(idx)));
@@ -1235,6 +1239,18 @@ public class HologramScreen extends Screen {
         refresh();
     }
 
+    private void cycleEffectTrigger(int index) {
+        List<HologramEffect> cur = getTargetEffects();
+        if (index < 0 || index >= cur.size())
+            return;
+        pushUndo();
+        List<HologramEffect> next = new ArrayList<>(cur);
+        next.set(index, cur.get(index).withTrigger(cur.get(index).trigger().next()));
+        setTargetEffects(next);
+        rebuildInspector();
+        refresh();
+    }
+
     private void cycleEffectAxis(int index) {
         List<HologramEffect> cur = getTargetEffects();
         if (index < 0 || index >= cur.size())
@@ -1293,7 +1309,8 @@ public class HologramScreen extends Screen {
             int cardH = fx.type() == HologramEffect.Type.TINT ? 38 : 21;
             if (y + cardH > maxCardY)
                 break;
-            int strW = fx.type() == HologramEffect.Type.TINT ? rw - 20 : (rw - 24) * 60 / 100;
+            int trigW = 30;
+            int strW = fx.type() == HologramEffect.Type.TINT ? rw - 23 - trigW : (rw - 27 - trigW) * 60 / 100;
             this.numControls.add(new NumControl(rx, y, strW, 17, fx.label(), TEXT, true,
                     0.0, 2.0, 0.1, 0.5,
                     () -> {
@@ -1303,7 +1320,7 @@ public class HologramScreen extends Screen {
                     v -> setEffectStrength(idx, (float) v), "", 2));
             if (fx.type() != HologramEffect.Type.TINT) {
                 int spdX = rx + strW + 3;
-                int spdW = rw - strW - 23;
+                int spdW = rw - strW - 26 - trigW;
                 this.numControls.add(new NumControl(spdX, y, spdW, 17, "Hz", MUTED, false,
                         0.1, 20.0, 0.5, 1.0,
                         () -> {
@@ -1312,6 +1329,8 @@ public class HologramScreen extends Screen {
                         },
                         v -> setEffectSpeed(idx, (float) v), "", 1));
             }
+            this.flatBtns.add(new FlatBtn(rx + rw - 20 - trigW, y, trigW, 17, fx.trigger().shortLabel(),
+                    fx.trigger() != HologramEffect.Trigger.ALWAYS, false, true, () -> cycleEffectTrigger(idx)));
             this.flatBtns.add(new FlatBtn(rx + rw - 17, y, 17, 17, "x", false, true, true,
                     () -> removeEffect(idx)));
             y += cardH + 3;
@@ -3038,6 +3057,10 @@ public class HologramScreen extends Screen {
 
     public List<HologramEffect> devEffects() {
         return List.copyOf(getTargetEffects());
+    }
+
+    public void devCycleTrigger(int index) {
+        cycleEffectTrigger(index);
     }
 
     public void devSetEffectPhase(int index, float phase) {

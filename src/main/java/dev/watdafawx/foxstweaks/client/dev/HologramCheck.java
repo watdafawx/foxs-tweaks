@@ -6,6 +6,7 @@ import dev.watdafawx.foxstweaks.client.HologramClient;
 import dev.watdafawx.foxstweaks.client.HologramEntities;
 import dev.watdafawx.foxstweaks.client.HologramRenderer;
 import dev.watdafawx.foxstweaks.client.HologramScreen;
+import dev.watdafawx.foxstweaks.client.HologramTriggers;
 import dev.watdafawx.foxstweaks.hologram.HologramAnim;
 import dev.watdafawx.foxstweaks.hologram.HologramEffect;
 import dev.watdafawx.foxstweaks.hologram.HologramGroup;
@@ -1082,6 +1083,187 @@ public final class HologramCheck {
 
         add(4, () -> shoot("hologram-smooth.png"));
 
+        // ---- triggers: effects that only play when the world says so ----
+        add(10, () -> {
+            HologramEffect plain = HologramEffect.of(HologramEffect.Type.BOB);
+            List<HologramEffect> same = List.of(plain);
+            HologramSpec spec = HologramClient.specs().isEmpty() ? null : HologramClient.specs().get(0);
+            check("trigger: spec available for trigger checks", spec != null, "no spec");
+            if (spec == null)
+                return;
+            check("trigger: an Always-only list passes through untouched",
+                    HologramTriggers.resolve(same, spec, 5000.0) == same, "copied");
+
+            HologramEffect t = HologramEffect.of(HologramEffect.Type.SPIN)
+                    .withTrigger(HologramEffect.Trigger.MOB_DIED).withPhase(0.25F);
+            var tag = HologramEffect.listToTag(List.of(t));
+            var back = HologramEffect.listFromTag(tag);
+            check("trigger: survives save and load",
+                    back.size() == 1 && back.get(0).trigger() == HologramEffect.Trigger.MOB_DIED
+                            && back.get(0).phase() == 0.25F, String.valueOf(back));
+            check("trigger: Always is not written to the save", !HologramEffect.of(HologramEffect.Type.BOB)
+                    .toTag().contains("when"), "written");
+            HologramEffect.Trigger walk = HologramEffect.Trigger.ALWAYS;
+            for (int i = 0; i < HologramEffect.Trigger.values().length; i++)
+                walk = walk.next();
+            check("trigger: the editor cycle comes back around", walk == HologramEffect.Trigger.ALWAYS,
+                    String.valueOf(walk));
+
+            // MUSIC: a closed gate drops a bobbing effect; an open one brings it back, eased.
+            HologramTriggers.devMusic(false);
+            HologramEffect bob = HologramEffect.of(HologramEffect.Type.BOB)
+                    .withTrigger(HologramEffect.Trigger.MUSIC);
+            List<HologramEffect> bobList = List.of(bob);
+            double now = 6000.0;
+            check("trigger: music off drops the effect",
+                    HologramTriggers.resolve(bobList, spec, now).isEmpty(), "still drawn");
+            HologramTriggers.devMusic(true);
+            now += 0.05;
+            List<HologramEffect> early = HologramTriggers.resolve(bobList, spec, now);
+            float first = early.isEmpty() ? 0.0F : early.get(0).strength();
+            for (int i = 0; i < 40; i++) {
+                now += 0.05;
+                HologramTriggers.resolve(bobList, spec, now);
+            }
+            List<HologramEffect> late = HologramTriggers.resolve(bobList, spec, now + 0.01);
+            float full = late.isEmpty() ? 0.0F : late.get(0).strength();
+            check("trigger: music on eases the effect in",
+                    full > first && full > bob.strength() * 0.9F && first < bob.strength() * 0.9F,
+                    "first=" + first + " full=" + full + " of " + bob.strength());
+            HologramTriggers.devMusic(false);
+            for (int i = 0; i < 80; i++) {
+                now += 0.05;
+                HologramTriggers.resolve(bobList, spec, now);
+            }
+            check("trigger: music off eases it back out",
+                    HologramTriggers.resolve(bobList, spec, now + 0.01).isEmpty(), "still drawn");
+
+            // A spin keeps its angle while shut and does not snap back.
+            HologramEffect spin = HologramEffect.of(HologramEffect.Type.SPIN)
+                    .withTrigger(HologramEffect.Trigger.MUSIC);
+            List<HologramEffect> spinList = List.of(spin);
+            double t0 = 7000.0;
+            HologramTriggers.devMusic(false);
+            // The drawn angle is seconds * amount + phase * 360, so compare that, not the raw phase.
+            float shutA = angleOf(HologramTriggers.resolve(spinList, spec, t0).get(0), t0);
+            float shutB = angleOf(HologramTriggers.resolve(spinList, spec, t0 + 5.0).get(0), t0 + 5.0);
+            check("trigger: a shut spin holds its angle", Math.abs(shutA - shutB) < 0.001F,
+                    shutA + " vs " + shutB);
+            HologramTriggers.devMusic(true);
+            double tt = t0 + 5.0;
+            for (int i = 0; i < 40; i++) {
+                tt += 0.05;
+                HologramTriggers.resolve(spinList, spec, tt);
+            }
+            float open = angleOf(HologramTriggers.resolve(spinList, spec, tt + 0.01).get(0), tt + 0.01);
+            check("trigger: an open spin turns", Math.abs(open - shutB) > 0.01F, shutB + " -> " + open);
+            HologramTriggers.devMusic(false);
+
+            // MOB_DIED: plays one cycle from the death, then goes quiet.
+            HologramEffect hop = HologramEffect.of(HologramEffect.Type.BOUNCE)
+                    .withTrigger(HologramEffect.Trigger.MOB_DIED);
+            List<HologramEffect> hopList = List.of(hop);
+            double clock = HologramRenderer.animSeconds();
+            check("trigger: no death, no pulse",
+                    HologramTriggers.resolve(hopList, spec, clock).isEmpty(), "pulse without a death");
+            HologramTriggers.devDeath(spec.box().getCenter());
+            check("trigger: a death near the hologram starts the pulse",
+                    !HologramTriggers.resolve(hopList, spec, clock + 0.2).isEmpty(), "no pulse");
+            check("trigger: the pulse ends on its own",
+                    HologramTriggers.resolve(hopList, spec, clock + 30.0).isEmpty(), "still pulsing");
+        });
+
+        // DAY / NIGHT follow the real world clock.
+        add(10, () -> onServer(player -> {
+            player.serverLevel().setDayTime(18000L);
+            return null;
+        }));
+        add(30, () -> {
+            HologramSpec spec = HologramClient.specs().isEmpty() ? null : HologramClient.specs().get(0);
+            if (spec == null)
+                return;
+            HologramEffect night = HologramEffect.of(HologramEffect.Type.BOB)
+                    .withTrigger(HologramEffect.Trigger.NIGHT);
+            HologramEffect day = HologramEffect.of(HologramEffect.Type.BOB)
+                    .withTrigger(HologramEffect.Trigger.DAY);
+            check("trigger: night effect plays at night",
+                    !HologramTriggers.resolve(List.of(night), spec, 8000.0).isEmpty(),
+                    "dayness=" + HologramTriggers.dayness(Minecraft.getInstance().level));
+            check("trigger: day effect is quiet at night",
+                    HologramTriggers.resolve(List.of(day), spec, 8000.0).isEmpty(), "drawn at night");
+        });
+        add(10, () -> onServer(player -> {
+            player.serverLevel().setDayTime(6000L);
+            return null;
+        }));
+        add(30, () -> {
+            HologramSpec spec = HologramClient.specs().isEmpty() ? null : HologramClient.specs().get(0);
+            if (spec == null)
+                return;
+            HologramEffect night = HologramEffect.of(HologramEffect.Type.BOB)
+                    .withTrigger(HologramEffect.Trigger.NIGHT);
+            HologramEffect day = HologramEffect.of(HologramEffect.Type.BOB)
+                    .withTrigger(HologramEffect.Trigger.DAY);
+            check("trigger: day effect plays at noon",
+                    !HologramTriggers.resolve(List.of(day), spec, 9000.0).isEmpty(),
+                    "dayness=" + HologramTriggers.dayness(Minecraft.getInstance().level));
+            check("trigger: night effect is quiet at noon",
+                    HologramTriggers.resolve(List.of(night), spec, 9000.0).isEmpty(), "drawn at noon");
+        });
+
+        // JUKEBOX: a real jukebox block with a real disc, read from the client's copy of the block entity.
+        add(10, () -> onServer(player -> {
+            // Dev clients are muted, and the sound engine never starts a silent sound, so lift it a hair.
+            Minecraft.getInstance().execute(() -> Minecraft.getInstance().options
+                    .getSoundSourceOptionInstance(net.minecraft.sounds.SoundSource.MASTER).set(0.01));
+            var level = player.serverLevel();
+            BlockPos at = new BlockPos(3, -60, 17);
+            level.setBlock(at, Blocks.JUKEBOX.defaultBlockState(), 3);
+            if (level.getBlockEntity(at) instanceof net.minecraft.world.level.block.entity.JukeboxBlockEntity jb)
+                {
+                jb.setTheItem(new net.minecraft.world.item.ItemStack(net.minecraft.world.item.Items.MUSIC_DISC_CAT));
+                jb.tryForcePlaySong();
+            }
+            return null;
+        }));
+        add(40, () -> {
+            HologramSpec spec = HologramClient.specs().isEmpty() ? null : HologramClient.specs().get(0);
+            if (spec == null)
+                return;
+            HologramEffect juke = HologramEffect.of(HologramEffect.Type.BOB)
+                    .withTrigger(HologramEffect.Trigger.JUKEBOX);
+            check("trigger: a jukebox's record sound reaches the listener",
+                    HologramTriggers.devRecordsSeen() > 0, jukeboxDebug());
+            check("trigger: no record playing, gate shut",
+                    HologramTriggers.resolve(List.of(juke), spec, 9999.0).isEmpty(), "gate open");
+            // The rig has no audio device, so the engine never reports the sound active: inject the record.
+            HologramTriggers.devRecord(net.minecraft.world.phys.Vec3.atCenterOf(new BlockPos(3, -60, 17)));
+            check("trigger: a record playing in range opens the gate",
+                    !HologramTriggers.resolve(List.of(juke), spec, 10000.0).isEmpty(), "gate shut");
+            HologramTriggers.devRecord(net.minecraft.world.phys.Vec3.atCenterOf(new BlockPos(300, -60, 17)));
+            HologramEffect juke2 = HologramEffect.of(HologramEffect.Type.BOB)
+                    .withTrigger(HologramEffect.Trigger.JUKEBOX);
+            check("trigger: a record playing out of range does not",
+                    HologramTriggers.resolve(List.of(juke2), spec, 10001.0).isEmpty(), "gate open");
+            HologramTriggers.devRecord(null);
+        });
+        add(10, () -> onServer(player -> {
+            var level = player.serverLevel();
+            level.setBlock(new BlockPos(3, -60, 17), Blocks.AIR.defaultBlockState(), 3);
+            return null;
+        }));
+        add(40, () -> {
+            HologramSpec spec = HologramClient.specs().isEmpty() ? null : HologramClient.specs().get(0);
+            if (spec == null)
+                return;
+            HologramEffect juke = HologramEffect.of(HologramEffect.Type.BOB)
+                    .withTrigger(HologramEffect.Trigger.JUKEBOX);
+            check("trigger: no jukebox, no effect",
+                    HologramTriggers.resolve(List.of(juke), spec, 11000.0).isEmpty(), "gate open");
+            Minecraft.getInstance().options
+                    .getSoundSourceOptionInstance(net.minecraft.sounds.SoundSource.MASTER).set(0.0);
+        });
+
         add(6, () -> {
             log("done: " + (failures == 0 ? "ALL PASS" : failures + " FAILURE(S)"));
             try {
@@ -1091,6 +1273,21 @@ public final class HologramCheck {
             }
             Minecraft.getInstance().stop();
         });
+    }
+
+    private static String jukeboxDebug() {
+        var level = Minecraft.getInstance().level;
+        BlockPos at = new BlockPos(3, -60, 17);
+        var be = level.getBlockEntity(at);
+        String song = "no be";
+        if (be instanceof net.minecraft.world.level.block.entity.JukeboxBlockEntity jb)
+            song = "item=" + jb.getTheItem() + " playing=" + jb.getSongPlayer().isPlaying();
+        return level.getBlockState(at) + " " + song + " " + HologramTriggers.devSoundDebug();
+    }
+
+    private static float angleOf(HologramEffect spin, double seconds) {
+        double cycles = seconds * spin.strength() / 360.0 + spin.phase();
+        return (float) (cycles - Math.floor(cycles));
     }
 
     private static void smoothnessChecks() {

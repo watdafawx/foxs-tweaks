@@ -218,6 +218,7 @@ public final class HologramRenderer {
         if (appear <= 0.01F || spec.layers().isEmpty())
             return;
 
+        HologramTriggers.beginFrame();
         HologramAnim.RevealPose reveal = HologramAnim.revealPose(spec.appearStyle(), appear, seconds);
 
         pose.pushPose();
@@ -245,7 +246,7 @@ public final class HologramRenderer {
             HologramGroup group = groups.get(g);
             if (!group.visible())
                 continue;
-            List<HologramEffect> gEffects = group.effects();
+            List<HologramEffect> gEffects = HologramTriggers.resolve(group.effects(), spec, seconds);
             if (HologramAnim.flickerHidden(gEffects, seconds))
                 continue;
 
@@ -301,7 +302,7 @@ public final class HologramRenderer {
         if (!HologramClient.passesSolo(spec.id(), layerIndex, layer))
             return;
 
-        List<HologramEffect> effects = layer.effects();
+        List<HologramEffect> effects = HologramTriggers.resolve(layer.effects(), spec, seconds);
         if (HologramAnim.flickerHidden(effects, seconds))
             return;
 
@@ -367,7 +368,7 @@ public final class HologramRenderer {
                 if (entity == null)
                     return;
                 HologramEntities.applyAnimations(entity, effects,
-                        group == null ? List.of() : group.effects(), seconds);
+                        group == null ? List.of() : HologramTriggers.resolve(group.effects(), spec, seconds), seconds);
                 pose.pushPose();
                 pose.translate(offX, offY, offZ);
                 pose.mulPose(Axis.YP.rotationDegrees(lAngleY));

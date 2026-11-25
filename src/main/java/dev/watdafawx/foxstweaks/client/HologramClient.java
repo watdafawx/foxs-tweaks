@@ -19,6 +19,7 @@ import org.joml.Matrix4f;
 import org.joml.Vector3f;
 
 import javax.annotation.Nullable;
+import dev.watdafawx.foxstweaks.hologram.HologramEffect;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.HashSet;
@@ -52,6 +53,7 @@ public final class HologramClient {
         NeoForge.EVENT_BUS.addListener(HologramRenderer::onRenderLevel);
         NeoForge.EVENT_BUS.addListener(HologramClient::onClientTick);
         NeoForge.EVENT_BUS.addListener(HologramClient::onLevelUnload);
+        HologramTriggers.install();
     }
 
     public static void acceptSync(HologramSyncPayload payload) {
@@ -228,11 +230,14 @@ public final class HologramClient {
                     continue;
 
                 HologramGroup group = spec.groupById(layer.groupId());
+                List<HologramEffect> gFx = group == null ? List.of()
+                        : HologramTriggers.resolve(group.effects(), spec, seconds);
+                List<HologramEffect> lFx = HologramTriggers.resolve(layer.effects(), spec, seconds);
                 if (group != null) {
-                    if (!group.visible() || HologramAnim.flickerHidden(group.effects(), seconds))
+                    if (!group.visible() || HologramAnim.flickerHidden(gFx, seconds))
                         continue;
                 }
-                if (HologramAnim.flickerHidden(layer.effects(), seconds))
+                if (HologramAnim.flickerHidden(lFx, seconds))
                     continue;
 
                 var key = ResourceLocation.tryParse(layer.id());
@@ -256,8 +261,8 @@ public final class HologramClient {
                 if (group != null) {
                     float gHover = HologramRenderer.hoverOffset(group.hover(), group.hoverPeriod(), seconds);
                     float gSpin = HologramRenderer.spinAngle(group.spin(), seconds);
-                    float gJump = HologramAnim.jumpOffset(group.effects(), seconds);
-                    HologramAnim.Motion gm = HologramAnim.motion(group.effects(), seconds);
+                    float gJump = HologramAnim.jumpOffset(gFx, seconds);
+                    HologramAnim.Motion gm = HologramAnim.motion(gFx, seconds);
                     m.translate(group.offsetX() + gm.dx(), group.offsetY() + gHover + gJump + gm.dy(), group.offsetZ() + gm.dz())
                             .rotateY((float) Math.toRadians(group.yaw() + gm.ry() + (group.spinAxis() == HologramSpec.AXIS_Y ? gSpin : 0.0F)))
                             .rotateX((float) Math.toRadians(group.pitch() + gm.rx() + (group.spinAxis() == HologramSpec.AXIS_X ? gSpin : 0.0F)))
@@ -266,8 +271,8 @@ public final class HologramClient {
                 }
 
                 float lHover = HologramRenderer.hoverOffset(layer.hover(), layer.hoverPeriod(), seconds);
-                float lJump = HologramAnim.jumpOffset(layer.effects(), seconds);
-                HologramAnim.Motion lm = HologramAnim.motion(layer.effects(), seconds);
+                float lJump = HologramAnim.jumpOffset(lFx, seconds);
+                HologramAnim.Motion lm = HologramAnim.motion(lFx, seconds);
                 posBuf.set(layer.offsetX() + lm.dx(), layer.offsetY() + lHover + lJump + lm.dy(), layer.offsetZ() + lm.dz());
                 m.transformPosition(posBuf);
 

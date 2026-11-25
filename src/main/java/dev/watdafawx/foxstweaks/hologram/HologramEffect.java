@@ -26,7 +26,48 @@ import java.util.List;
  * "speed 1" means completely different things for a 6 Hz tremor and a 0.6 Hz wobble. {@code axis} is only
  * read by the types for which {@link Type#usesAxis()} is true.
  */
-public record HologramEffect(Type type, float strength, float speed, int color, int axis, float phase) {
+public record HologramEffect(Type type, float strength, float speed, int color, int axis, float phase,
+                             Trigger trigger) {
+
+    /** When an effect plays. Everything but {@code ALWAYS} is decided on the client from the world around it. */
+    public enum Trigger {
+        ALWAYS("Always", "Any"),
+        DAY("Daytime", "Day"),
+        NIGHT("Night", "Night"),
+        RAIN("Raining", "Rain"),
+        THUNDER("Thunder", "Thndr"),
+        JUKEBOX("Jukebox", "Juke"),
+        MUSIC("Music", "Music"),
+        MOB_DIED("Mob died", "Death");
+
+        private final String label;
+        private final String shortLabel;
+
+        Trigger(String label, String shortLabel) {
+            this.label = label;
+            this.shortLabel = shortLabel;
+        }
+
+        /** Fits a 30px button. */
+        public String shortLabel() {
+            return this.shortLabel;
+        }
+
+        public String label() {
+            return this.label;
+        }
+
+        /** Plays one cycle from the moment something happens, instead of following a condition. */
+        public boolean isPulse() {
+            return this == MOB_DIED;
+        }
+
+        /** The next trigger in the editor's cycle. */
+        public Trigger next() {
+            Trigger[] all = values();
+            return all[(this.ordinal() + 1) % all.length];
+        }
+    }
 
     public enum Type {
         // ---- Visual FX (the FX tab) ----
@@ -223,6 +264,12 @@ public record HologramEffect(Type type, float strength, float speed, int color, 
         color &= 0xFFFFFF;
         axis = Mth.clamp(axis, 0, 2);
         phase = phase - (float) Math.floor(phase);
+        if (trigger == null)
+            trigger = Trigger.ALWAYS;
+    }
+
+    public HologramEffect(Type type, float strength, float speed, int color, int axis, float phase) {
+        this(type, strength, speed, color, axis, phase, Trigger.ALWAYS);
     }
 
     public HologramEffect(Type type, float strength, float speed, int color, int axis) {
@@ -235,24 +282,28 @@ public record HologramEffect(Type type, float strength, float speed, int color, 
     }
 
     public HologramEffect withStrength(float strength) {
-        return new HologramEffect(this.type, strength, this.speed, this.color, this.axis, this.phase);
+        return new HologramEffect(this.type, strength, this.speed, this.color, this.axis, this.phase, this.trigger);
     }
 
     public HologramEffect withSpeed(float speed) {
-        return new HologramEffect(this.type, this.strength, speed, this.color, this.axis, this.phase);
+        return new HologramEffect(this.type, this.strength, speed, this.color, this.axis, this.phase, this.trigger);
     }
 
     public HologramEffect withColor(int color) {
-        return new HologramEffect(this.type, this.strength, this.speed, color, this.axis, this.phase);
+        return new HologramEffect(this.type, this.strength, this.speed, color, this.axis, this.phase, this.trigger);
     }
 
     public HologramEffect withAxis(int axis) {
-        return new HologramEffect(this.type, this.strength, this.speed, this.color, axis, this.phase);
+        return new HologramEffect(this.type, this.strength, this.speed, this.color, axis, this.phase, this.trigger);
     }
 
     /** Where in its cycle this animation starts, 0..1. Lets two copies of one animation run out of step. */
     public HologramEffect withPhase(float phase) {
-        return new HologramEffect(this.type, this.strength, this.speed, this.color, this.axis, phase);
+        return new HologramEffect(this.type, this.strength, this.speed, this.color, this.axis, phase, this.trigger);
+    }
+
+    public HologramEffect withTrigger(Trigger trigger) {
+        return new HologramEffect(this.type, this.strength, this.speed, this.color, this.axis, this.phase, trigger);
     }
 
     public String axisLabel() {
@@ -372,6 +423,8 @@ public record HologramEffect(Type type, float strength, float speed, int color, 
             tag.putByte("axis", (byte) this.axis);
         if (this.phase != 0.0F)
             tag.putFloat("phase", this.phase);
+        if (this.trigger != Trigger.ALWAYS)
+            tag.putString("when", this.trigger.name());
         return tag;
     }
 
@@ -395,9 +448,20 @@ public record HologramEffect(Type type, float strength, float speed, int color, 
             effects.add(new HologramEffect(type, tag.getFloat("strength"), tag.getFloat("speed"),
                     tag.contains("color") ? tag.getInt("color") : DEFAULT_COLOR,
                     tag.contains("axis") ? tag.getByte("axis") : DEFAULT_AXIS,
-                    tag.contains("phase") ? tag.getFloat("phase") : 0.0F));
+                    tag.contains("phase") ? tag.getFloat("phase") : 0.0F,
+                    triggerOf(tag.getString("when"))));
         }
         return effects;
+    }
+
+    private static Trigger triggerOf(String name) {
+        if (name.isEmpty())
+            return Trigger.ALWAYS;
+        try {
+            return Trigger.valueOf(name);
+        } catch (IllegalArgumentException e) {
+            return Trigger.ALWAYS;
+        }
     }
 
     /** True when this tag is one of ours; used to skip junk in a saved list. */

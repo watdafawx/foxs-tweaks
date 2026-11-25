@@ -1091,6 +1091,15 @@ or idle animation stutters. The editor opens the studio camera framed on the hol
 chat opens through `HologramChatScreen`, which restores the same editor instance. `runHologramCheck` covers the editor UI
 (`devClick` presses real buttons) and frame smoothness (`HologramRenderer.lastEntityTicks`).
 
+**Triggers (1.42.0).** `HologramEffect.trigger()` (`Trigger`: ALWAYS, DAY, NIGHT, RAIN, THUNDER, JUKEBOX, MUSIC, MOB_DIED; NBT key
+`when`, only written when not ALWAYS). `client/HologramTriggers.resolve(effects, spec, seconds)` turns an effect list into what to
+draw now: strength scaled by an eased gate, dropped when the gate is shut, returns the same list when nothing has a trigger. It is
+called wherever effects are read (renderer groups/layers/entity anims, particle emitter). State is per effect instance (identity), so
+pasted copies that share an instance share state. A SPIN keeps its own clock (gate-time) so it holds its angle while shut. Jukebox
+follows `SoundSource.RECORDS` sounds (the client block entity does not carry the disc), music follows `SoundSource.MUSIC`, both via
+`PlaySoundEvent` and pruned by `SoundManager.isActive`; deaths are scanned from `deathTime` only while a MOB_DIED effect is drawn.
+The rig has no audio device, so the check injects the record with `HologramTriggers.devRecord`.
+
 ### Search box assist (`client/search/*`, `mixin/EditBoxSearchAssistMixin`)
 
 One mixin on vanilla `EditBox` (every mod's search field is one, or a subclass) instead of a patch per mod.

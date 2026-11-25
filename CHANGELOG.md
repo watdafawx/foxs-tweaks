@@ -1,5 +1,17 @@
 # Changelog
 
+## 1.42.0
+
+- **Holograms: triggers.** Every animation and FX can now play only when the world says so. Each card in the Anim and FX tabs has a small button (default **Any**); click it to cycle:
+  - **Day / Night** follow the sun and ease through dusk and dawn.
+  - **Rain / Thunder** follow the weather.
+  - **Jukebox** plays while a music disc is playing within 24 blocks.
+  - **Music** plays while the game's own background music is playing.
+  - **Death** plays one cycle each time a mob dies within 24 blocks.
+  - Effects fade in and out instead of snapping. A Spin that is switched off holds its angle and carries on from there.
+  - Old holograms are unchanged (Any = always on). Costs nothing for holograms that use no trigger.
+- Dev check `runHologramCheck` covers triggers: save round trip, music/jukebox/death/day/night gates, eased in/out, spin continuity.
+
 ## 1.41.0
 
 - **Holograms: stackable animations on layers and groups.** The Anim tab is now a list instead of one Spin and one Hover:
