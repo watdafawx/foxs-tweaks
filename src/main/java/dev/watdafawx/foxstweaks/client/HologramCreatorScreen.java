@@ -321,9 +321,8 @@ public final class HologramCreatorScreen extends Screen {
         iconButton(g, mx, my, bx, y - 3, 14, 13, "\u2316", layers.size() < HologramLayer.MAX_LAYERS,
                 "Grab from world: click a block or mob (Shift = several)", () -> this.editor.creatorGrab(this));
         bx -= 16;
-        iconButton(g, mx, my, bx, y - 3, 14, 13, "+", layers.size() < HologramLayer.MAX_LAYERS,
-                "Add a block layer (pick it in Studio for now)", () -> this.editor.creatorAddLayer(
-                        HologramLayer.block("minecraft:glass", java.util.Map.of(), new net.minecraft.nbt.CompoundTag())));
+        iconButton(g, mx, my, bx, y - 3, 14, 13, "+", true,
+                "Browse blocks, mobs and particles (replace this layer or add one)", () -> this.editor.creatorOpenPicker(this));
         y += 14;
 
         // Layer list gets at most ~45% of the panel; the looks below are the other half of this panel's job.

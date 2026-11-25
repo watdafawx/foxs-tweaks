@@ -687,6 +687,9 @@ public class HologramScreen extends Screen {
         } else {
             this.flatBtns.add(new FlatBtn(this.leftX + this.leftW - 22, this.top + 4, 16, 13, "<", false, false, true,
                     () -> setPickerCollapsed(true)));
+            int browseW = Math.min(46, this.leftW - 52 - 26);
+            this.flatBtns.add(new FlatBtn(this.leftX + this.leftW - 26 - browseW, this.top + 4, browseW, 13,
+                    "Browse", false, false, true, this::openPicker));
             int pTabW = (this.leftW - 16 - 4) / 3;
             for (int i = 0; i < 3; i++) {
                 int m = i;
@@ -2724,6 +2727,10 @@ public class HologramScreen extends Screen {
                 frameCamera();
                 return true;
             }
+            if (keyCode == GLFW.GLFW_KEY_B) {
+                openPicker();
+                return true;
+            }
             if (this.minecraft != null && this.minecraft.player != null) {
                 if (this.minecraft.options.keyChat.matches(keyCode, scanCode)) {
                     openChat("");
@@ -2770,6 +2777,46 @@ public class HologramScreen extends Screen {
             this.targetKind = TargetKind.LAYER;
             this.selectedLayer = Mth.clamp(this.selectedLayer, 0, Math.max(0, this.layers.size() - 1));
         }
+    }
+
+    /** Opens the full-screen asset browser; its choice comes back through {@link #applyPickerChoice}. */
+    public void openPicker() {
+        if (this.minecraft == null)
+            return;
+        commitInlineBox();
+        this.minecraft.setScreen(new HologramPickerScreen(this, this.pickMode, currentLayer()));
+    }
+
+    /**
+     * What the asset browser hands back: either replaces the selected layer's content, or (also when no layer
+     * is selected) appends a new layer on top of the stack, like the in-panel "+ Add layer".
+     */
+    public void applyPickerChoice(HologramLayer.Kind kind, String id, Map<String, String> props, boolean asNewLayer) {
+        HologramLayer cur = this.targetKind == TargetKind.LAYER ? currentLayer() : null;
+        if (!asNewLayer && cur != null) {
+            pushUndo();
+            updateCurrentLayer(l -> l.withContent(kind, id, props, new CompoundTag()));
+        } else {
+            if (this.layers.size() >= HologramLayer.MAX_LAYERS)
+                return;
+            pushUndo();
+            float topY = 0.0F;
+            for (HologramLayer l : this.layers)
+                topY = Math.max(topY, l.offsetY() + (l.kind() == HologramLayer.Kind.PARTICLE ? 0.5F : l.scale()));
+            HologramLayer created = switch (kind) {
+                case ENTITY -> HologramLayer.entity(id, topY);
+                case PARTICLE -> HologramLayer.particle(id, topY + 0.5F);
+                default -> HologramLayer.block(id, props, topY);
+            };
+            if (this.targetKind == TargetKind.GROUP && this.selectedGroupId != null)
+                created = created.withGroupId(this.selectedGroupId);
+            this.layers.add(created);
+            this.targetKind = TargetKind.LAYER;
+            this.selectedLayer = this.layers.size() - 1;
+        }
+        syncPickerToSelection();
+        rebuildInspector();
+        refresh();
     }
 
     public void pickBlock(Block block) {
@@ -3059,6 +3106,15 @@ public class HologramScreen extends Screen {
             return;
         commitInlineBox();
         HologramGrab.begin(this, returnTo);
+    }
+
+    /** The asset browser, coming back to {@code returnTo} (the Creator). */
+    void creatorOpenPicker(Screen returnTo) {
+        if (this.minecraft == null)
+            return;
+        commitInlineBox();
+        ensureLayerTarget();
+        this.minecraft.setScreen(new HologramPickerScreen(this, this.pickMode, currentLayer()).returnTo(returnTo));
     }
 
     void creatorFrameCamera() {

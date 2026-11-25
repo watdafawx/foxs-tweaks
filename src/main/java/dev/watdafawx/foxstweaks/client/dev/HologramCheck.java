@@ -835,8 +835,11 @@ public final class HologramCheck {
             check("48 benchmark holograms reached the client", onClient >= BENCH_COUNT, "count=" + onClient);
             check("appear progress is tracked per hologram",
                     HologramClient.appearTracked() >= BENCH_COUNT, "tracked=" + HologramClient.appearTracked());
-            recordStart();
         });
+
+        // Warm-up: the first timed round otherwise absorbs JIT and chunk-mesh work and reads slower than the
+        // same holograms with effects on, which made the batching comparison below fail on a loaded rig.
+        add(60, HologramCheck::recordStart);
 
         add(BENCH_TICKS, () -> {
             reportRound("48 plain");

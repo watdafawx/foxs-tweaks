@@ -179,6 +179,15 @@ neoForge {
             systemProperty 'foxstweaks.hologramGrabCheck', 'true'
         }
 
+        // Dev-only check of the hologram asset browser (client/dev/HologramPickerCheck): opens it from the editor,
+        // drives search, chips, favourites, variants, Replace / Add layer. Report + screenshots land in
+        // run-hologram-picker/ (screenshots/ subfolder). No extra mods needed.
+        hologramPickerCheck {
+            client()
+            gameDirectory = file('run-hologram-picker')
+            systemProperty 'foxstweaks.hologramPickerCheck', 'true'
+        }
+
         // Dev-only check that an anchor carries its owner's Apotheosis world tier (client/dev/AnchorTierCheck):
         // report lands in run-anchor-tier/. Put Apotheosis, ApothicAttributes and Placebo in run-anchor-tier/mods.
         // -PtierOff runs it with the tier path switched off, which must fail the tier assertions.

@@ -267,6 +267,23 @@ public final class HologramCreatorCheck {
             check("back in Creator remembered", HologramEditorPrefs.startInCreator(), "still studio");
         });
 
+        // ---- studio camera stays on under the Creator; + opens the browser, Esc comes back ----
+        add(4, () -> {
+            check("studio camera active under the Creator", dev.watdafawx.foxstweaks.client.HologramCamera.isActive(),
+                    "inactive");
+            click("Browse blocks", 0);
+            check("+ opens the asset browser",
+                    Minecraft.getInstance().screen instanceof dev.watdafawx.foxstweaks.client.HologramPickerScreen,
+                    String.valueOf(Minecraft.getInstance().screen));
+        });
+        add(8, () -> {
+            var s = Minecraft.getInstance().screen;
+            if (s != null)
+                s.onClose();
+            check("Esc in the browser returns to the Creator", creator() != null,
+                    String.valueOf(Minecraft.getInstance().screen));
+        });
+
         // ---- Grab from world starts from the Creator and comes back to it ----
         add(6, () -> {
             click("Grab from world", 0);
