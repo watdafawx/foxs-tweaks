@@ -54,6 +54,7 @@ public final class HologramClient {
         NeoForge.EVENT_BUS.addListener(HologramClient::onClientTick);
         NeoForge.EVENT_BUS.addListener(HologramClient::onLevelUnload);
         HologramTriggers.install();
+        HologramGrab.init();
     }
 
     public static void acceptSync(HologramSyncPayload payload) {
@@ -327,6 +328,7 @@ public final class HologramClient {
         HologramClient.hovered = null;
         HologramClient.dimension = null;
         HologramCamera.end();
+        HologramGrab.clear();
         clearSolo();
         HologramClient.appear.clear();
         HologramEntities.clear();

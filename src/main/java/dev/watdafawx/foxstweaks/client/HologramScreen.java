@@ -653,7 +653,7 @@ public class HologramScreen extends Screen {
         int btnW = 36;
         int utilGap = 4;
         int totalW = modes.length * (btnW + 2) + utilGap + 32 + 2 + 32 + 2 + 38 + 2 + 30 + 2 + 30
-                + 2 + 38 + 2 + 26;
+                + 2 + 38 + 2 + 26 + 2 + 34 + 2 + 46;
         int gx = (this.width - totalW) / 2;
         for (int i = 0; i < modes.length; i++) {
             HologramGizmo.Mode m = modes[i];
@@ -676,7 +676,9 @@ public class HologramScreen extends Screen {
         }));
         this.flatBtns.add(new FlatBtn(ux + 212, 5, 26, 15, "T=0", false, false, true,
                 HologramRenderer::restartClock));
-        this.flatBtns.add(new FlatBtn(ux + 240, 5, 46, 15, "< Simple", false, false, true, this::openCreator));
+        this.flatBtns.add(new FlatBtn(ux + 240, 5, 34, 15, "Grab", false, false,
+                this.layers.size() < HologramLayer.MAX_LAYERS, this::startGrabMode));
+        this.flatBtns.add(new FlatBtn(ux + 276, 5, 46, 15, "< Simple", false, false, true, this::openCreator));
 
         // ---- Left panel header / collapse & add-layer button ----
         if (this.pickerCollapsed) {
@@ -1752,6 +1754,37 @@ public class HologramScreen extends Screen {
         this.layers.add(created);
         this.targetKind = TargetKind.LAYER;
         this.selectedLayer = this.layers.size() - 1;
+        rebuildInspector();
+        refresh();
+    }
+
+    private void startGrabMode() {
+        commitInlineBox();
+        HologramGrab.begin(this);
+    }
+
+    /** Appends layers grabbed from the world, stacking them on top and recording one undo step. */
+    public void addGrabbedLayers(List<HologramLayer> grabbed) {
+        if (grabbed == null || grabbed.isEmpty() || this.layers.size() >= HologramLayer.MAX_LAYERS)
+            return;
+        pushUndo();
+        float topY = 0.0F;
+        for (HologramLayer l : this.layers)
+            topY = Math.max(topY, l.offsetY() + (l.kind() == HologramLayer.Kind.PARTICLE ? 0.5F : l.scale()));
+        String groupId = (this.targetKind == TargetKind.GROUP && this.selectedGroupId != null)
+                ? this.selectedGroupId : "";
+        for (HologramLayer incoming : grabbed) {
+            if (this.layers.size() >= HologramLayer.MAX_LAYERS)
+                break;
+            HologramLayer placed = incoming.withOffset(incoming.offsetX(), topY + incoming.offsetY(), incoming.offsetZ());
+            if (!groupId.isEmpty() && placed.groupId().isEmpty())
+                placed = placed.withGroupId(groupId);
+            this.layers.add(placed);
+            topY = Math.max(topY, placed.offsetY() + (placed.kind() == HologramLayer.Kind.PARTICLE ? 0.5F : placed.scale()));
+        }
+        this.targetKind = TargetKind.LAYER;
+        this.selectedLayer = this.layers.size() - 1;
+        syncPickerToSelection();
         rebuildInspector();
         refresh();
     }
@@ -3018,6 +3051,14 @@ public class HologramScreen extends Screen {
         this.appearRadius = (float) clamp(radius, 0.0, 64.0);
         this.appearStyle = style;
         refresh();
+    }
+
+    /** Grab from world, coming back to {@code returnTo} (the Creator) instead of this screen. */
+    void creatorGrab(Screen returnTo) {
+        if (this.layers.size() >= HologramLayer.MAX_LAYERS)
+            return;
+        commitInlineBox();
+        HologramGrab.begin(this, returnTo);
     }
 
     void creatorFrameCamera() {

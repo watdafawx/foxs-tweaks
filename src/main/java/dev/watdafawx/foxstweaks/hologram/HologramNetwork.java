@@ -23,7 +23,7 @@ public final class HologramNetwork {
     }
 
     public static void register(RegisterPayloadHandlersEvent event) {
-        var registrar = event.registrar("1").optional();
+        var registrar = event.registrar("2").optional();
 
         registrar.playToClient(HologramSyncPayload.TYPE, HologramSyncPayload.CODEC, (payload, context) ->
                 context.enqueueWork(() -> {
@@ -41,6 +41,18 @@ public final class HologramNetwork {
                 context.enqueueWork(() -> {
                     if (context.player() instanceof ServerPlayer player)
                         handle(player, payload);
+                }));
+
+        registrar.playToServer(HologramGrabPayload.TYPE, HologramGrabPayload.CODEC, (payload, context) ->
+                context.enqueueWork(() -> {
+                    if (context.player() instanceof ServerPlayer player)
+                        HologramGrabber.handle(player, payload);
+                }));
+
+        registrar.playToClient(HologramGrabReplyPayload.TYPE, HologramGrabReplyPayload.CODEC, (payload, context) ->
+                context.enqueueWork(() -> {
+                    if (FMLEnvironment.dist.isClient())
+                        dev.watdafawx.foxstweaks.client.HologramGrab.acceptReply(payload);
                 }));
     }
 
@@ -187,5 +199,9 @@ public final class HologramNetwork {
 
     public static void sendRecapture(String id, int layerIndex) {
         PacketDistributor.sendToServer(HologramActionPayload.recapture(id, layerIndex));
+    }
+
+    public static void sendGrab(HologramGrabPayload payload) {
+        PacketDistributor.sendToServer(payload);
     }
 }

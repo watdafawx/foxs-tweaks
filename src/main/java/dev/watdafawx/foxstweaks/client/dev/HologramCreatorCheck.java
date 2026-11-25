@@ -267,6 +267,18 @@ public final class HologramCreatorCheck {
             check("back in Creator remembered", HologramEditorPrefs.startInCreator(), "still studio");
         });
 
+        // ---- Grab from world starts from the Creator and comes back to it ----
+        add(6, () -> {
+            click("Grab from world", 0);
+            check("Grab hides the Creator", dev.watdafawx.foxstweaks.client.HologramGrab.isActive()
+                    && Minecraft.getInstance().screen == null, String.valueOf(Minecraft.getInstance().screen));
+        });
+        add(6, () -> {
+            dev.watdafawx.foxstweaks.client.HologramGrab.cancelAndReturn();
+            check("Esc from grab returns to the Creator", creator() != null && creator().editor() == editor,
+                    String.valueOf(Minecraft.getInstance().screen));
+        });
+
         // ---- Done: the server stores the gradient with both colours ----
         add(6, () -> {
             HologramEffect local = effects().stream().filter(e -> e.type() == HologramEffect.Type.GRADIENT)
