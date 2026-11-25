@@ -79,7 +79,7 @@ public final class FpsProfiler {
     private static long scanMillis;
     private static int frameCount;
     private static int tickCounter;
-    private static boolean pendingReport;
+    private static int pendingReport;
 
     // Whole-frame timing, so a hotspot can be shown as a share of the frame and as "+FPS if removed".
     private static long lastFrameNanos;
@@ -527,7 +527,7 @@ public final class FpsProfiler {
             return;
         }
         // Commands run inside ChatScreen, which closes itself right after: open the screen on the next tick.
-        pendingReport = true;
+        pendingReport = 2;
     }
 
     /** The live box to draw for a hotspot: the entity's current box, else the last one seen, else the block. */
@@ -674,10 +674,10 @@ public final class FpsProfiler {
         Minecraft mc = Minecraft.getInstance();
 
         // Still the chat screen that ran the command: wait for it to close, or it would close ours too.
-        if (pendingReport && !(mc.screen instanceof net.minecraft.client.gui.screens.ChatScreen)) {
-            pendingReport = false;
+        // A typed command closes the chat in the same tick, a clicked chat button leaves it open: by the next
+        // tick the chat is either gone or ours to replace, so never wait for the player to close it.
+        if (pendingReport > 0 && --pendingReport == 0)
             mc.setScreen(new FpsReportScreen());
-        }
 
         while (FoxsTweaksKeys.OPEN_FPS_REPORT.consumeClick()) {
             if (mc.screen == null && mc.player != null)

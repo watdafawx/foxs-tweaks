@@ -1,6 +1,5 @@
 package dev.watdafawx.foxstweaks.client.perf;
 
-import net.minecraft.ChatFormatting;
 import net.minecraft.client.gui.GuiGraphics;
 import net.minecraft.client.gui.components.Button;
 import net.minecraft.client.gui.components.Tooltip;
@@ -189,6 +188,8 @@ public final class FpsReportScreen extends Screen {
         // A light tint, not vanilla's blur: the highlights in the world stay visible behind the report.
         gg.fill(0, 0, width, height, 0x88000000);
         gg.fill(left - 4, top - 4, left + listW + 4, bottom + 4, 0xEE0B0D12);
+        // Header strip over the right half too, so the title and help text are readable on any world.
+        gg.fill(left + listW + 4, top - 4, detailX + detailW + 4, top + headerH, 0xEE0B0D12);
         gg.fill(detailX - 4, top + headerH, detailX + detailW + 4, bottom + 4, 0xEE0B0D12);
     }
 
@@ -261,9 +262,8 @@ public final class FpsReportScreen extends Screen {
         gg.drawWordWrap(font, Component.literal(
                         "Each number is the time spent drawing that thing, per frame (µs = millionths of a second; "
                                 + "self time only). % is its share of the average frame. Shader packs draw things "
-                                + "again for shadows, and that cost counts.")
-                        .withStyle(ChatFormatting.DARK_GRAY),
-                x, y, listW + detailW - 100, 0xFF6F7885);
+                                + "again for shadows, and that cost counts."),
+                x, y, listW + detailW - 100, 0xFF9AA4B2);
     }
 
     private void drawDetail(GuiGraphics gg, int mouseX, int mouseY) {
