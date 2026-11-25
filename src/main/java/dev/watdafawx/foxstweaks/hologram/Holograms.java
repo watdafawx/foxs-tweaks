@@ -87,9 +87,25 @@ public final class Holograms {
     }
 
     public static final int MAX_DATA_BYTES = 64 * 1024;
+    public static final int DEFAULT_STRUCTURE_DATA_BYTES = 256 * 1024;
+
+    public static int maxStructureDataBytes() {
+        return ServerConfig.hologramStructureMaxBytes();
+    }
+
+    public static int maxDataBytes(HologramLayer.Kind kind) {
+        return kind == HologramLayer.Kind.STRUCTURE
+                ? Math.max(DEFAULT_STRUCTURE_DATA_BYTES, maxStructureDataBytes())
+                : MAX_DATA_BYTES;
+    }
 
     @Nullable
     public static CompoundTag capture(ServerLevel level, BlockPos source) {
+        return capture(level, source, MAX_DATA_BYTES);
+    }
+
+    @Nullable
+    static CompoundTag capture(ServerLevel level, BlockPos source, int maxBytes) {
         BlockEntity blockEntity = level.getBlockEntity(source);
         if (blockEntity == null)
             return null;
@@ -97,7 +113,7 @@ public final class Holograms {
         CompoundTag update = blockEntity.getUpdateTag(level.registryAccess());
         if (!update.isEmpty())
             tag.put("_ft_update", update);
-        if (tag.isEmpty() || tag.sizeInBytes() > MAX_DATA_BYTES)
+        if (tag.isEmpty() || tag.sizeInBytes() > maxBytes)
             return null;
         return tag;
     }

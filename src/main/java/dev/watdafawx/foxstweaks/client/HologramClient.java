@@ -155,6 +155,7 @@ public final class HologramClient {
         for (HologramSpec spec : HologramClient.visible)
             activeIds.add(spec.id());
         HologramBlockEntities.prune(activeIds);
+        HologramStructureMesh.prune(HologramClient.visible);
     }
 
     private static void onClientTick(ClientTickEvent.Post event) {
@@ -333,6 +334,7 @@ public final class HologramClient {
         HologramClient.appear.clear();
         HologramEntities.clear();
         HologramBlockEntities.clear();
+        HologramStructureMesh.clear();
         HologramPickerPreview.clear();
         HologramClient.lastAppearNanos = 0L;
     }

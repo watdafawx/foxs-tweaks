@@ -23,7 +23,7 @@ public final class HologramNetwork {
     }
 
     public static void register(RegisterPayloadHandlersEvent event) {
-        var registrar = event.registrar("2").optional();
+        var registrar = event.registrar("3").optional();
 
         registrar.playToClient(HologramSyncPayload.TYPE, HologramSyncPayload.CODEC, (payload, context) ->
                 context.enqueueWork(() -> {
@@ -106,7 +106,7 @@ public final class HologramNetwork {
         }
 
         HologramSpec incoming = HologramSpec.fromTag(payload.spec());
-        if (incoming == null)
+        if (incoming == null || !validStructures(incoming))
             return;
 
         HologramSpec sanitized = incoming.at(stored.id(), stored.pos(), stored.owner(), stored.ownerName())
@@ -133,7 +133,7 @@ public final class HologramNetwork {
 
         ServerLevel level = player.serverLevel();
         HologramSpec style = HologramSpec.fromTag(tag);
-        if (style == null || style.layers().isEmpty())
+        if (style == null || style.layers().isEmpty() || !validStructures(style))
             return;
         if (Holograms.capacityLeft(level) <= 0)
             return;
@@ -151,6 +151,23 @@ public final class HologramNetwork {
         Holograms.save(level, created);
         level.playSound(null, pos, SoundEvents.AMETHYST_BLOCK_CHIME, SoundSource.BLOCKS, 0.7F, 1.2F);
         openEditor(player, created);
+    }
+
+    /** Editor packets are untrusted too: grabbing isn't the only way to submit layer data. */
+    private static boolean validStructures(HologramSpec spec) {
+        for (HologramLayer layer : spec.layers()) {
+            if (layer.kind() != HologramLayer.Kind.STRUCTURE)
+                continue;
+            CompoundTag data = layer.data();
+            int max = ServerConfig.hologramStructureMaxDimension();
+            if (data.sizeInBytes() > Holograms.maxStructureDataBytes()
+                    || data.getInt("w") > max || data.getInt("h") > max || data.getInt("d") > max)
+                return false;
+            HologramStructure structure = HologramStructure.fromTag(data);
+            if (structure == null || structure.blockCount() > ServerConfig.hologramStructureMaxBlocks())
+                return false;
+        }
+        return true;
     }
 
     @javax.annotation.Nullable

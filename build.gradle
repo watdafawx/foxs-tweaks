@@ -179,6 +179,14 @@ neoForge {
             systemProperty 'foxstweaks.hologramGrabCheck', 'true'
         }
 
+        // Dev-only end-to-end check & benchmark of hologram structure grab (client/dev/HologramStructureCheck).
+        // Report + screenshots land in run-hologram-structure/.
+        hologramStructureCheck {
+            client()
+            gameDirectory = file('run-hologram-structure')
+            systemProperty 'foxstweaks.hologramStructureCheck', 'true'
+        }
+
         // Dev-only check of the hologram asset browser (client/dev/HologramPickerCheck): opens it from the editor,
         // drives search, chips, favourites, variants, Replace / Add layer. Report + screenshots land in
         // run-hologram-picker/ (screenshots/ subfolder). No extra mods needed.

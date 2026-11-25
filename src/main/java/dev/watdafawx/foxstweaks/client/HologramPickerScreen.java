@@ -297,6 +297,7 @@ public class HologramPickerScreen extends Screen {
             case BLOCK -> BLOCKS;
             case ENTITY -> MOBS;
             case PARTICLE -> PARTICLES;
+            case STRUCTURE -> List.of();
         };
     }
 
@@ -458,6 +459,7 @@ public class HologramPickerScreen extends Screen {
                 case BLOCK -> query.matchesBlock(e.block());
                 case ENTITY -> query.matchesEntity(e.type(), e.id(), e.name());
                 case PARTICLE -> query.matchesParticle(e.id());
+                case STRUCTURE -> false;
             };
             if (!ok)
                 continue;
@@ -650,6 +652,9 @@ public class HologramPickerScreen extends Screen {
     private void apply(boolean asNew) {
         Entry entry = this.selected;
         if (entry == null || this.minecraft == null)
+            return;
+        boolean structureSelected = this.current != null && this.current.kind() == HologramLayer.Kind.STRUCTURE;
+        if (!asNew && structureSelected)
             return;
         boolean forceNew = asNew || this.current == null;
         if (forceNew && this.editorLayerCount >= HologramLayer.MAX_LAYERS)
@@ -910,7 +915,9 @@ public class HologramPickerScreen extends Screen {
         int y = this.py0 + 20;
         g.drawString(this.font, "TYPE", x + 8, y, DIMMED, false);
         y += 11;
-        HologramLayer.Kind[] kinds = HologramLayer.Kind.values();
+        HologramLayer.Kind[] kinds = {
+                HologramLayer.Kind.BLOCK, HologramLayer.Kind.ENTITY, HologramLayer.Kind.PARTICLE
+        };
         String[] names = { "Blocks", "Mobs", "Particles" };
         for (int i = 0; i < kinds.length; i++) {
             HologramLayer.Kind k = kinds[i];
@@ -1011,6 +1018,7 @@ public class HologramPickerScreen extends Screen {
             case BLOCK -> "Blocks";
             case ENTITY -> "Mobs";
             case PARTICLE -> "Particles";
+            case STRUCTURE -> "Structures";
         };
         g.drawString(this.font, title, this.midX + 8, this.py0 + 6, ACCENT, false);
         String closeLabel = "Close (Esc)";
@@ -1154,6 +1162,8 @@ public class HologramPickerScreen extends Screen {
                 }
             }
             case PARTICLE -> HologramPickerPreview.drawParticleIcon(g, e.id(), x + 4, y + 2, 20, secs);
+            case STRUCTURE -> {
+            }
         }
 
         String sub = e.kind() == HologramLayer.Kind.BLOCK
@@ -1225,7 +1235,8 @@ public class HologramPickerScreen extends Screen {
         starHit.right = starHit.click;
         int rest = bw - star - 4;
         int replaceW = rest * 40 / 100;
-        boolean canReplace = target != null && this.current != null;
+        boolean canReplace = target != null && this.current != null
+                && this.current.kind() != HologramLayer.Kind.STRUCTURE;
         boolean canAdd = target != null && this.editorLayerCount < HologramLayer.MAX_LAYERS;
         drawAction(g, mx, my, bx + star + 2, y, replaceW, "Replace", "btn:replace", canReplace, () -> apply(false));
         drawAction(g, mx, my, bx + star + 4 + replaceW, y, rest - replaceW, "+ Add layer", "btn:add", canAdd,
@@ -1315,6 +1326,8 @@ public class HologramPickerScreen extends Screen {
             case PARTICLE -> {
                 int ps = Math.min(size, 80);
                 HologramPickerPreview.drawParticleIcon(g, e.id(), x + (w - ps) / 2, y + (h - ps) / 2, ps, secs);
+            }
+            case STRUCTURE -> {
             }
         }
     }

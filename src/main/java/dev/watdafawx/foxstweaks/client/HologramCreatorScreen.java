@@ -5,6 +5,7 @@ import com.mojang.blaze3d.systems.RenderSystem;
 import dev.watdafawx.foxstweaks.hologram.HologramEffect;
 import dev.watdafawx.foxstweaks.hologram.HologramLayer;
 import dev.watdafawx.foxstweaks.hologram.HologramSpec;
+import dev.watdafawx.foxstweaks.hologram.HologramStructure;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.GuiGraphics;
 import net.minecraft.client.gui.components.EditBox;
@@ -537,6 +538,12 @@ public final class HologramCreatorScreen extends Screen {
 
     private int renderShape(GuiGraphics g, int mx, int my, HologramLayer layer, int sel, int x, int y, int w,
                             int clipTop, int clipBottom) {
+        if (layer.kind() == HologramLayer.Kind.STRUCTURE) {
+            int[] d = HologramStructure.dimensions(layer.data());
+            int count = HologramStructure.blockCount(layer.data());
+            g.drawString(this.font, d[0] + "x" + d[1] + "x" + d[2] + " \u00B7 " + count + " blocks", x, y + 1, ACCENT, false);
+            y += 12;
+        }
         float scale = this.editor.creatorScale();
         y = slider(g, mx, my, x, y, w, "Size", String.format(Locale.ROOT, "%.2f×", scale),
                 (scale - 0.1F) / 3.9F, ACCENT, false, v -> this.editor.creatorSetScale(round(0.1F + (float) v * 3.9F, 0.05F)),
@@ -1454,6 +1461,10 @@ public final class HologramCreatorScreen extends Screen {
             }
             case PARTICLE -> {
                 g.drawString(this.font, "✧", x + 4, y + 4, GOLD, false);
+                return;
+            }
+            case STRUCTURE -> {
+                g.drawString(this.font, "⊞", x + 4, y + 4, ACCENT, false);
                 return;
             }
         }

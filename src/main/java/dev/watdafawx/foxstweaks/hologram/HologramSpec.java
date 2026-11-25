@@ -190,18 +190,36 @@ public record HologramSpec(
                 m.mul(groupMatrix(grp));
             m.mul(layerMatrix(layer));
 
-            float halfXZ = layer.kind() == HologramLayer.Kind.PARTICLE ? Math.max(0.35F, layer.scale()) : 0.55F;
-            float minY = layer.kind() == HologramLayer.Kind.PARTICLE ? -halfXZ : -0.05F;
-            float maxY = layer.kind() == HologramLayer.Kind.PARTICLE ? halfXZ : 1.05F;
+            float halfX;
+            float halfZ;
+            float minY;
+            float maxY;
+            if (layer.kind() == HologramLayer.Kind.STRUCTURE) {
+                int[] dims = HologramStructure.dimensions(layer.data());
+                halfX = dims[0] * 0.5F + 0.05F;
+                halfZ = dims[2] * 0.5F + 0.05F;
+                minY = -0.05F;
+                maxY = dims[1] + 0.05F;
+            } else if (layer.kind() == HologramLayer.Kind.PARTICLE) {
+                halfX = Math.max(0.35F, layer.scale());
+                halfZ = halfX;
+                minY = -halfX;
+                maxY = halfX;
+            } else {
+                halfX = 0.55F;
+                halfZ = 0.55F;
+                minY = -0.05F;
+                maxY = 1.05F;
+            }
 
             double minX = Double.POSITIVE_INFINITY, minYd = Double.POSITIVE_INFINITY, minZ = Double.POSITIVE_INFINITY;
             double maxX = Double.NEGATIVE_INFINITY, maxYd = Double.NEGATIVE_INFINITY, maxZ = Double.NEGATIVE_INFINITY;
             for (int cx = 0; cx < 2; cx++) {
                 for (int cy = 0; cy < 2; cy++) {
                     for (int cz = 0; cz < 2; cz++) {
-                        tmp.set(cx == 0 ? -halfXZ : halfXZ,
+                        tmp.set(cx == 0 ? -halfX : halfX,
                                 cy == 0 ? minY : maxY,
-                                cz == 0 ? -halfXZ : halfXZ);
+                                cz == 0 ? -halfZ : halfZ);
                         m.transformPosition(tmp);
                         if (tmp.x < minX) minX = tmp.x;
                         if (tmp.y < minYd) minYd = tmp.y;

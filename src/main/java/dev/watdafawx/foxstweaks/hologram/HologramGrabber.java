@@ -80,7 +80,152 @@ public final class HologramGrabber {
         switch (payload.targetKind()) {
             case BLOCK -> handleBlock(player, level, payload);
             case ENTITY -> handleEntity(player, level, payload);
+            case STRUCTURE -> handleStructure(player, level, payload);
         }
+    }
+
+    private static void handleStructure(ServerPlayer player, ServerLevel level, HologramGrabPayload payload) {
+        BlockPos c1 = payload.blockPos();
+        BlockPos c2 = payload.blockPos2();
+
+        int minX = Math.min(c1.getX(), c2.getX());
+        int minY = Math.min(c1.getY(), c2.getY());
+        int minZ = Math.min(c1.getZ(), c2.getZ());
+        int maxX = Math.max(c1.getX(), c2.getX());
+        int maxY = Math.max(c1.getY(), c2.getY());
+        int maxZ = Math.max(c1.getZ(), c2.getZ());
+
+        int w = maxX - minX + 1;
+        int h = maxY - minY + 1;
+        int d = maxZ - minZ + 1;
+
+        int maxDim = ServerConfig.hologramStructureMaxDimension();
+        if (w > maxDim || h > maxDim || d > maxDim) {
+            reply(player, HologramGrabReplyPayload.error(payload.requestId(),
+                    "Box too large (" + w + "x" + h + "x" + d + ", max " + maxDim + " per side)"));
+            return;
+        }
+        if (minY < level.getMinBuildHeight() || maxY >= level.getMaxBuildHeight()) {
+            reply(player, HologramGrabReplyPayload.error(payload.requestId(), "Selection outside world height"));
+            return;
+        }
+        if (player.distanceToSqr(Vec3.atCenterOf(c1)) > MAX_RANGE_SQ
+                || player.distanceToSqr(Vec3.atCenterOf(c2)) > MAX_RANGE_SQ) {
+            reply(player, HologramGrabReplyPayload.error(payload.requestId(), "Selection is too far away"));
+            return;
+        }
+
+        int minCx = minX >> 4;
+        int maxCx = maxX >> 4;
+        int minCz = minZ >> 4;
+        int maxCz = maxZ >> 4;
+        for (int cx = minCx; cx <= maxCx; cx++) {
+            for (int cz = minCz; cz <= maxCz; cz++) {
+                if (!level.hasChunk(cx, cz)) {
+                    reply(player, HologramGrabReplyPayload.error(payload.requestId(), "Selection includes unloaded chunks"));
+                    return;
+                }
+            }
+        }
+
+        int maxBlocks = ServerConfig.hologramStructureMaxBlocks();
+        int maxBytes = Holograms.maxStructureDataBytes();
+
+        List<HologramStructure.PaletteEntry> palette = new ArrayList<>();
+        Map<HologramStructure.PaletteEntry, Integer> paletteIndex = new HashMap<>();
+        int[] positions = new int[Math.min(maxBlocks, 256)];
+        int[] palIndices = new int[positions.length];
+        Map<Integer, CompoundTag> blockEntities = new LinkedHashMap<>();
+        int count = 0;
+        int beBytes = 0;
+
+        BlockPos.MutableBlockPos cursor = new BlockPos.MutableBlockPos();
+        for (int y = 0; y < h; y++) {
+            for (int z = 0; z < d; z++) {
+                for (int x = 0; x < w; x++) {
+                    cursor.set(minX + x, minY + y, minZ + z);
+                    BlockState state = level.getBlockState(cursor);
+                    if (state.isAir())
+                        continue;
+                    String blockId = HologramStates.nameOf(state);
+                    if (blockId.isEmpty())
+                        continue;
+
+                    if (count >= maxBlocks) {
+                        reply(player, HologramGrabReplyPayload.error(payload.requestId(),
+                                "Too many blocks (max " + maxBlocks + ")"));
+                        return;
+                    }
+
+                    Map<String, String> props = Map.of();
+                    if (payload.takeState() && !state.getProperties().isEmpty()) {
+                        BlockState def = state.getBlock().defaultBlockState();
+                        Map<String, String> nonDefault = null;
+                        for (var property : HologramStates.properties(state)) {
+                            String curVal = HologramStates.valueOf(state, property);
+                            String defVal = HologramStates.valueOf(def, property);
+                            if (!curVal.equals(defVal)) {
+                                if (nonDefault == null)
+                                    nonDefault = new LinkedHashMap<>();
+                                nonDefault.put(property.getName(), curVal);
+                            }
+                        }
+                        if (nonDefault != null)
+                            props = nonDefault;
+                    }
+
+                    HologramStructure.PaletteEntry entry = new HologramStructure.PaletteEntry(blockId, props);
+                    Integer pIdx = paletteIndex.get(entry);
+                    if (pIdx == null) {
+                        pIdx = palette.size();
+                        palette.add(entry);
+                        paletteIndex.put(entry, pIdx);
+                    }
+
+                    int posIdx = (y * d + z) * w + x;
+                    if (count == positions.length) {
+                        int nextLen = Math.min(maxBlocks, positions.length * 2);
+                        positions = java.util.Arrays.copyOf(positions, nextLen);
+                        palIndices = java.util.Arrays.copyOf(palIndices, nextLen);
+                    }
+                    positions[count] = posIdx;
+                    palIndices[count] = pIdx;
+                    count++;
+
+                    if (payload.takeContents()) {
+                        // Enforce the aggregate structure budget below; never silently drop a large BE.
+                        CompoundTag captured = Holograms.capture(level, cursor, Integer.MAX_VALUE);
+                        if (captured != null && !captured.isEmpty()) {
+                            beBytes += captured.sizeInBytes();
+                            if (beBytes > maxBytes) {
+                                reply(player, HologramGrabReplyPayload.error(payload.requestId(),
+                                        "Structure data too large (max " + (maxBytes / 1024) + " KB)"));
+                                return;
+                            }
+                            blockEntities.put(posIdx, captured);
+                        }
+                    }
+                }
+            }
+        }
+
+        if (count == 0) {
+            reply(player, HologramGrabReplyPayload.error(payload.requestId(), "Selection contains only air"));
+            return;
+        }
+
+        positions = java.util.Arrays.copyOf(positions, count);
+        palIndices = java.util.Arrays.copyOf(palIndices, count);
+        HologramStructure structure = new HologramStructure(w, h, d, palette, positions, palIndices, blockEntities);
+        CompoundTag tag = structure.toTag();
+        if (tag.sizeInBytes() > maxBytes) {
+            reply(player, HologramGrabReplyPayload.error(payload.requestId(),
+                    "Structure data too large (" + ((tag.sizeInBytes() + 1023) / 1024) + " KB, max " + (maxBytes / 1024) + " KB)"));
+            return;
+        }
+
+        HologramLayer layer = HologramLayer.structure(structure);
+        reply(player, HologramGrabReplyPayload.success(payload.requestId(), structure.displayName(), List.of(layer)));
     }
 
     private static void handleBlock(ServerPlayer player, ServerLevel level, HologramGrabPayload payload) {

@@ -9,6 +9,7 @@ import dev.watdafawx.foxstweaks.hologram.HologramGroup;
 import dev.watdafawx.foxstweaks.hologram.HologramLayer;
 import dev.watdafawx.foxstweaks.hologram.HologramSpec;
 import dev.watdafawx.foxstweaks.hologram.HologramStates;
+import dev.watdafawx.foxstweaks.hologram.HologramStructure;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.renderer.LevelRenderer;
 import net.minecraft.client.renderer.MultiBufferSource;
@@ -43,6 +44,13 @@ public final class HologramRenderer {
     private static Vec3 lastCamera = Vec3.ZERO;
 
     private static boolean paused;
+
+    /**
+     * Benchmark / debug toggle: when true, STRUCTURE layers bypass the compiled VBO cache and emit
+     * every block via naive {@code renderSingleBlock}. Toggleable via {@code -Dfoxstweaks.hologram.uncachedStructure=true}
+     * or directly from dev checks.
+     */
+    public static volatile boolean forceUncachedStructure = Boolean.getBoolean("foxstweaks.hologram.uncachedStructure");
 
     /** Editor-only: freezes every hologram's animation clock so a pose can be lined up. */
     public static void setPaused(boolean value) {
@@ -332,8 +340,9 @@ public final class HologramRenderer {
             return;
 
         // GRADIENT ramps over the layer's own height: measured through the current pose, so the parent's
-        // transform and scale are included. Entities are about a body tall, blocks one block.
-        float contentH = layer.kind() == HologramLayer.Kind.ENTITY ? 1.8F : 1.0F;
+        // transform and scale are included. Entities are about a body tall, blocks one block, structures their H.
+        float contentH = layer.kind() == HologramLayer.Kind.ENTITY ? 1.8F
+                : (layer.kind() == HologramLayer.Kind.STRUCTURE ? HologramStructure.dimensions(layer.data())[1] : 1.0F);
         var mat = pose.last().pose();
         float bottomY = mat.m01() * offX + mat.m11() * offY + mat.m21() * offZ + mat.m31();
         float topY = bottomY + (mat.m11()) * sy * contentH;
@@ -366,6 +375,76 @@ public final class HologramRenderer {
                 if (ber != null) {
                     renderBlockEntity(pose, out, be, ber, partialTick, light);
                     drawnBlockEntities++;
+                }
+                pose.popPose();
+            }
+            case STRUCTURE -> {
+                HologramStructureMesh.CompiledStructure compiled = HologramStructureMesh.get(
+                        spec.id(), layerIndex, layer.data(), light, spec.pos());
+                if (compiled == null)
+                    return;
+
+                List<HologramEffect> gEffects = group == null ? List.of()
+                        : HologramTriggers.resolve(group.effects(), spec, seconds);
+                boolean useUncached = forceUncachedStructure
+                        || TintedBuffer.hasPerVertexFx(effects)
+                        || TintedBuffer.hasPerVertexFx(gEffects);
+
+                pose.pushPose();
+                pose.translate(offX, offY, offZ);
+                pose.mulPose(Axis.YP.rotationDegrees(lAngleY));
+                pose.mulPose(Axis.XP.rotationDegrees(lAngleX));
+                pose.mulPose(Axis.ZP.rotationDegrees(lAngleZ));
+                pose.scale(sx, sy, sz);
+
+                double halfW = compiled.structure.sizeX() * 0.5;
+                double halfD = compiled.structure.sizeZ() * 0.5;
+                if (useUncached) {
+                    var blockRenderer = Minecraft.getInstance().getBlockRenderer();
+                    HologramStructure struct = compiled.structure;
+                    BlockState[] pal = compiled.resolvedPalette;
+                    int count = struct.blockCount();
+                    for (int i = 0; i < count; i++) {
+                        int posIdx = struct.positionAt(i);
+                        int palIdx = struct.paletteIndexAt(i);
+                        if (palIdx < 0 || palIdx >= pal.length)
+                            continue;
+                        BlockState st = pal[palIdx];
+                        if (st.isAir() || st.getRenderShape() != RenderShape.MODEL)
+                            continue;
+                        int bx = struct.unpackX(posIdx);
+                        int by = struct.unpackY(posIdx);
+                        int bz = struct.unpackZ(posIdx);
+                        pose.pushPose();
+                        pose.translate(bx - halfW, by, bz - halfD);
+                        blockRenderer.renderSingleBlock(st, pose, out, light, OverlayTexture.NO_OVERLAY,
+                                ModelData.EMPTY, null);
+                        pose.popPose();
+                    }
+                } else {
+                    float[] rgb = { 1.0F, 1.0F, 1.0F };
+                    if (!gEffects.isEmpty())
+                        TintedBuffer.applyUniformColor(gEffects, seconds, rgb);
+                    if (!effects.isEmpty())
+                        TintedBuffer.applyUniformColor(effects, seconds, rgb);
+                    compiled.draw(pose, lastView, lastProjection, rgb[0], rgb[1], rgb[2]);
+                }
+
+                // Draw any block entities inside the structure through the existing BE renderer path.
+                List<HologramStructureMesh.BeSlot> bes = compiled.blockEntities;
+                for (int i = 0; i < bes.size(); i++) {
+                    HologramStructureMesh.BeSlot slot = bes.get(i);
+                    BlockEntity be = HologramBlockEntities.getForStructureBlock(
+                            spec.id(), layerIndex, slot.posIdx(),
+                            spec.pos().offset(slot.x(), slot.y(), slot.z()), slot.state(), slot.data());
+                    var ber = be == null ? null : HologramBlockEntities.renderer(be);
+                    if (ber == null)
+                        continue;
+                    pose.pushPose();
+                    pose.translate(slot.x() - halfW, slot.y(), slot.z() - halfD);
+                    renderBlockEntity(pose, out, be, ber, partialTick, light);
+                    drawnBlockEntities++;
+                    pose.popPose();
                 }
                 pose.popPose();
             }

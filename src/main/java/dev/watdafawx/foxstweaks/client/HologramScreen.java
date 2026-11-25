@@ -7,6 +7,7 @@ import dev.watdafawx.foxstweaks.hologram.HologramNetwork;
 import dev.watdafawx.foxstweaks.hologram.HologramOpenPayload;
 import dev.watdafawx.foxstweaks.hologram.HologramSpec;
 import dev.watdafawx.foxstweaks.hologram.HologramStates;
+import dev.watdafawx.foxstweaks.hologram.HologramStructure;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.GuiGraphics;
 import net.minecraft.client.gui.components.EditBox;
@@ -338,7 +339,7 @@ public class HologramScreen extends Screen {
         rebuildInspector();
         applyLocalPreviewOnly();
         if (!HologramCamera.isActive())
-            HologramCamera.begin(targetWorldCenter(), (float) getTargetScale());
+            HologramCamera.begin(targetWorldCenter(), targetFrameRadius());
     }
 
     @Override
@@ -442,6 +443,8 @@ public class HologramScreen extends Screen {
             case PARTICLE -> {
                 this.pickedParticleId = layer.id();
                 this.pickMode = PICK_PARTICLES;
+            }
+            case STRUCTURE -> {
             }
         }
         if (this.search != null)
@@ -1735,13 +1738,21 @@ public class HologramScreen extends Screen {
         refresh();
     }
 
+    private static float layerStackHeight(HologramLayer l) {
+        if (l.kind() == HologramLayer.Kind.PARTICLE)
+            return 0.5F;
+        if (l.kind() == HologramLayer.Kind.STRUCTURE)
+            return HologramStructure.dimensions(l.data())[1] * l.scale();
+        return l.scale();
+    }
+
     private void addLayerFromPicker() {
         if (this.layers.size() >= HologramLayer.MAX_LAYERS)
             return;
         pushUndo();
         float topY = 0.0F;
         for (HologramLayer l : this.layers)
-            topY = Math.max(topY, l.offsetY() + (l.kind() == HologramLayer.Kind.PARTICLE ? 0.5F : l.scale()));
+            topY = Math.max(topY, l.offsetY() + layerStackHeight(l));
 
         HologramLayer created = switch (this.pickMode) {
             case PICK_ENTITIES -> HologramLayer.entity(
@@ -1773,7 +1784,7 @@ public class HologramScreen extends Screen {
         pushUndo();
         float topY = 0.0F;
         for (HologramLayer l : this.layers)
-            topY = Math.max(topY, l.offsetY() + (l.kind() == HologramLayer.Kind.PARTICLE ? 0.5F : l.scale()));
+            topY = Math.max(topY, l.offsetY() + layerStackHeight(l));
         String groupId = (this.targetKind == TargetKind.GROUP && this.selectedGroupId != null)
                 ? this.selectedGroupId : "";
         for (HologramLayer incoming : grabbed) {
@@ -1783,7 +1794,7 @@ public class HologramScreen extends Screen {
             if (!groupId.isEmpty() && placed.groupId().isEmpty())
                 placed = placed.withGroupId(groupId);
             this.layers.add(placed);
-            topY = Math.max(topY, placed.offsetY() + (placed.kind() == HologramLayer.Kind.PARTICLE ? 0.5F : placed.scale()));
+            topY = Math.max(topY, placed.offsetY() + layerStackHeight(placed));
         }
         this.targetKind = TargetKind.LAYER;
         this.selectedLayer = this.layers.size() - 1;
@@ -2234,7 +2245,17 @@ public class HologramScreen extends Screen {
         }
 
         int infoY = gridY + gridH + 6;
-        if (this.pickMode == PICK_BLOCKS) {
+        if (selLayer != null && selLayer.kind() == HologramLayer.Kind.STRUCTURE) {
+            int[] dims = HologramStructure.dimensions(selLayer.data());
+            int blocks = HologramStructure.blockCount(selLayer.data());
+            graphics.drawString(this.font, this.font.plainSubstrByWidth(
+                    "Structure " + dims[0] + "x" + dims[1] + "x" + dims[2], this.leftW - 16),
+                    this.leftX + 8, infoY, ACCENT, false);
+            graphics.drawString(this.font, blocks + (blocks == 1 ? " block" : " blocks"),
+                    this.leftX + 8, infoY + 12, TEXT, false);
+            graphics.drawString(this.font, "Replace disabled", this.leftX + 8, infoY + 25, MUTED, false);
+            graphics.drawString(this.font, "+ Add below: new layer", this.leftX + 8, infoY + 37, MUTED, false);
+        } else if (this.pickMode == PICK_BLOCKS) {
             BlockState state = currentBlockState();
             Block currentBlock = state == null ? HologramStates.blockOf(this.pickedBlockId) : state.getBlock();
             String name = currentBlock == null ? "none" : currentBlock.getName().getString();
@@ -2278,6 +2299,19 @@ public class HologramScreen extends Screen {
             } else {
                 graphics.drawString(this.font, "Rotation", rx, this.top + 91, MUTED, false);
                 graphics.drawString(this.font, "Display", rx, this.top + 124, MUTED, false);
+                if (layer != null && layer.kind() == HologramLayer.Kind.STRUCTURE) {
+                    int[] dims = HologramStructure.dimensions(layer.data());
+                    int blocks = HologramStructure.blockCount(layer.data());
+                    int bes = HologramStructure.blockEntityCount(layer.data());
+                    String info = dims[0] + "x" + dims[1] + "x" + dims[2] + " \u00B7 "
+                            + blocks + (blocks == 1 ? " block" : " blocks")
+                            + (bes > 0 ? (" \u00B7 " + bes + " BE") : "");
+                    int sy = this.top + 186;
+                    graphics.fill(rx, sy, rx + rw, sy + 16, SURFACE);
+                    graphics.renderOutline(rx, sy, rw, 16, 0x334CC9F0);
+                    graphics.drawString(this.font, this.font.plainSubstrByWidth(info, rw - 8),
+                            rx + 4, sy + 4, ACCENT, false);
+                }
             }
         } else if (this.tab == TAB_ANIMATE) {
             if (this.targetKind == TargetKind.ROOT) {
@@ -2756,8 +2790,19 @@ public class HologramScreen extends Screen {
         return super.keyPressed(keyCode, scanCode, modifiers);
     }
 
+    private float targetFrameRadius() {
+        float s = (float) getTargetScale();
+        HologramLayer l = currentLayer();
+        if (l != null && l.kind() == HologramLayer.Kind.STRUCTURE) {
+            int[] d = HologramStructure.dimensions(l.data());
+            int max = Math.max(d[0], Math.max(d[1], d[2]));
+            return Math.max(s, max * 0.5F * s);
+        }
+        return s;
+    }
+
     private void frameCamera() {
-        HologramCamera.frame(targetWorldCenter(), (float) getTargetScale());
+        HologramCamera.frame(targetWorldCenter(), targetFrameRadius());
     }
 
     /** Opens the normal chat box over the editor; closing or sending returns here with everything as it was. */
@@ -2792,7 +2837,11 @@ public class HologramScreen extends Screen {
      * is selected) appends a new layer on top of the stack, like the in-panel "+ Add layer".
      */
     public void applyPickerChoice(HologramLayer.Kind kind, String id, Map<String, String> props, boolean asNewLayer) {
+        if (kind == HologramLayer.Kind.STRUCTURE)
+            return;
         HologramLayer cur = this.targetKind == TargetKind.LAYER ? currentLayer() : null;
+        if (!asNewLayer && cur != null && cur.kind() == HologramLayer.Kind.STRUCTURE)
+            return;
         if (!asNewLayer && cur != null) {
             pushUndo();
             updateCurrentLayer(l -> l.withContent(kind, id, props, new CompoundTag()));
@@ -2802,7 +2851,7 @@ public class HologramScreen extends Screen {
             pushUndo();
             float topY = 0.0F;
             for (HologramLayer l : this.layers)
-                topY = Math.max(topY, l.offsetY() + (l.kind() == HologramLayer.Kind.PARTICLE ? 0.5F : l.scale()));
+                topY = Math.max(topY, l.offsetY() + layerStackHeight(l));
             HologramLayer created = switch (kind) {
                 case ENTITY -> HologramLayer.entity(id, topY);
                 case PARTICLE -> HologramLayer.particle(id, topY + 0.5F);
@@ -2824,7 +2873,7 @@ public class HologramScreen extends Screen {
         this.pickedBlockId = next;
         ensureLayerTarget();
         HologramLayer cur = currentLayer();
-        if (cur == null)
+        if (cur == null || cur.kind() == HologramLayer.Kind.STRUCTURE)
             return;
         if (cur.kind() != HologramLayer.Kind.BLOCK || !next.equals(cur.id())) {
             pushUndo();
@@ -2838,7 +2887,7 @@ public class HologramScreen extends Screen {
         this.pickedEntityId = entityId;
         ensureLayerTarget();
         HologramLayer cur = currentLayer();
-        if (cur == null)
+        if (cur == null || cur.kind() == HologramLayer.Kind.STRUCTURE)
             return;
         if (cur.kind() != HologramLayer.Kind.ENTITY || !entityId.equals(cur.id())) {
             pushUndo();
@@ -2852,7 +2901,7 @@ public class HologramScreen extends Screen {
         this.pickedParticleId = particleId;
         ensureLayerTarget();
         HologramLayer cur = currentLayer();
-        if (cur == null)
+        if (cur == null || cur.kind() == HologramLayer.Kind.STRUCTURE)
             return;
         if (cur.kind() != HologramLayer.Kind.PARTICLE || !particleId.equals(cur.id())) {
             pushUndo();
@@ -2896,6 +2945,8 @@ public class HologramScreen extends Screen {
                 m.mul(HologramSpec.layerMatrix(l));
                 if (l.kind() == HologramLayer.Kind.PARTICLE)
                     v.set(0.0F, 0.0F, 0.0F);
+                else if (l.kind() == HologramLayer.Kind.STRUCTURE)
+                    v.set(0.0F, HologramStructure.dimensions(l.data())[1] * 0.5F, 0.0F);
             }
         }
         m.transformPosition(v);
@@ -3056,7 +3107,7 @@ public class HologramScreen extends Screen {
         pushUndo();
         float topY = 0.0F;
         for (HologramLayer l : this.layers)
-            topY = Math.max(topY, l.offsetY() + (l.kind() == HologramLayer.Kind.PARTICLE ? 0.5F : l.scale()));
+            topY = Math.max(topY, l.offsetY() + layerStackHeight(l));
         this.layers.add(layer.withOffset(layer.offsetX(), topY, layer.offsetZ()));
         this.targetKind = TargetKind.LAYER;
         this.selectedLayer = this.layers.size() - 1;
@@ -3331,13 +3382,13 @@ public class HologramScreen extends Screen {
     }
 
     public void devAddLayer(HologramLayer.Kind kind, String id) {
-        if (this.layers.size() >= HologramLayer.MAX_LAYERS)
+        if (this.layers.size() >= HologramLayer.MAX_LAYERS || kind == HologramLayer.Kind.STRUCTURE)
             return;
         pushUndo();
         HologramLayer layer = switch (kind) {
             case ENTITY -> HologramLayer.entity(id, 1.0F);
             case PARTICLE -> HologramLayer.particle(id, 1.5F);
-            case BLOCK -> HologramLayer.block(id, Map.of(), 1.0F);
+            case BLOCK, STRUCTURE -> HologramLayer.block(id, Map.of(), 1.0F);
         };
         this.layers.add(layer);
         selectLayer(this.layers.size() - 1);

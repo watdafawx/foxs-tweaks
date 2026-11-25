@@ -46,6 +46,13 @@ public final class HologramBlockEntities {
         return getOrCreate(specId + "#layer" + layerIndex, pos, state, data);
     }
 
+    /** Block entity for one block inside a structure layer, cached under {@code specId#layerIndex#pPosIdx}. */
+    @Nullable
+    public static BlockEntity getForStructureBlock(String specId, int layerIndex, int posIdx, BlockPos pos,
+                                                   @Nullable BlockState state, @Nullable CompoundTag data) {
+        return getOrCreate(specId + "#layer" + layerIndex + "#p" + posIdx, pos, state, data);
+    }
+
     @Nullable
     private static BlockEntity getOrCreate(String key, BlockPos pos, @Nullable BlockState state,
                                            @Nullable CompoundTag data) {
@@ -139,6 +146,10 @@ public final class HologramBlockEntities {
 
     public static void clear() {
         CACHE.clear();
+    }
+
+    static void removeStructureLayer(String key) {
+        CACHE.keySet().removeIf(entry -> entry.startsWith(key + "#p"));
     }
 
     private HologramBlockEntities() {

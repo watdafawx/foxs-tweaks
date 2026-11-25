@@ -46,7 +46,8 @@ public record HologramLayer(
     public enum Kind {
         BLOCK,
         ENTITY,
-        PARTICLE
+        PARTICLE,
+        STRUCTURE
     }
 
     public static final int MAX_LAYERS = 16;
@@ -54,7 +55,8 @@ public record HologramLayer(
     public HologramLayer {
         id = id == null ? "" : id;
         props = Map.copyOf(props);
-        data = (data == null || data.sizeInBytes() > Holograms.MAX_DATA_BYTES) ? new CompoundTag() : data.copy();
+        int maxBytes = Holograms.maxDataBytes(kind);
+        data = (data == null || data.sizeInBytes() > maxBytes) ? new CompoundTag() : data.copy();
         groupId = groupId == null ? "" : groupId;
         offsetX = Mth.clamp(offsetX, -16.0F, 16.0F);
         offsetY = Mth.clamp(offsetY, -16.0F, 16.0F);
@@ -95,6 +97,12 @@ public record HologramLayer(
     public static HologramLayer particle(String particleId, float offsetY) {
         return new HologramLayer(Kind.PARTICLE, particleId, Map.of(), new CompoundTag(), "", true,
                 0.0F, offsetY, 0.0F, 0.0F, 0.0F, 0.0F, 0.35F,
+                0.0F, HologramSpec.AXIS_Y, 0.0F, 4.0F, false, List.of(), 10.0F, 0.01F);
+    }
+
+    public static HologramLayer structure(HologramStructure structure) {
+        return new HologramLayer(Kind.STRUCTURE, structure.displayName(), Map.of(), structure.toTag(), "", true,
+                0.0F, 0.0F, 0.0F, 0.0F, 0.0F, 0.0F, 1.0F,
                 0.0F, HologramSpec.AXIS_Y, 0.0F, 4.0F, false, List.of(), 10.0F, 0.01F);
     }
 
@@ -179,6 +187,8 @@ public record HologramLayer(
     }
 
     public boolean resolvable() {
+        if (this.kind == Kind.STRUCTURE)
+            return HologramStructure.isValidTag(this.data);
         ResourceLocation key = ResourceLocation.tryParse(this.id);
         if (key == null)
             return false;
@@ -186,10 +196,17 @@ public record HologramLayer(
             case BLOCK -> BuiltInRegistries.BLOCK.containsKey(key);
             case ENTITY -> BuiltInRegistries.ENTITY_TYPE.containsKey(key);
             case PARTICLE -> BuiltInRegistries.PARTICLE_TYPE.containsKey(key);
+            case STRUCTURE -> true;
         };
     }
 
     public String shortName() {
+        if (this.kind == Kind.STRUCTURE) {
+            if (!this.id.isEmpty())
+                return this.id;
+            int[] d = HologramStructure.dimensions(this.data);
+            return "Structure " + d[0] + "x" + d[1] + "x" + d[2];
+        }
         int colon = this.id.indexOf(':');
         return colon >= 0 ? this.id.substring(colon + 1) : this.id;
     }
@@ -199,6 +216,7 @@ public record HologramLayer(
             case BLOCK -> "B";
             case ENTITY -> "E";
             case PARTICLE -> "P";
+            case STRUCTURE -> "S";
         };
         return "[" + k + "] " + shortName();
     }
@@ -213,7 +231,7 @@ public record HologramLayer(
             tag.put("props", p);
         }
         if (!this.data.isEmpty())
-            tag.put("blockEntity", this.data.copy());
+            tag.put(this.kind == Kind.STRUCTURE ? "structure" : "blockEntity", this.data.copy());
         if (!this.groupId.isEmpty())
             tag.putString("groupId", this.groupId);
         if (!this.visible)
@@ -277,9 +295,11 @@ public record HologramLayer(
                 for (String key : rawProps.getAllKeys())
                     props.put(key, rawProps.getString(key));
             }
-            CompoundTag data = tag.contains("blockEntity", Tag.TAG_COMPOUND)
+            CompoundTag data = kind == Kind.STRUCTURE && tag.contains("structure", Tag.TAG_COMPOUND)
+                    ? tag.getCompound("structure")
+                    : (tag.contains("blockEntity", Tag.TAG_COMPOUND)
                     ? tag.getCompound("blockEntity")
-                    : new CompoundTag();
+                    : new CompoundTag());
             String groupId = tag.getString("groupId");
             boolean visible = !tag.contains("visible") || tag.getBoolean("visible");
             float scale = tag.contains("scale") ? tag.getFloat("scale")

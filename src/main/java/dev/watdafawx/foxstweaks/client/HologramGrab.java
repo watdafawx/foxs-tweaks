@@ -2,6 +2,7 @@ package dev.watdafawx.foxstweaks.client;
 
 import com.mojang.blaze3d.vertex.PoseStack;
 import com.mojang.blaze3d.vertex.VertexConsumer;
+import dev.watdafawx.foxstweaks.ServerConfig;
 import dev.watdafawx.foxstweaks.hologram.HologramGrabPayload;
 import dev.watdafawx.foxstweaks.hologram.HologramGrabReplyPayload;
 import dev.watdafawx.foxstweaks.hologram.HologramLayer;
@@ -77,9 +78,10 @@ import java.util.Locale;
  */
 public final class HologramGrab {
 
-    /** Extensible grab mode; future box-drag structure grab plugs in as another mode here. */
+    /** Grab mode: single block/mob or box-selection structure. */
     public enum GrabMode {
-        SINGLE
+        SINGLE,
+        STRUCTURE
     }
 
     private record GrabbedEntry(String label, HologramLayer layer) {
@@ -117,6 +119,19 @@ public final class HologramGrab {
     private static final List<GrabbedEntry> grabbed = new ArrayList<>();
     @Nullable
     private static HitResult currentHit;
+
+    // Structure selection state (GrabMode.STRUCTURE)
+    @Nullable
+    private static BlockPos corner1;
+    @Nullable
+    private static BlockPos corner2;
+    @Nullable
+    private static BlockPos cachedCountC1;
+    @Nullable
+    private static BlockPos cachedCountC2;
+    private static int cachedNonAirCount;
+    private static int cachedBeCount;
+    private static boolean cachedCountCapped;
 
     private static int nextRequestId = 1;
     private static int pendingRequestId = -1;
@@ -157,6 +172,7 @@ public final class HologramGrab {
         mode = GrabMode.SINGLE;
         grabbed.clear();
         currentHit = null;
+        clearStructureCorners();
         pendingRequestId = -1;
         pendingFinishAfterReply = false;
         statusText = "";
@@ -196,6 +212,30 @@ public final class HologramGrab {
     @Nullable
     public static HitResult currentHit() {
         return currentHit;
+    }
+
+    @Nullable
+    public static BlockPos corner1() {
+        return corner1;
+    }
+
+    @Nullable
+    public static BlockPos corner2() {
+        return corner2;
+    }
+
+    public static String lastStatus() {
+        return statusText;
+    }
+
+    private static void clearStructureCorners() {
+        corner1 = null;
+        corner2 = null;
+        cachedCountC1 = null;
+        cachedCountC2 = null;
+        cachedNonAirCount = 0;
+        cachedBeCount = 0;
+        cachedCountCapped = false;
     }
 
     /** Returns to the suspended editor with all grabbed layers added (Enter or single-click). */
@@ -240,6 +280,7 @@ public final class HologramGrab {
         returnScreen = null;
         grabbed.clear();
         currentHit = null;
+        clearStructureCorners();
         pendingRequestId = -1;
         pendingFinishAfterReply = false;
         statusText = "";
@@ -270,6 +311,11 @@ public final class HologramGrab {
 
         HitResult hit = pickTarget(mc, 1.0F);
         currentHit = hit;
+
+        if (mode == GrabMode.STRUCTURE) {
+            return triggerStructureClick(hit, keepOpen);
+        }
+
         if (hit == null || hit.getType() == HitResult.Type.MISS) {
             setStatus("Aim at a block or mob", MUTED);
             return false;
@@ -305,6 +351,112 @@ public final class HologramGrab {
         return false;
     }
 
+    private static boolean triggerStructureClick(@Nullable HitResult hit, boolean keepOpen) {
+        if (corner1 != null && corner2 != null) {
+            return confirmStructureGrab(keepOpen);
+        }
+        if (!(hit instanceof BlockHitResult blockHit)) {
+            setStatus("Aim at a block to set corner", MUTED);
+            return false;
+        }
+        BlockPos pos = blockHit.getBlockPos().immutable();
+        if (corner1 == null) {
+            corner1 = pos;
+            corner2 = null;
+            invalidateBoxCount();
+            setStatus("Corner 1 set — click second corner", CYAN);
+            return true;
+        }
+        corner2 = pos;
+        invalidateBoxCount();
+        int w = Math.abs(corner1.getX() - corner2.getX()) + 1;
+        int h = Math.abs(corner1.getY() - corner2.getY()) + 1;
+        int d = Math.abs(corner1.getZ() - corner2.getZ()) + 1;
+        int maxDim = ServerConfig.hologramStructureMaxDimension();
+        if (w > maxDim || h > maxDim || d > maxDim) {
+            setStatus("Box " + w + "x" + h + "x" + d + " exceeds max " + maxDim + " per side", WARN);
+        } else {
+            setStatus("Box " + w + "x" + h + "x" + d + " — Enter/Click to grab, R-click to reset", CYAN);
+        }
+        return true;
+    }
+
+    private static boolean confirmStructureGrab(boolean keepOpen) {
+        if (corner1 == null)
+            return false;
+        BlockPos c2 = corner2;
+        if (c2 == null) {
+            if (currentHit instanceof BlockHitResult blockHit)
+                c2 = blockHit.getBlockPos().immutable();
+            else
+                return false;
+        }
+        int reqId = nextRequestId++;
+        pendingRequestId = reqId;
+        pendingFinishAfterReply = !keepOpen;
+        HologramNetwork.sendGrab(HologramGrabPayload.forStructure(
+                reqId, corner1, c2, takeState, takeContents));
+        return true;
+    }
+
+    private static void invalidateBoxCount() {
+        cachedCountC1 = null;
+        cachedCountC2 = null;
+    }
+
+    private static void updateBoxCount(Minecraft mc, BlockPos c1, BlockPos c2) {
+        if (c1.equals(cachedCountC1) && c2.equals(cachedCountC2))
+            return;
+        cachedCountC1 = c1.immutable();
+        cachedCountC2 = c2.immutable();
+        cachedNonAirCount = 0;
+        cachedBeCount = 0;
+        cachedCountCapped = false;
+        if (mc.level == null)
+            return;
+
+        int minX = Math.min(c1.getX(), c2.getX());
+        int minY = Math.min(c1.getY(), c2.getY());
+        int minZ = Math.min(c1.getZ(), c2.getZ());
+        int maxX = Math.max(c1.getX(), c2.getX());
+        int maxY = Math.max(c1.getY(), c2.getY());
+        int maxZ = Math.max(c1.getZ(), c2.getZ());
+        int w = maxX - minX + 1;
+        int h = maxY - minY + 1;
+        int d = maxZ - minZ + 1;
+        int maxDim = ServerConfig.hologramStructureMaxDimension();
+        if (w > maxDim || h > maxDim || d > maxDim || (long) w * h * d > 131_072L) {
+            cachedCountCapped = true;
+            return;
+        }
+
+        int maxBlocks = ServerConfig.hologramStructureMaxBlocks();
+        BlockPos.MutableBlockPos p = new BlockPos.MutableBlockPos();
+        int nonAir = 0;
+        int bes = 0;
+        for (int y = minY; y <= maxY; y++) {
+            for (int z = minZ; z <= maxZ; z++) {
+                for (int x = minX; x <= maxX; x++) {
+                    p.set(x, y, z);
+                    BlockState st = mc.level.getBlockState(p);
+                    if (st.isAir())
+                        continue;
+                    nonAir++;
+                    if (mc.level.getBlockEntity(p) != null)
+                        bes++;
+                    if (nonAir > maxBlocks) {
+                        cachedNonAirCount = nonAir;
+                        cachedBeCount = bes;
+                        cachedCountCapped = true;
+                        return;
+                    }
+                }
+            }
+        }
+        cachedNonAirCount = nonAir;
+        cachedBeCount = bes;
+    }
+
     public static void acceptReply(HologramGrabReplyPayload reply) {
         if (!active)
             return;
@@ -318,6 +470,9 @@ public final class HologramGrab {
             setStatus(reply.message().isEmpty() ? "Could not grab target" : reply.message(), WARN);
             return;
         }
+
+        if (mode == GrabMode.STRUCTURE)
+            clearStructureCorners();
 
         for (HologramLayer layer : reply.layers()) {
             String label = reply.message().isEmpty() ? layer.shortName() : reply.message();
@@ -350,6 +505,16 @@ public final class HologramGrab {
             triggerGrab(shift);
         } else if (event.isUseItem()) {
             mc.options.keyUse.setDown(false);
+            if (mode == GrabMode.STRUCTURE) {
+                if (corner2 != null) {
+                    corner2 = null;
+                    invalidateBoxCount();
+                    setStatus("Corner 2 cleared — click second corner", MUTED);
+                } else if (corner1 != null) {
+                    clearStructureCorners();
+                    setStatus("Selection cleared", MUTED);
+                }
+            }
         }
     }
 
@@ -382,7 +547,7 @@ public final class HologramGrab {
         handleKey(event.getKey());
     }
 
-    /** Handles 1/2/3 take toggles, Enter (commit), and Esc (cancel). Also used by dev checks. */
+    /** Handles 1/2/3 take toggles, 4/Tab mode switch, Up/Down height nudge, Enter (commit), and Esc (cancel). */
     public static void handleKey(int keyCode) {
         if (!active)
             return;
@@ -396,8 +561,28 @@ public final class HologramGrab {
         } else if (keyCode == GLFW.GLFW_KEY_3) {
             takeContents = !takeContents;
             drainHotbarKey(mc, 2);
+        } else if (keyCode == GLFW.GLFW_KEY_4 || keyCode == GLFW.GLFW_KEY_TAB) {
+            mode = (mode == GrabMode.SINGLE) ? GrabMode.STRUCTURE : GrabMode.SINGLE;
+            clearStructureCorners();
+            if (keyCode == GLFW.GLFW_KEY_4)
+                drainHotbarKey(mc, 3);
+            setStatus(mode == GrabMode.STRUCTURE
+                    ? "Structure mode — click two corners"
+                    : "Single mode — click a block or mob", CYAN);
+        } else if (mode == GrabMode.STRUCTURE && corner1 != null && corner2 != null
+                && (keyCode == GLFW.GLFW_KEY_UP || keyCode == GLFW.GLFW_KEY_DOWN)) {
+            int dy = keyCode == GLFW.GLFW_KEY_UP ? 1 : -1;
+            if (corner2.getY() >= corner1.getY())
+                corner2 = corner2.above(dy);
+            else
+                corner1 = corner1.above(dy);
+            invalidateBoxCount();
         } else if (keyCode == GLFW.GLFW_KEY_ENTER || keyCode == GLFW.GLFW_KEY_KP_ENTER) {
-            finishAndReturn();
+            if (mode == GrabMode.STRUCTURE && corner1 != null && (corner2 != null || grabbed.isEmpty())) {
+                confirmStructureGrab(false);
+            } else {
+                finishAndReturn();
+            }
         } else if (keyCode == GLFW.GLFW_KEY_ESCAPE) {
             cancelAndReturn();
         }
@@ -449,6 +634,9 @@ public final class HologramGrab {
 
         BlockHitResult blockHit = mc.level.clip(new ClipContext(
                 eye, end, ClipContext.Block.OUTLINE, ClipContext.Fluid.NONE, mc.player));
+        if (mode == GrabMode.STRUCTURE) {
+            return blockHit.getType() == HitResult.Type.BLOCK ? blockHit : null;
+        }
         double maxEntityDistSq = blockHit.getType() == HitResult.Type.BLOCK
                 ? eye.distanceToSqr(blockHit.getLocation())
                 : REACH * REACH;
@@ -477,13 +665,19 @@ public final class HologramGrab {
         float partial = event.getPartialTick().getGameTimeDeltaPartialTick(false);
         HitResult hit = pickTarget(mc, partial);
         currentHit = hit;
-        if (hit == null || hit.getType() == HitResult.Type.MISS)
-            return;
 
         Vec3 cam = event.getCamera().getPosition();
         PoseStack pose = event.getPoseStack();
         MultiBufferSource.BufferSource buffer = mc.renderBuffers().bufferSource();
         VertexConsumer lines = buffer.getBuffer(RenderType.lines());
+
+        if (mode == GrabMode.STRUCTURE) {
+            renderStructureOutline(mc, pose, buffer, lines, cam, hit);
+            return;
+        }
+
+        if (hit == null || hit.getType() == HitResult.Type.MISS)
+            return;
 
         if (hit instanceof BlockHitResult blockHit) {
             BlockPos pos = blockHit.getBlockPos();
@@ -512,6 +706,45 @@ public final class HologramGrab {
             LevelRenderer.renderLineBox(pose, lines, box, r, g, b, 0.95F);
             buffer.endBatch(RenderType.lines());
         }
+    }
+
+    private static void renderStructureOutline(Minecraft mc, PoseStack pose, MultiBufferSource.BufferSource buffer,
+                                               VertexConsumer lines, Vec3 cam, @Nullable HitResult hit) {
+        BlockPos hoverPos = hit instanceof BlockHitResult bhr ? bhr.getBlockPos() : null;
+        if (corner1 == null) {
+            if (hoverPos != null) {
+                AABB single = new AABB(hoverPos).move(-cam.x, -cam.y, -cam.z).inflate(0.004);
+                LevelRenderer.renderLineBox(pose, lines, single, CYAN_R, CYAN_G, CYAN_B, 0.95F);
+                buffer.endBatch(RenderType.lines());
+            }
+            return;
+        }
+
+        BlockPos c2 = corner2 != null ? corner2 : (hoverPos != null ? hoverPos : corner1);
+        updateBoxCount(mc, corner1, c2);
+
+        int minX = Math.min(corner1.getX(), c2.getX());
+        int minY = Math.min(corner1.getY(), c2.getY());
+        int minZ = Math.min(corner1.getZ(), c2.getZ());
+        int maxX = Math.max(corner1.getX(), c2.getX());
+        int maxY = Math.max(corner1.getY(), c2.getY());
+        int maxZ = Math.max(corner1.getZ(), c2.getZ());
+        int maxDim = ServerConfig.hologramStructureMaxDimension();
+        boolean over = (maxX - minX + 1) > maxDim || (maxY - minY + 1) > maxDim || (maxZ - minZ + 1) > maxDim
+                || cachedCountCapped;
+
+        float r = over ? 1.0F : CYAN_R;
+        float g = over ? 0.37F : CYAN_G;
+        float b = over ? 0.42F : CYAN_B;
+
+        AABB box = new AABB(minX, minY, minZ, maxX + 1.0, maxY + 1.0, maxZ + 1.0)
+                .move(-cam.x, -cam.y, -cam.z).inflate(0.008);
+        LevelRenderer.renderLineBox(pose, lines, box, r, g, b, 0.95F);
+
+        // Highlight anchored corner 1 slightly brighter so the player can orient the drag.
+        AABB c1Box = new AABB(corner1).move(-cam.x, -cam.y, -cam.z).inflate(0.014);
+        LevelRenderer.renderLineBox(pose, lines, c1Box, 1.0F, 1.0F, 1.0F, 0.75F);
+        buffer.endBatch(RenderType.lines());
     }
 
     private static void drawVoxelShape(PoseStack pose, VertexConsumer consumer, VoxelShape shape,
@@ -570,16 +803,19 @@ public final class HologramGrab {
     }
 
     private static void renderTakeBar(GuiGraphics g, Font font, int screenW) {
-        String badge = "GRAB";
-        String p1 = "[1] Block " + (takeBlock ? "\u2713" : "\u2717");
+        boolean struct = mode == GrabMode.STRUCTURE;
+        String badge = struct ? "STRUCTURE" : "GRAB";
+        String p1 = "[1] Block " + (struct || takeBlock ? "\u2713" : "\u2717");
         String p2 = "[2] State " + (takeState ? "\u2713" : "\u2717");
         String p3 = "[3] Contents " + (takeContents ? "\u2713" : "\u2717");
+        String p4 = "[4] " + (struct ? "Structure \u2713" : "Single");
 
         int badgeW = font.width(badge) + 10;
         int w1 = font.width(p1) + 10;
         int w2 = font.width(p2) + 10;
         int w3 = font.width(p3) + 10;
-        int totalW = badgeW + 6 + w1 + 4 + w2 + 4 + w3 + 12;
+        int w4 = font.width(p4) + 10;
+        int totalW = badgeW + 6 + w1 + 4 + w2 + 4 + w3 + 4 + w4 + 12;
 
         int x = (screenW - totalW) / 2;
         int y = 8;
@@ -592,9 +828,10 @@ public final class HologramGrab {
         g.drawString(font, badge, cx + 5, y + 5, CYAN, false);
         cx += badgeW + 6;
 
-        cx = drawTogglePill(g, font, cx, y + 2, w1, barH - 4, p1, takeBlock) + 4;
+        cx = drawTogglePill(g, font, cx, y + 2, w1, barH - 4, p1, struct || takeBlock) + 4;
         cx = drawTogglePill(g, font, cx, y + 2, w2, barH - 4, p2, takeState) + 4;
-        drawTogglePill(g, font, cx, y + 2, w3, barH - 4, p3, takeContents);
+        cx = drawTogglePill(g, font, cx, y + 2, w3, barH - 4, p3, takeContents) + 4;
+        drawTogglePill(g, font, cx, y + 2, w4, barH - 4, p4, struct);
     }
 
     private static int drawTogglePill(GuiGraphics g, Font font, int x, int y, int w, int h,
@@ -620,7 +857,12 @@ public final class HologramGrab {
         } else {
             for (int i = 0; i < shown; i++) {
                 GrabbedEntry e = grabbed.get(i);
-                String tag = e.layer().kind() == HologramLayer.Kind.ENTITY ? "[E] " : "[B] ";
+                String tag = switch (e.layer().kind()) {
+                    case ENTITY -> "[E] ";
+                    case STRUCTURE -> "[S] ";
+                    case PARTICLE -> "[P] ";
+                    case BLOCK -> "[B] ";
+                };
                 lines.add((i + 1) + ". " + tag + e.label());
             }
             if (overflow)
@@ -644,6 +886,10 @@ public final class HologramGrab {
     }
 
     private static void renderCrosshairInfo(GuiGraphics g, Font font, Minecraft mc, int screenW, int screenH) {
+        if (mode == GrabMode.STRUCTURE && corner1 != null) {
+            renderStructureInfo(g, font, mc, screenW, screenH);
+            return;
+        }
         HitResult hit = currentHit;
         if (hit == null || hit.getType() == HitResult.Type.MISS)
             return;
@@ -759,11 +1005,81 @@ public final class HologramGrab {
         }
     }
 
+    private static void renderStructureInfo(GuiGraphics g, Font font, Minecraft mc, int screenW, int screenH) {
+        if (corner1 == null)
+            return;
+        BlockPos hoverPos = currentHit instanceof BlockHitResult bhr ? bhr.getBlockPos() : null;
+        BlockPos c2 = corner2 != null ? corner2 : (hoverPos != null ? hoverPos : corner1);
+        updateBoxCount(mc, corner1, c2);
+
+        int w = Math.abs(corner1.getX() - c2.getX()) + 1;
+        int h = Math.abs(corner1.getY() - c2.getY()) + 1;
+        int d = Math.abs(corner1.getZ() - c2.getZ()) + 1;
+        int maxDim = ServerConfig.hologramStructureMaxDimension();
+        int maxBlocks = ServerConfig.hologramStructureMaxBlocks();
+        boolean dimOver = w > maxDim || h > maxDim || d > maxDim;
+        boolean countOver = cachedCountCapped || cachedNonAirCount > maxBlocks;
+        boolean over = dimOver || countOver;
+
+        String title = "Structure " + w + "x" + h + "x" + d;
+        String badge = corner2 != null ? "Locked" : "Box";
+        int badgeColor = over ? WARN : CYAN;
+
+        List<InfoLine> details = new ArrayList<>();
+        if (dimOver) {
+            details.add(new InfoLine("Exceeds max " + maxDim + " per side", WARN));
+        } else if (countOver) {
+            details.add(new InfoLine("Exceeds max " + maxBlocks + " blocks", WARN));
+        } else {
+            String countStr = cachedNonAirCount + (cachedNonAirCount == 1 ? " block" : " blocks");
+            if (cachedBeCount > 0 && takeContents)
+                countStr += " \u00B7 " + cachedBeCount + " BE";
+            details.add(new InfoLine(countStr, cachedNonAirCount == 0 ? MUTED : CYAN));
+        }
+        details.add(new InfoLine(corner2 != null ? "Enter/Click grab \u00B7 Up/Down H" : "Click 2nd corner", MUTED));
+
+        int headerW = font.width(title) + 8 + font.width(badge) + 8;
+        int bodyW = 0;
+        for (InfoLine line : details)
+            bodyW = Math.max(bodyW, font.width(line.text()));
+        int boxW = Mth.clamp(Math.max(headerW, bodyW) + 12, 128, 224);
+        int headerH = 14;
+        int boxH = 6 + headerH + details.size() * 11 + 4;
+
+        int x = Mth.clamp(screenW / 2 + 14, 8, Math.max(8, screenW - boxW - 8));
+        int y = Mth.clamp(screenH / 2 - boxH / 2, 32, Math.max(32, screenH - boxH - 48));
+
+        g.fill(x, y, x + boxW, y + boxH, BG);
+        g.renderOutline(x, y, boxW, boxH, over ? WARN : 0xAA3EE6FF);
+
+        g.drawString(font, title, x + 6, y + 5, TEXT, false);
+        int badgeW = font.width(badge) + 6;
+        int bx = x + boxW - badgeW - 4;
+        g.fill(bx, y + 3, bx + badgeW, y + 14, over ? 0x33FF6B7A : ON_BG);
+        g.drawString(font, badge, bx + 3, y + 5, badgeColor, false);
+
+        int ly = y + 6 + headerH;
+        for (InfoLine line : details) {
+            g.drawString(font, font.plainSubstrByWidth(line.text(), boxW - 12), x + 6, ly, line.color(), false);
+            ly += 11;
+        }
+    }
+
     private static void renderBottomHint(GuiGraphics g, Font font, Minecraft mc, int screenW, int screenH) {
         boolean survivalHud = mc.gameMode != null && mc.gameMode.canHurtPlayer();
         int hintY = survivalHud ? screenH - 64 : screenH - 40;
 
-        String hint = "Click grab \u00B7 Shift-click grab more \u00B7 Enter/Esc back to editor";
+        String hint;
+        if (mode == GrabMode.STRUCTURE) {
+            if (corner1 == null)
+                hint = "Click 1st corner \u00B7 [4]/Tab single mode \u00B7 Esc back";
+            else if (corner2 == null)
+                hint = "Click 2nd corner \u00B7 R-click reset \u00B7 Esc back";
+            else
+                hint = "Enter/Click grab box \u00B7 Up/Down height \u00B7 R-click reset \u00B7 Esc back";
+        } else {
+            hint = "Click grab \u00B7 Shift-click grab more \u00B7 [4]/Tab structure \u00B7 Enter/Esc back";
+        }
         int hw = font.width(hint) + 14;
         int hx = (screenW - hw) / 2;
         g.fill(hx, hintY, hx + hw, hintY + 14, BG);
