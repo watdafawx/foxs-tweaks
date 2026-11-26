@@ -3,7 +3,7 @@
 export const PROTOCOL = 1;
 
 export type Vec3 = [number, number, number];
-export type Kind = 'BLOCK' | 'ENTITY' | 'PARTICLE';
+export type Kind = 'BLOCK' | 'ENTITY' | 'PARTICLE' | 'STRUCTURE';
 
 export interface Effect {
   type: string;

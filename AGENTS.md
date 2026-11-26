@@ -210,11 +210,12 @@ runs, other machines or subagents. Whoever edits it runs
   working on. That covers `runClient`, `runClientLite`, and every `run*Shot` / `run*Check` task.
 
   ```bat
-  pwsh X:\Dev\tools\run-on-rig.ps1 -Project X:\Dev\Minecraft\foxs-tweaks -Command "build.bat runClientLite"
-  pwsh X:\Dev\tools\run-on-rig.ps1 -Project X:\Dev\Minecraft\foxs-tweaks -Command "build.bat runToggleShot" -Wait
-  pwsh X:\Dev\tools\run-on-rig.ps1 -Project X:\Dev\Minecraft\foxs-tweaks -Stop
+  pwsh -NoProfile -File X:\Dev\tools\run-on-rig.ps1 -Project X:\Dev\Minecraft\foxs-tweaks -Command "build.bat runClientLite"
+  pwsh -NoProfile -File X:\Dev\tools\run-on-rig.ps1 -Project X:\Dev\Minecraft\foxs-tweaks -Command "build.bat runToggleShot" -Wait
+  pwsh -NoProfile -File X:\Dev\tools\run-on-rig.ps1 -Project X:\Dev\Minecraft\foxs-tweaks -Stop
   ```
 
+  Always `-NoProfile -File`: without it pwsh can hang for hours loading the user profile and never reach rig.
   `-Wait` is for checks that quit by themselves (the `run*Shot`/`run*Check` tasks); an interactive
   client needs the rig-windows MCP tools or the tunnel instead.
 
@@ -1099,6 +1100,46 @@ pasted copies that share an instance share state. A SPIN keeps its own clock (ga
 follows `SoundSource.RECORDS` sounds (the client block entity does not carry the disc), music follows `SoundSource.MUSIC`, both via
 `PlaySoundEvent` and pruned by `SoundManager.isActive`; deaths are scanned from `deathTime` only while a MOB_DIED effect is drawn.
 The rig has no audio device, so the check injects the record with `HologramTriggers.devRecord`.
+
+**Creator (1.43.0).** `client/HologramCreatorScreen` is the default editor (`HologramEditorPrefs.startInCreator`, saved looks
+live there too). It owns no state: it wraps a `HologramScreen` instance and edits through that screen's package-private
+`creator*` bridge methods, so undo, preview and saving stay in one place; Studio ›/< Simple swap screens on the same instance.
+It is immediate-mode: every control registers a `Hit` per frame with its own `clipTop`/`clipBottom`, and a click outside the
+clip is ignored - without that, a half-scrolled row stole clicks from the footer (Done stopped working). Looks replace FX only,
+never motion. Axis chips colour by `axisLabel` (X red, Y green, Z blue), not by axis index. `HologramCamera.isActive` has
+to list every hologram screen (Studio, chat, picker, Creator) or the studio camera switches off when one opens.
+Dev check `build.bat runHologramCreatorCheck` (`run-hologram-creator/`); `devClick`/`devDrag` press controls by tooltip
+prefix and return false for a control outside its clip, so a check must `devReveal` (scroll) first. `devPinsStudio` keeps
+the other hologram checks on the Studio.
+
+**Block browser** (`client/HologramPickerScreen`, + `HologramBlockColors`, `HologramPickerFamilies`, `HologramPickerFavorites`):
+opened by Browse / B and the Creator's +; `returnTo(screen)` decides where Esc and a pick go back to. Favourites and recent
+are JSON on the client. Dev check `runHologramPickerCheck` (`run-hologram-picker/`).
+
+**Grab** (`client/HologramGrab`, `hologram/HologramGrabber`, `HologramGrab(Reply)Payload`): a mode over the world, entered from
+the Studio or Creator (`begin(editor, returnTo)`); the client sends only what was clicked (block pos, entity id, or two
+corners), the server reads the world, checks range, loaded chunks, `hologramsEnabled`, a per-player token bucket and the
+caps, and replies with layers that `HologramScreen#addGrabbedLayers` adds. Entity layers carry NBT
+(`HologramEntities` loads it). Dev check `runHologramGrabCheck` (`run-hologram-grab/`).
+
+**Structures**: `HologramLayer.Kind.STRUCTURE`; the data is `HologramStructure` (palette of block states + index array +
+per-position BE tags), saved under `structure` instead of `blockEntity`, and the layer id is its display name
+("Structure WxHxD"), not a registry id. Server config `hologramStructureMaxDimension`/`MaxBlocks`/`MaxBytes`
+(32 / 4096 / 256 KB), enforced on grab **and** on every editor/web save. `client/HologramStructureMesh` caches
+neighbour-culled VBOs per render type, rebuilt on content or light change, freed on removal and resource reload; SCANLINE
+and GRADIENT need per-vertex colour and fall back to uncached emission. `-Dfoxstweaks.hologram.uncachedStructure=true`
+forces the naive path for comparison (16³ mixed: ~100 µs cached vs ~2,700 µs). Registrar `"3"`. Dev check
+`runHologramStructureCheck` (`run-hologram-structure/`). Not verified: shader packs, fluids, modded BE models.
+
+**Web companion** (`client/web/*`, `client/HologramWebBridge`, `web/`, protocol in `docs/hologram-web-protocol.md`): a client-only
+HTTP + WebSocket server on 127.0.0.1, a new port and 192-bit token per session, Host and Origin checked, 1 MB frames,
+rate limited, dies with the editor. The game stays the viewport and the authority: the browser sends whole specs, which
+`HologramWebJson` validates like any packet, and NBT never comes from the browser - a layer refers to its data by an
+opaque key from what the session sent (a structure layer without its key is rejected). The Preact/Vite app's build output
+is committed under `assets/foxstweaks/web/`: after changing `web/src`, run `npm ci && npm run build` in `web/` and commit
+both. Dev check `runHologramWebCheck` (`run-hologram-web/`) speaks the real protocol over a socket. Planned next:
+timeline/keyframes, image layers with an asset store, streamed frame sequences (server ffmpeg or browser WebCodecs),
+WaterMedia when installed, audio.
 
 ### Search box assist (`client/search/*`, `mixin/EditBoxSearchAssistMixin`)
 

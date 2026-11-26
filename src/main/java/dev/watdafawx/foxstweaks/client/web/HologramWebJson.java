@@ -218,8 +218,10 @@ final class HologramWebJson {
                 throw new Invalid("unknown layer kind");
             }
             String id = str(l, "id", 256);
-            ResourceLocation key = ResourceLocation.tryParse(id);
-            if (key == null)
+            // A structure layer's id is its display name ("Structure 5x4x6"), not a registry id.
+            boolean structure = kind == HologramLayer.Kind.STRUCTURE;
+            ResourceLocation key = structure ? null : ResourceLocation.tryParse(id);
+            if (key == null && !structure)
                 throw new Invalid("bad id '" + id + "'");
             Map<String, String> props = new LinkedHashMap<>();
             switch (kind) {
@@ -258,13 +260,17 @@ final class HologramWebJson {
                 JsonObject d = asObj(l.get("data"), "data");
                 String dataKey = str(d, "key", 64);
                 CompoundTag known = dataKeys.get(dataKey);
-                if (known != null && known.sizeInBytes() <= Holograms.MAX_DATA_BYTES)
+                int cap = structure ? Holograms.maxStructureDataBytes() : Holograms.MAX_DATA_BYTES;
+                if (known != null && known.sizeInBytes() <= cap)
                     data = known.copy();
             }
+            // The blocks of a structure live only in its data; the browser cannot invent or drop them.
+            if (structure && data.isEmpty())
+                throw new Invalid("structure layer '" + id + "' lost its data");
 
             float[] lo = vec3(l, "offset", -16, 16);
             float[] lr = vec3(l, "rotation", -360, 360);
-            layers.add(new HologramLayer(kind, key.toString(), props, data, group, bool(l, "visible", true),
+            layers.add(new HologramLayer(kind, structure ? id : key.toString(), props, data, group, bool(l, "visible", true),
                     lo[0], lo[1], lo[2], lr[0], lr[1], lr[2],
                     num(l, "scale", kind == HologramLayer.Kind.PARTICLE ? 0.35F : 1.0F, 0.05F, 8),
                     num(l, "spin", 0, -360, 360), axis(l, "spinAxis"),

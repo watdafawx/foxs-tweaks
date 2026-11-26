@@ -1,5 +1,19 @@
 # Changelog
 
+## 1.43.0
+
+- **Holograms: Creator, a simple editor.** The Hologram Wand now opens the Creator by default: layers on the left, and on the right Shape (size, glow), Colour, Look FX, Motion and Reveal. The full editor is one click away (**Studio ›**, and **< Simple** to come back), and your choice is remembered.
+  - **Colour:** None, Solid or **Gradient** (two stops, swap, hex box, colour wheel, swatches). Gradient is a new effect and also works in the Studio.
+  - **Looks:** one click sets a style (Holo, Ghost, Glitch, Shrine, Neon, Prism, Plain) without touching your motion. Save your own look; right-click a saved look to delete it.
+  - **Effect stack:** drag to reorder, strength bar, axis and trigger chips, expand for speed and offset.
+  - Undo/Redo, Frame, Pause in the top bar; Done saves, Cancel throws the edit away.
+- **Holograms: block browser.** **Browse** (or **B**) in the Studio, and **+** in the Creator, open a full-screen picker: search, colour and shape filters, favourites, recent, variants, block families and swap chips.
+- **Holograms: grab from the world.** **Grab** (⌖) lets you point at a block or mob and take it as a layer: `[1]` block, `[2]` its state, `[3]` its contents (chest items, sign text, mob NBT). Click to grab and return, Shift-click to grab several.
+- **Holograms: structure grab.** In Grab mode, press `[4]` or Tab, click two corners and press Enter: the whole box becomes one layer that keeps every block's state and contents. Server limits (server config): 32 blocks per side, 4,096 blocks, 256 KB. Structures are drawn from a cached mesh: a 16x16x16 build costs ~0.1 ms per frame instead of ~2.7 ms. Scanline and gradient effects on a structure skip the cache.
+- **Holograms: web editor (preview).** **Web** in the Studio and the Creator (or `/foxstweaks hologram web <id>`) opens an editor in your browser: outliner with groups, inspector, effect stack, content picker. It is served by your own game on 127.0.0.1 only, behind a one-time token; the game window stays the preview and the game checks every change. Timeline, images, video and audio come later.
+- **Holograms:** the studio camera no longer switches off while the Creator or the block browser is open.
+- Network version for holograms is now 3: a client and server must both be on 1.43.0 to edit holograms (joining still works either way).
+
 ## 1.42.1
 
 - **FPS report:** the title and help text now sit on a dark panel, so they can be read over any world. The chat `[Open report]` button opens the report straight away instead of waiting for you to close the chat.

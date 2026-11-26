@@ -15,7 +15,7 @@ export function layerName(l: Layer): string {
   }
 }
 
-export const KIND_BADGE: Record<Layer['kind'], string> = { BLOCK: 'B', ENTITY: 'E', PARTICLE: 'P' };
+export const KIND_BADGE: Record<Layer['kind'], string> = { BLOCK: 'B', ENTITY: 'E', PARTICLE: 'P', STRUCTURE: 'S' };
 
 type Drag = { type: 'layer'; index: number } | { type: 'group'; id: string };
 let dragging: Drag | null = null;
