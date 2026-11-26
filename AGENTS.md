@@ -117,6 +117,8 @@ quality-of-life features sharing a jar, among them:
 26. **Music-reactive holograms** — client-side analysis, server-capped data; `client/audio/*` + `hologram/HologramAudioMod`.
     Hologram values follow jukebox, music or (opt-in) system audio levels. See
     [Music-reactive holograms](#music-reactive-holograms-clientaudio-hologramhologramaudiomod).
+27. **3D model holograms** - `HologramLayer.Kind.MODEL`; `.glb`/`.gltf`/`.bbmodel` go through the asset pipeline as
+    mode 3 and are stored as one canonical FTM1 blob. See [3D model layers](#3d-model-layers-hologrammodel-hologrammodelsettings-clienthologrammodels).
 
 **Every parent mod is optional.** The mod must load and behave correctly with either, both, or
 neither installed. This is the single most important invariant in the codebase — see
@@ -1288,6 +1290,46 @@ generated tones, a 120 BPM click track, the live path through the fake backend, 
 Creator/Studio/panel/settings UI, server save, the over-cap refusal and the lost-device status with Retry. Controls are
 laid out per frame, so a check can click a control only one frame after it appears. Rig has no audio device: a real
 jukebox and real system audio are verified only by hand.
+
+### 3D model layers (`hologram/model/*`, `hologram/HologramModelSettings`, `client/HologramModels`)
+
+A model is an asset like a picture: uploaded as `AssetPayload.MODE_MODEL` (3), sanitised on the worker thread
+(`AssetStore.prepareModel`), committed with metadata type `MODEL` (`frameCount` = animation count, no delays) and
+refcounted by `AssetNetwork.imageUses`. The stored blob is **FTM1** (`ModelData`, pure Java, hard caps: 512 nodes,
+65,536 vertices, 131,072 triangles, 8 textures at 2048 px / 8 MiB, 8 skins, 256 joints, 64 animations, 4096 channels,
+120k keys, 600 s); the original file is never kept. Nothing under `hologram/model/` imports Minecraft, so
+`build.bat modelSelfTest` runs the readers, round trip and posing in a bare JVM.
+
+- **Model**: node tree (parents first, TRS with quaternion rotation), prims (pos/nrm/uv/16-bit idx, optional 4 joints +
+  weights, texture index, colour, alphaMode, doubleSided), skins (joint nodes + column-major inverse binds), animations
+  (channels that REPLACE the rest value of translation/rotation/scale; LINEAR or STEP; ONCE/LOOP/HOLD).
+- **`GlbReader`**: glTF 2.0, `.glb` or self-contained `.gltf` (data URIs). Triangles only, bounds-checked accessors,
+  CUBICSPLINE sampled to its values, textures re-encoded to PNG by `ModelTextures` (ImageIO, ≤ 2048). Ignored: morph
+  targets, sparse accessors, cameras, lights, KHR extensions.
+- **`BlockbenchReader`**: units are 1/16 block; a group node sits at `origin - parentOrigin`; cube geometry is
+  `from/to - cube origin`; an unrotated, unanimated cube merges into its group node. Euler order is ZYX
+  (`ModelPose.eulerZyx`); animation Euler is baked to quaternion keys (extra keys for turns over 60° per segment).
+  Face corners: u runs along the viewer's right seen from outside; up TL = (from.x, from.z), down TL = (from.x, to.z).
+  Catmull-Rom/Bezier play as linear. **The Euler order and face orientation were derived, not compared with a real
+  Blockbench render.**
+- **`ModelPose`**: `evaluate(anim, time)` then `pose(node, prim, outPos, outNrm)` (rigid or skinned), `bounds`, `wrap`.
+- **Layer**: `HologramModelSettings` (`h` height in blocks, 0 = native; `anim` name; `play`; `speed`; `start`) in the
+  layer's string `props`, normalised in `HologramLayer`'s constructor. The server never loads the model, so
+  `HologramSpec`'s reach box is a generous column of the drawn height. `HologramNetwork.MAX_MODEL_LAYERS` = 4.
+- **Drawing**: `HologramModels.draw` keeps one runtime per asset hash (decoded model, `DynamicTexture`s, scratch arrays;
+  8 kept, freed in `HologramAssets.clearMemory`), poses every prim on the CPU per frame and emits through the layer's
+  own buffer (`entityCutout`/`NoCull`/`Translucent` per texture, white texture when untextured), so tint, glow and
+  shader packs behave like other layers. Clock is `mediaClock`, so the timeline playhead scrubs animations. A faint
+  box shows while the asset loads. Bottom-centred, scaled so the rest-pose height is `h`.
+- **Editors**: `HologramAssetScreen` (3D tile, `HologramLayer.model`), `HologramAssetImport` (`.glb/.gltf/.bbmodel` or
+  sniffed content, no image fitting), Creator `renderModelShape` (animation cycle, loop, speed, height). Web: `upload.ts`
+  mode `model`, library tile, `ModelSection` in `inspector.tsx`; the library listing adds `animations` names once the
+  game has decoded the model (first listing may be empty: reload). Web protocol 7. No face-camera option on models yet.
+- **Dev check**: `build.bat runHologramModelCheck` (game dir `run-hologram-model/`, run on rig with `-Wait`): uploads a
+  Blockbench cube and a skinned glb through the real asset channel, refuses garbage, checks stored metadata, client
+  decode, 12 triangles drawn, and that the picture changes between two animation times. Report
+  `run-hologram-model/foxstweaks-hologram-model-check.txt`. Uploads must be ≥ 1 s apart (server rate limit).
+  Not verified: textured glb, skinned meshes in motion on screen, shader packs, GeckoLib-style rigs, large models.
 
 ### Search box assist (`client/search/*`, `mixin/EditBoxSearchAssistMixin`)
 
