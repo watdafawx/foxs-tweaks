@@ -694,6 +694,7 @@ public final class HologramAssets {
 
     public static void clearMemory() {
         generation++;
+        dev.watdafawx.foxstweaks.client.HologramModels.clear();
         for (var e : ENTRIES.values()) {
             if (e.location != null)
                 Minecraft.getInstance().getTextureManager().release(e.location);

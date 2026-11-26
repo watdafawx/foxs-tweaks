@@ -512,6 +512,7 @@ public final class HologramRenderer {
             case ENTITY -> 1.8F;
             case STRUCTURE -> HologramStructure.dimensions(layer.data())[1];
             case IMAGE -> layer.image().heightFor(layer.id());
+            case MODEL -> layer.model().height() > 0.0F ? layer.model().height() : HologramModels.nativeHeight(layer.id());
             default -> 1.0F;
         };
         var mat = pose.last().pose();
@@ -660,6 +661,16 @@ public final class HologramRenderer {
             }
             case IMAGE -> drawImage(pose, out, spec, layer, offX, offY, offZ, lAngleX, lAngleY, lAngleZ, sx, sy,
                     light, mediaClock(spec, seconds, partialTick));
+            case MODEL -> {
+                pose.pushPose();
+                pose.translate(offX, offY, offZ);
+                pose.mulPose(Axis.YP.rotationDegrees(lAngleY));
+                pose.mulPose(Axis.XP.rotationDegrees(lAngleX));
+                pose.mulPose(Axis.ZP.rotationDegrees(lAngleZ));
+                pose.scale(sx, sy, sx);
+                HologramModels.draw(pose, out, layer, light, mediaClock(spec, seconds, partialTick));
+                pose.popPose();
+            }
             case PARTICLE -> {
             }
         }
