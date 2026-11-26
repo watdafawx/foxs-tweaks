@@ -153,12 +153,69 @@ public final class HologramModelCheck {
         add(20, () -> {
             check("glb layer drew its triangle", HologramModels.lastTriangles >= 1, String.valueOf(HologramModels.lastTriangles));
             check("unknown hash is not a model", HologramAssets.model("ab".repeat(32)) == null, "model returned");
-            onServer(player -> {
-                Holograms.remove(player.serverLevel(), hologramId);
-                return null;
-            });
         });
+        realFiles();
+        add(4, () -> onServer(player -> {
+            Holograms.remove(player.serverLevel(), hologramId);
+            return null;
+        }));
         add(10, HologramModelCheck::finish);
+    }
+
+    /** Real files dropped in {@code run-hologram-model/real/}: uploaded, drawn at t = 0 and t = 1, screenshotted. */
+    private static void realFiles() {
+        Path dir = Minecraft.getInstance().gameDirectory.toPath().resolve("real");
+        List<Path> files = new ArrayList<>();
+        try (var s = Files.list(dir)) {
+            s.filter(p -> p.toString().matches("(?i).*\\.(glb|gltf|bbmodel)$")).sorted().forEach(files::add);
+        } catch (IOException e) {
+            return; // none given
+        }
+        for (Path f : files) {
+            String name = f.getFileName().toString();
+            String[] hash = { "" };
+            add(2, () -> {
+                try {
+                    upload(name, Files.readAllBytes(f));
+                } catch (IOException e) {
+                    uploadMessage = e.toString();
+                    uploadDone = true;
+                }
+            });
+            waitUpload(() -> {
+                check("real file accepted: " + name, uploadOk && AssetFrames.validId(uploadMessage), uploadMessage);
+                hash[0] = uploadOk ? uploadMessage : "";
+                if (!hash[0].isEmpty())
+                    addRealLayer(hash[0], 0.0F);
+            });
+            add(40, 200, () -> hash[0].isEmpty() || HologramAssets.model(hash[0]) != null, () -> {
+                ModelData m = HologramAssets.model(hash[0]);
+                check("real file decoded on client: " + name, m != null, String.valueOf(m));
+                if (m != null)
+                    log("info " + name + " triangles=" + m.triangleCount() + " animations=" + HologramModels.animations(hash[0]));
+                shot("real-" + name + "-t0.png");
+            });
+            add(12, () -> {
+                check("real file drew triangles: " + name, HologramModels.lastTriangles > 0, String.valueOf(HologramModels.lastTriangles));
+                if (!hash[0].isEmpty())
+                    addRealLayer(hash[0], 1.0F);
+            });
+            add(20, () -> shot("real-" + name + "-t1.png"));
+            add(12, () -> {
+            });
+        }
+    }
+
+    private static void addRealLayer(String hash, float start) {
+        onServer(player -> {
+            HologramSpec spec = Holograms.get(player.serverLevel(), hologramId);
+            List<String> names = HologramModels.animations(hash);
+            HologramLayer layer = HologramLayer.model(hash, 1.0F)
+                    .withModel(new HologramModelSettings(2.0F, names.isEmpty() ? "" : names.get(0), HologramImage.Playback.LOOP, 0.0F, start));
+            Holograms.save(player.serverLevel(), spec.withLayers(List.of(layer)));
+            Holograms.sync(player.serverLevel());
+            return null;
+        });
     }
 
     private static void addLayer(String hash, float start) {

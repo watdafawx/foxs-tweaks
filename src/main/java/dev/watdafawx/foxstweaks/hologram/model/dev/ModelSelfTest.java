@@ -28,7 +28,38 @@ public final class ModelSelfTest {
         return Math.abs(a - b) < 1.0E-3F;
     }
 
+    /** {@code modelSelfTest --args="a.glb b.bbmodel"}: reads real files and prints what came out. */
+    private static void inspect(String path) {
+        try {
+            byte[] b = java.nio.file.Files.readAllBytes(java.nio.file.Path.of(path));
+            ModelData m = GlbReader.looksLikeGlb(b) ? GlbReader.read(b) : BlockbenchReader.read(b);
+            int verts = 0, tris = 0;
+            for (var n : m.nodes)
+                for (var p : n.prims) {
+                    verts += p.vertexCount();
+                    tris += p.idx.length / 3;
+                }
+            var pose = new ModelPose(m);
+            float[] bb = pose.bounds(-1, 0);
+            System.out.println("OK   " + path + ": nodes=" + m.nodes.size() + " verts=" + verts + " tris=" + tris
+                    + " tex=" + m.textures.size() + " skins=" + m.skins.size() + " anims=" + m.animations.size()
+                    + " bounds=" + java.util.Arrays.toString(bb));
+            for (var t : m.textures)
+                System.out.println("     texture " + t.name + " " + t.width + "x" + t.height + " " + t.png.length + " B");
+            for (var a : m.animations)
+                System.out.println("     anim '" + a.name + "' " + a.length + "s loop=" + a.loop + " channels=" + a.channels.size());
+        } catch (Throwable e) {
+            System.out.println("FAIL " + path + ": " + e);
+            failed++;
+        }
+    }
+
     public static void main(String[] args) throws Exception {
+        if (args.length > 0) {
+            for (String a : args)
+                inspect(a);
+            System.exit(failed == 0 ? 0 : 1);
+        }
         glb();
         bbmodel();
         bad();
