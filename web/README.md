@@ -40,7 +40,9 @@ The game opens `http://127.0.0.1:<port>/<token>/` in the default browser and cop
 | `src/ui.tsx` | number fields (drag to scrub, type, arrow keys), vectors, toggles, colour |
 | `src/outliner.tsx` | layer/group tree: drag reorder, visibility, solo, rename |
 | `src/inspector.tsx` | root, group and layer inspectors, effect stack |
-| `src/browser.tsx` | searchable block/entity/particle picker |
+| `src/browser.tsx` | searchable block/entity/particle picker, and the Images tab |
+| `src/library.tsx` | asset library: upload button and drop target, progress, thumbnails, add/replace image layers |
+| `src/upload.ts` | chunked uploads; video via the server's ffmpeg, or decoded here with WebCodecs into an FTAS bundle |
 | `src/main.tsx` | shell, header, keys |
 
 ## Timeline
@@ -63,3 +65,20 @@ The dock along the bottom animates the hologram, its groups and layers over a cl
   playhead. A property that already has a track is always keyed at the playhead, as in After Effects.
 
 Every change is an ordinary edit, so Ctrl+Z / Ctrl+Shift+Z undo it and the game validates it.
+
+## Images
+
+The **Images** tab of the content browser is the world's asset library (PNG, JPEG, GIF, WebP and short videos).
+
+- **Upload** or drop a file on the tab. Progress shows while it is sent and while the server processes it; a
+  finished upload is added to the hologram as a new image layer. Only operators may upload unless the server
+  sets `assetUploadEveryone`; anyone editing can place what is already there.
+- **Video** is sent as is when the server has ffmpeg. Otherwise this page decodes it with WebCodecs and sends
+  JPEG frames in an FTAS bundle sized to the server's limits (`assetCaps`); without either, the upload says why.
+  WebP, AVIF and BMP become PNG here (first frame only), since the server reads PNG, JPEG and GIF.
+- **+** (or double-click) adds a picture as a new layer; a click swaps it into the selected image layer. The
+  server allows `maxImageLayers` image layers per hologram, and the + button says so once it is reached.
+- The **Image** section of the layer inspector sets width (height follows the picture's aspect unless set),
+  facing (fixed panel, face the camera, face the camera about Y), double-sided, emissive, and for animations
+  playback (loop, once, ping-pong), speed and start. Animations follow the hologram's clock, so scrubbing the
+  timeline scrubs them, and the timeline animates image layers like any other.

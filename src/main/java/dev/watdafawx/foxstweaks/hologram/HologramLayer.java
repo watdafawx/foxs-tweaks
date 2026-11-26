@@ -48,14 +48,17 @@ public record HologramLayer(
         BLOCK,
         ENTITY,
         PARTICLE,
-        STRUCTURE
+        STRUCTURE,
+        /** A flat picture or animation from the asset store; {@code id} is the asset hash, settings in {@link HologramImage}. */
+        IMAGE
     }
 
     public static final int MAX_LAYERS = 16;
 
     public HologramLayer {
         id = id == null ? "" : id;
-        props = Map.copyOf(props);
+        // Image settings are untrusted strings until normalised; clamping here covers every way a layer is made.
+        props = kind == Kind.IMAGE ? Map.copyOf(HologramImage.normalize(props)) : Map.copyOf(props);
         int maxBytes = Holograms.maxDataBytes(kind);
         data = (data == null || data.sizeInBytes() > maxBytes) ? new CompoundTag() : data.copy();
         groupId = groupId == null ? "" : groupId;
@@ -124,6 +127,22 @@ public record HologramLayer(
         return new HologramLayer(Kind.STRUCTURE, structure.displayName(), Map.of(), structure.toTag(), "", true,
                 0.0F, 0.0F, 0.0F, 0.0F, 0.0F, 0.0F, 1.0F,
                 0.0F, HologramSpec.AXIS_Y, 0.0F, 4.0F, false, List.of(), 10.0F, 0.01F);
+    }
+
+    /** A new image layer: one block wide, keeps the asset's aspect ratio, emissive. */
+    public static HologramLayer image(String assetHash, float offsetY) {
+        return new HologramLayer(Kind.IMAGE, assetHash, HologramImage.DEFAULT.toProps(), new CompoundTag(), "", true,
+                0.0F, offsetY, 0.0F, 0.0F, 0.0F, 0.0F, 1.0F,
+                0.0F, HologramSpec.AXIS_Y, 0.0F, 4.0F, true, List.of(), 10.0F, 0.01F);
+    }
+
+    /** The image settings of an {@link Kind#IMAGE} layer (defaults for any other kind). */
+    public HologramImage image() {
+        return this.kind == Kind.IMAGE ? HologramImage.of(this.props) : HologramImage.DEFAULT;
+    }
+
+    public HologramLayer withImage(HologramImage image) {
+        return withProps(image.toProps());
     }
 
     public HologramLayer withContent(Kind kind, String id, Map<String, String> props, CompoundTag data) {
@@ -206,9 +225,19 @@ public record HologramLayer(
                 spin, spinAxis, hover, hoverPeriod, fullbright, effects, rate, speed, uid);
     }
 
+    /**
+     * Structure and image layers carry content the editor's picker cannot make (a grabbed structure, an
+     * uploaded asset), so picking a block, entity or particle must never overwrite them.
+     */
+    public boolean fixedContent() {
+        return this.kind == Kind.STRUCTURE || this.kind == Kind.IMAGE;
+    }
+
     public boolean resolvable() {
         if (this.kind == Kind.STRUCTURE)
             return HologramStructure.isValidTag(this.data);
+        if (this.kind == Kind.IMAGE)
+            return dev.watdafawx.foxstweaks.hologram.asset.AssetFrames.validId(this.id);
         ResourceLocation key = ResourceLocation.tryParse(this.id);
         if (key == null)
             return false;
@@ -216,11 +245,13 @@ public record HologramLayer(
             case BLOCK -> BuiltInRegistries.BLOCK.containsKey(key);
             case ENTITY -> BuiltInRegistries.ENTITY_TYPE.containsKey(key);
             case PARTICLE -> BuiltInRegistries.PARTICLE_TYPE.containsKey(key);
-            case STRUCTURE -> true;
+            case STRUCTURE, IMAGE -> true;
         };
     }
 
     public String shortName() {
+        if (this.kind == Kind.IMAGE)
+            return "Image " + (this.id.length() >= 8 ? this.id.substring(0, 8) : this.id);
         if (this.kind == Kind.STRUCTURE) {
             if (!this.id.isEmpty())
                 return this.id;
@@ -237,6 +268,7 @@ public record HologramLayer(
             case ENTITY -> "E";
             case PARTICLE -> "P";
             case STRUCTURE -> "S";
+            case IMAGE -> "I";
         };
         return "[" + k + "] " + shortName();
     }

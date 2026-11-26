@@ -1,10 +1,11 @@
 // Right panel: what the selected root / group / layer is, and its effect stack.
 
 import type { Effect, Group, Layer, Motion, Spec } from './protocol';
-import { REG, S, edit, newGesture } from './store';
+import { ASSETS, REG, S, edit, newGesture } from './store';
 import { AxisField, ColorField, NumRow, Row, Section, SelectField, Toggle, Vec3Field } from './ui';
 import { layerName } from './outliner';
 import { effectRemoved, effectsSwapped } from './anim';
+import { aspectOf, imageHeight } from './library';
 
 type Target = { kind: 'group'; g: Group } | { kind: 'layer'; l: Layer; index: number };
 
@@ -131,6 +132,7 @@ function TargetInspector({ t }: { t: Target }) {
     <div class="inspector">
       {t.kind === 'layer' ? <LayerHeader l={t.l} index={t.index} /> : <GroupHeader g={t.g} />}
       {t.kind === 'layer' && t.l.kind === 'BLOCK' && <BlockProps l={t.l} index={t.index} />}
+      {t.kind === 'layer' && t.l.kind === 'IMAGE' && <ImageSection l={t.l} index={t.index} />}
       <Section title="Transform">
         <Vec3Field
           label="Offset"
@@ -202,6 +204,154 @@ function TargetInspector({ t }: { t: Target }) {
   );
 }
 
+// ---------------------------------------------------------------- image layers
+
+/** Same rounding as HologramImage.format, so what the page shows is what the game stores. */
+function fmt(v: number): string {
+  return String(Math.round(v * 1000) / 1000);
+}
+
+const BILLBOARDS = [
+  { value: 'FIXED', label: 'Fixed (follows rotation)' },
+  { value: 'FACE', label: 'Face the camera' },
+  { value: 'FACE_Y', label: 'Face the camera, upright' },
+];
+
+const PLAYBACKS = [
+  { value: 'LOOP', label: 'Loop' },
+  { value: 'PINGPONG', label: 'Ping-pong' },
+  { value: 'ONCE', label: 'Once, then hold' },
+];
+
+/** Sets (or, with undefined, removes) one image prop; the game drops values that equal the defaults. */
+function setImageProp(index: number, key: string, value: string | undefined, gesture?: string) {
+  edit((s) => {
+    const props = { ...s.layers[index].props };
+    if (value === undefined) delete props[key];
+    else props[key] = value;
+    s.layers[index].props = props;
+  }, gesture);
+}
+
+function ImageSection({ l, index }: { l: Layer; index: number }) {
+  const asset = ASSETS.get(l.id);
+  const width = Number(l.props.w ?? 1) || 1;
+  const keepAspect = !(Number(l.props.h ?? 0) > 0);
+  const height = imageHeight(l);
+  const billboard = l.props.billboard ?? 'FIXED';
+  const animated = !asset || asset.frames > 1;
+  return (
+    <Section title="Image">
+      <Row label="Picture">
+        <span class="small">
+          {asset ? (
+            <>
+              {asset.name} <span class="muted">· {asset.width}×{asset.height}</span>
+              {asset.frames > 1 && <span class="muted"> · {asset.frames} frames</span>}
+            </>
+          ) : (
+            <span class="muted mono">{l.id.slice(0, 16)}…</span>
+          )}
+        </span>
+      </Row>
+      <NumRow
+        rowLabel="Width"
+        label="w"
+        value={width}
+        min={0.05}
+        max={16}
+        step={0.05}
+        decimals={2}
+        unit="blocks"
+        onChange={(v, g) => {
+          // With a set height, keep the shape the user had: both sides scale together.
+          if (keepAspect) setImageProp(index, 'w', fmt(v), g);
+          else
+            edit((s) => {
+              const ratio = height / width;
+              s.layers[index].props = { ...s.layers[index].props, w: fmt(v), h: fmt(Math.min(16, Math.max(0.05, v * ratio))) };
+            }, g);
+        }}
+      />
+      <Row label="Keep aspect" title="Height follows the picture's own shape">
+        <Toggle
+          value={keepAspect}
+          onChange={(v) => setImageProp(index, 'h', v ? undefined : fmt(Math.min(16, Math.max(0.05, width * aspectOf(l.id)))))}
+        />
+      </Row>
+      {keepAspect ? (
+        <Row label="Height">
+          <span class="muted small">{height.toFixed(2)} blocks, from the picture</span>
+        </Row>
+      ) : (
+        <NumRow
+          rowLabel="Height"
+          label="h"
+          value={height}
+          min={0.05}
+          max={16}
+          step={0.05}
+          decimals={2}
+          unit="blocks"
+          onChange={(v, g) => setImageProp(index, 'h', fmt(v), g)}
+        />
+      )}
+      <Row label="Facing">
+        <SelectField
+          value={billboard}
+          options={BILLBOARDS}
+          onChange={(v) => setImageProp(index, 'billboard', v === 'FIXED' ? undefined : v)}
+        />
+      </Row>
+      {billboard === 'FIXED' && (
+        <Row label="Double-sided" title="Off hides the back of the picture">
+          <Toggle value={l.props.sides !== '1'} onChange={(v) => setImageProp(index, 'sides', v ? undefined : '1')} />
+        </Row>
+      )}
+      <Row label="Emissive" title="Full brightness, day and night">
+        <Toggle value={l.fullbright} onChange={(v) => edit((s) => (s.layers[index].fullbright = v))} />
+      </Row>
+      {animated && (
+        <>
+          <Row label="Playback">
+            <SelectField
+              value={l.props.play ?? 'LOOP'}
+              options={PLAYBACKS}
+              onChange={(v) => setImageProp(index, 'play', v === 'LOOP' ? undefined : v)}
+            />
+          </Row>
+          <NumRow
+            rowLabel="Speed"
+            label="×"
+            title="Negative plays backwards"
+            value={Number(l.props.speed ?? 1)}
+            min={-8}
+            max={8}
+            step={0.05}
+            decimals={2}
+            onChange={(v, g) => setImageProp(index, 'speed', v === 1 ? undefined : fmt(v), g)}
+          />
+          <NumRow
+            rowLabel="Start at"
+            label="t₀"
+            title="Seconds into the animation the hologram's clock starts from"
+            value={Number(l.props.start ?? 0)}
+            min={0}
+            max={600}
+            step={0.05}
+            decimals={2}
+            unit="s"
+            onChange={(v, g) => setImageProp(index, 'start', v === 0 ? undefined : fmt(v), g)}
+          />
+          <div class="muted small">
+            The animation runs on the hologram's clock: the timeline's playhead, pause and scrub move it too.
+          </div>
+        </>
+      )}
+    </Section>
+  );
+}
+
 function LayerHeader({ l, index }: { l: Layer; index: number }) {
   const spec = S.spec!;
   const groups = [{ value: '', label: 'No group' }, ...spec.groups.map((g) => ({ value: g.id, label: g.name }))];
@@ -224,7 +374,11 @@ function LayerHeader({ l, index }: { l: Layer; index: number }) {
           <SelectField value={l.group} options={groups} onChange={(v) => edit((s) => (s.layers[index].group = v))} />
         </Row>
         <Row label="Content">
-          <span class="muted small">Pick a replacement in the browser, middle panel.</span>
+          <span class="muted small">
+            {l.kind === 'IMAGE'
+              ? 'Pick another picture in the Images tab, middle panel.'
+              : 'Pick a replacement in the browser, middle panel.'}
+          </span>
         </Row>
       </Section>
     </>

@@ -1,11 +1,11 @@
-# Hologram web editor protocol (version 2)
+# Hologram web editor protocol (version 3)
 
 The web editor is a second client of the in-game hologram editor. The game stays in charge: it owns the
 preview, undo history and saving, and it validates everything the browser sends. The browser only proposes
 whole specs and asks for actions.
 
 Code: `client/web/` (`WebServer`, `WebSocketConnection`, `HologramWebSession`, `HologramWebJson`,
-`HologramWebRegistries`), `client/HologramWebBridge` (adapter to `HologramScreen`), browser app in `web/`.
+`HologramWebRegistries`, `HologramWebAssets`), `client/HologramWebBridge` (adapter to `HologramScreen`), browser app in `web/`.
 
 ## Session
 
@@ -33,8 +33,9 @@ Code: `client/web/` (`WebServer`, `WebSocketConnection`, `HologramWebSession`, `
 - Headers on every response: `Cache-Control: no-store`, `X-Content-Type-Options: nosniff`,
   `Referrer-Policy: no-referrer`, `X-Frame-Options: DENY`, `Cross-Origin-Resource-Policy: same-origin`. The page
   also gets a CSP: `default-src 'none'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self'
-  data:; font-src 'self'; connect-src ws://127.0.0.1:<port>; base-uri 'none'; form-action 'none';
-  frame-ancestors 'none'`.
+  data: blob:; media-src blob:; font-src 'self'; connect-src ws://127.0.0.1:<port>; base-uri 'none';
+  form-action 'none'; frame-ancestors 'none'`. `data:` carries asset thumbnails; `blob:` is the page's own
+  object URL for a video it converts locally. Nothing is ever fetched from another origin.
 - Limits: 24 open sockets, 4 WebSocket clients, 16 KB request head, 1 MB per message (close `1009`),
   120 messages/s with a burst of 240 (excess is dropped with a `rate` error at most once a second; 600 drops
   closes with `1008`), 512 queued outbound messages (overflow closes with `1008`).
@@ -42,22 +43,29 @@ Code: `client/web/` (`WebServer`, `WebSocketConnection`, `HologramWebSession`, `
 ## Messages
 
 Text frames, one JSON object each, with a `type`. Unknown fields are ignored; unknown types get an `error`.
-Types `asset` and `audio` are reserved for later versions.
+Type `audio` is reserved for a later version.
 
 **Version 2** (1.44.0) adds layer `uid`s, the spec's `timeline`, the `playhead` message, `timelineCaps` in
 `hello` and `registries.timeline`. A version 1 page still works against a version 2 game as long as it sends
 back the `uid`s and `timeline` it was given (a missing `timeline` removes the timeline).
 
+**Version 3** (1.44.0) adds the `IMAGE` layer kind, `assetCaps` in `hello`, and the asset messages (library
+listing, thumbnails, chunked uploads; see [Assets](#assets)). A version 2 page still works: it sends back an
+image layer's `props` as it got them, and it never sends asset messages.
+
 ### Game -> browser
 
 | type | fields | when |
 |---|---|---|
-| `hello` | `protocol` (2), `mod`, `modVersion`, `minecraft`, `hologram` (id), `registries`, `timelineCaps` (`maxTracks`, `maxKeys`: this server's caps) | on connect |
+| `hello` | `protocol` (3), `mod`, `modVersion`, `minecraft`, `hologram` (id), `registries`, `timelineCaps` (`maxTracks`, `maxKeys`: this server's caps), `assetCaps` (v3, see [Assets](#assets)) | on connect |
 | `state` | `rev`, `ack`, `canUndo`, `canRedo`, `spec` | on connect, after every handled message, and whenever the spec changes in game |
 | `selection` | `kind` (`root`/`group`/`layer`), `layer`, `group`, `soloLayer`, `soloGroup` | on connect and when it changes |
-| `error` | `seq`, `code` (`invalid` incl. malformed JSON, `unknown` type, `rate`, `internal`), `message` | a message was refused |
+| `error` | `seq`, `code` (`invalid` incl. malformed JSON, `unknown` type, `rate`, `internal`; v3: `upload`, `assetThumb`), `message` | a message was refused |
 | `pong` | `seq` | answer to `ping` |
 | `playhead` | `seq`, `mode`, `time` | answer to `playhead` (no `state` follows: nothing in the spec changed) |
+| `assets` | v3: one library page, or `error` | answer to `assets` |
+| `assetThumb` | v3: `id`, `data` (`data:image/png;base64,...`) | answer to `assetThumb` |
+| `uploadStarted`, `uploadAck`, `uploadProgress`, `uploadDone` | v3, see [Uploads](#uploads) | during an upload |
 | `closed` | `reason` (`saved`, `cancelled`, `editor closed`, `left the world`, `game closed`, `replaced`, ...) | session ends |
 
 `ack` is the highest `seq` the game has handled from this connection. The browser keeps its local copy while
@@ -82,6 +90,9 @@ Every message may carry `seq` (increasing integer); the game echoes it as `ack`.
 | `save` | | same as Done in game; ends the session with `saved` |
 | `cancel` | | discards every change since the editor opened; ends with `cancelled` |
 | `ping` | | `pong` |
+| `assets` | v3: `offset` | one page of this world's asset library |
+| `assetThumb` | v3: `id` | a small PNG of the asset's first frame |
+| `upload`, `uploadChunk`, `uploadCancel` | v3, see [Uploads](#uploads) | uploads a file to the library |
 | `playhead` | `mode` (`play`/`pause`/`live`), `time` (0..600 s) | preview only, never saved: `pause` draws this hologram's timeline at `min(length, time)`; `play` runs it from `time` on real time in the clip's play mode; `live` hands the clock back to the game. Dropped when the session ends |
 
 ## Spec
@@ -94,7 +105,7 @@ Every message may carry `seq` (increasing integer); the game echoes it as `ack`.
   "reveal": { "radius": 0, "seconds": 0.6, "style": "Rise" },
   "groups": [ { "id", "name", "visible", "offset", "rotation", "scale",
                 "spin", "spinAxis", "hover", "hoverPeriod", "fullbright", "effects" } ],
-  "layers": [ { "kind": "BLOCK|ENTITY|PARTICLE", "id", "props": { "facing": "north" }, "group": "",
+  "layers": [ { "kind": "BLOCK|ENTITY|PARTICLE|STRUCTURE|IMAGE", "id", "props": { "facing": "north" }, "group": "",
                 "visible", "offset", "rotation", "scale", "spin", "spinAxis", "hover", "hoverPeriod",
                 "fullbright", "particleRate", "particleSpeed", "effects",
                 "data": { "key": "1a2b-3c4", "bytes": 812, "snbt": "..." },
@@ -119,10 +130,30 @@ Particle layers ignore the timeline.
 
 Effect: `{ "type", "strength", "speed", "color", "color2", "axis" (0 Y, 1 X, 2 Z), "phase", "trigger" }`.
 
+### Image layers (v3)
+
+`kind: "IMAGE"`, `id` = the asset's hash (64 lowercase hex). `fullbright` means emissive (drawn at full light).
+Settings are strings in `props`; a missing key is the default, unknown keys are dropped, and the game clamps
+every value (`HologramImage#normalize`):
+
+| key | values | default |
+|---|---|---|
+| `w` | width in blocks, 0.05..16 | `1` |
+| `h` | height in blocks, 0.05..16; `0` or missing keeps the picture's aspect ratio | missing |
+| `billboard` | `FIXED` (a flat panel that turns with the layer), `FACE` (always faces the camera), `FACE_Y` (turns about Y only) | `FIXED` |
+| `sides` | `1` single-sided; anything else double-sided (only `FIXED` can be seen from behind) | double |
+| `play` | `LOOP`, `ONCE`, `PINGPONG` (animated assets only) | `LOOP` |
+| `speed` | -8..8, negative plays backwards | `1` |
+| `start` | seconds into the animation, 0..600 | `0` |
+
+An animation runs on the hologram's clock: the timeline's clip time when the hologram has a timeline (so the
+`playhead` message scrubs it too), otherwise game time. The timeline animates image layers like any other layer
+(offset, rotation, scale, visible, tint, effects).
+
 ## Validation
 
 `HologramWebJson.read` rebuilds the spec from scratch and rejects the whole edit (`error`, nothing changes) on:
-unknown block/entity/particle id, a property or value the block does not have, wrong JSON types, more than the
+unknown block/entity/particle id, an image layer whose `id` is not 64 hex digits, a property or value the block does not have, wrong JSON types, more than the
 layer/group/effect limits, unknown effect type or trigger, a layer `uid` that does not match `[A-Za-z0-9_-]{1,24}` (a repeated one is kept by the first layer and
 the copy gets a new one),
 and in the timeline: an unknown mode/start/target/prop/ease, a track whose group or layer does not exist, an
@@ -139,3 +170,50 @@ cannot inject NBT, and a forged key just drops the data.
 
 The game checks the timeline caps again on every save path (`HologramNetwork`: Done, styles, web save), so a
 client with a stale or patched copy of the caps cannot store more.
+
+The server checks image layers again on every save path: every hash must be in the world's library (an
+unknown one refuses the whole save: "image layer uses an asset that is not in this world's library"), and a
+hologram may hold at most `hologramImageMaxLayers` (server config, default 8) image layers. The page cannot
+know the library for certain, so a well-formed unknown hash reaches the editor and is refused only on save.
+
+## Assets
+
+v3. The page never talks to the Minecraft server. Every asset message goes to the game, which forwards it over
+the normal asset payload (`hologram/asset/AssetNetwork`, registrar `"2"`) and relays the answer.
+
+`hello.assetCaps`: `available` (false when the server has no Fox's Tweaks or one older than 1.44.0),
+`chunkBytes` (512 KiB), `maxUploadBytes` (16 MiB, the transport limit), `maxImageLayers`, and the server's own
+asset limits `maxFileBytes`, `maxDimension` (px), `maxFps`, `maxSeconds`. A page converting video itself must
+stay inside those or the server rejects the result.
+
+**Library.** `assets {offset}` answers with `{type: "assets", seq, canUpload, video, maxBytes, count, offset,
+entries: [{id, name, type: "IMAGE"|"ANIMATION", width, height, frames, durationMs, bytes, used, mine, owner,
+created}]}` or `{type: "assets", seq, error}`. Pages are cut by size; ask again from `offset + entries.length`
+until `count` is reached. `canUpload` follows the server's `assetUploadEveryone` (otherwise operators only);
+anyone who may edit the hologram may place an asset already in the library. `video` says the server has
+ffmpeg. `used` counts the image layers that use the asset; the server refuses to delete one in use.
+
+### Uploads
+
+One upload at a time per session, in order:
+
+1. `upload {name, size, mode}`: `mode` is `image` (PNG, JPEG, GIF), `video` (anything ffmpeg reads; only when
+   `video` is true) or `bundle` (FTAS, below). `size` 8 bytes to 16 MiB. Answer: `uploadStarted {seq, upload,
+   chunkBytes}` or `error {code: "upload"}`.
+2. `uploadChunk {upload, index, data}`: `data` is base64 of at most `chunkBytes` bytes, `index` from 0 with no
+   gaps. Each chunk is answered with `uploadProgress {upload, percent, stage, server: false}` and then
+   `uploadAck {upload, index}`; send the next chunk only after its ack. A wrong index, size or encoding aborts.
+3. After the last chunk the game hands the file to the server. `uploadProgress {server: true}` messages report
+   its stages (ffmpeg, frame checks); then `uploadDone {upload, ok: true, hash}` or `uploadDone {upload,
+   ok: false, message}`.
+
+`uploadCancel` aborts an upload before its last chunk; after that it cannot be called back and `uploadDone`
+still arrives. The server sanitises every upload (decodes, re-encodes, applies the limits) and names it by the
+hash of what it stored, so the same picture uploaded twice is one asset. It takes one upload per player per
+second ("Upload rate limit: wait one second"); the page waits out that second itself.
+
+**FTAS v1** (`hologram/asset/AssetFrames`) is how a page without server ffmpeg sends a video it decoded with
+WebCodecs: big-endian `int` magic `0x46544131`, `int` frame count (at most 900), then per frame `int` delay in
+ms, `int` length, and that many bytes of PNG or JPEG. The server checks it like any other upload: frames are
+decoded and re-encoded (JPEG stays JPEG), delays are raised to at least `1000 / maxFps`, and the size,
+dimension and length limits apply.

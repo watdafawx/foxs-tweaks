@@ -1,11 +1,14 @@
 package dev.watdafawx.foxstweaks.client;
 
 import com.mojang.blaze3d.vertex.PoseStack;
+import com.mojang.blaze3d.vertex.VertexConsumer;
+import dev.watdafawx.foxstweaks.client.asset.HologramAssets;
 import com.mojang.math.Axis;
 import dev.watdafawx.foxstweaks.Config;
 import dev.watdafawx.foxstweaks.hologram.HologramAnim;
 import dev.watdafawx.foxstweaks.hologram.HologramEffect;
 import dev.watdafawx.foxstweaks.hologram.HologramGroup;
+import dev.watdafawx.foxstweaks.hologram.HologramImage;
 import dev.watdafawx.foxstweaks.hologram.HologramLayer;
 import dev.watdafawx.foxstweaks.hologram.HologramSpec;
 import dev.watdafawx.foxstweaks.hologram.HologramStates;
@@ -20,6 +23,8 @@ import net.minecraft.client.renderer.MultiBufferSource;
 import net.minecraft.client.renderer.RenderType;
 import net.minecraft.client.renderer.texture.OverlayTexture;
 import net.minecraft.core.BlockPos;
+import net.minecraft.resources.ResourceLocation;
+import net.minecraft.util.Mth;
 import net.minecraft.world.level.block.RenderShape;
 import net.minecraft.world.level.block.entity.BlockEntity;
 import net.minecraft.world.level.block.state.BlockState;
@@ -28,6 +33,8 @@ import net.minecraft.world.phys.Vec3;
 import net.neoforged.neoforge.client.event.RenderLevelStageEvent;
 import net.neoforged.neoforge.client.model.data.ModelData;
 import org.joml.Matrix4f;
+import org.joml.Quaternionf;
+import org.joml.Vector3f;
 
 import javax.annotation.Nullable;
 import java.util.List;
@@ -455,8 +462,12 @@ public final class HologramRenderer {
 
         // GRADIENT ramps over the layer's own height: measured through the current pose, so the parent's
         // transform and scale are included. Entities are about a body tall, blocks one block, structures their H.
-        float contentH = layer.kind() == HologramLayer.Kind.ENTITY ? 1.8F
-                : (layer.kind() == HologramLayer.Kind.STRUCTURE ? HologramStructure.dimensions(layer.data())[1] : 1.0F);
+        float contentH = switch (layer.kind()) {
+            case ENTITY -> 1.8F;
+            case STRUCTURE -> HologramStructure.dimensions(layer.data())[1];
+            case IMAGE -> layer.image().heightFor(layer.id());
+            default -> 1.0F;
+        };
         var mat = pose.last().pose();
         float bottomY = mat.m01() * offX + mat.m11() * offY + mat.m21() * offZ + mat.m31();
         float topY = bottomY + (mat.m11()) * sy * contentH;
@@ -581,9 +592,119 @@ public final class HologramRenderer {
                 HologramEntities.render(pose, out, entity, entityPartial, light, 0.0, 0.0, 0.0, 0.0F);
                 pose.popPose();
             }
+            case IMAGE -> drawImage(pose, out, spec, layer, offX, offY, offZ, lAngleX, lAngleY, lAngleZ, sx, sy,
+                    light, mediaClock(spec, seconds, partialTick));
             case PARTICLE -> {
             }
         }
+    }
+
+    private static int lastImageFrame = -1;
+    private static boolean lastImageLoaded;
+
+    /** Dev check only: whether the last image layer drawn had its texture, and at what asset time (ms). */
+    public static boolean lastImageLoaded() {
+        return lastImageLoaded;
+    }
+
+    public static int lastImageTimeMillis() {
+        return lastImageFrame;
+    }
+
+    /**
+     * The clock an image's animation plays from: the timeline's clip time when the hologram has one (so the web
+     * editor's playhead scrubs and pauses it), otherwise the hologram clock, which the editor's pause freezes too.
+     */
+    private static double mediaClock(HologramSpec spec, double seconds, float partialTick) {
+        HologramTimeline tl = spec.timeline();
+        return tl == null ? seconds : HologramTimelinePlayer.time(spec, tl, partialTick);
+    }
+
+    /**
+     * One textured quad, bottom-centred on the layer origin. FIXED follows the layer rotation like a block;
+     * the billboards replace the rotation with the camera's (or its yaw only) and turn about the quad's centre,
+     * keeping only the position and size of everything above them.
+     */
+    private static void drawImage(PoseStack pose, MultiBufferSource out, HologramSpec spec, HologramLayer layer,
+                                  float offX, float offY, float offZ, float angleX, float angleY, float angleZ,
+                                  float sx, float sy, int light, double clock) {
+        HologramImage image = layer.image();
+        String hash = layer.id();
+        float w = image.width();
+        float h = image.heightFor(hash);
+
+        pose.pushPose();
+        float bottom;
+        if (image.billboard() == HologramImage.Billboard.FIXED) {
+            pose.translate(offX, offY, offZ);
+            pose.mulPose(Axis.YP.rotationDegrees(angleY));
+            pose.mulPose(Axis.XP.rotationDegrees(angleX));
+            pose.mulPose(Axis.ZP.rotationDegrees(angleZ));
+            pose.scale(sx, sy, sx);
+            bottom = 0.0F;
+        } else {
+            Matrix4f parent = pose.last().pose();
+            Vector3f centre = parent.transformPosition(offX, offY + h * 0.5F * sy, offZ, new Vector3f());
+            Vector3f parentScale = parent.getScale(new Vector3f());
+            var camera = Minecraft.getInstance().gameRenderer.getMainCamera();
+            Quaternionf facing = image.billboard() == HologramImage.Billboard.FACE
+                    ? new Quaternionf(camera.rotation())
+                    : new Quaternionf().rotationY((float) Math.PI - camera.getYRot() * Mth.DEG_TO_RAD);
+            // The pass's pose is world-aligned and camera-relative, so rebuilding it from the centre loses nothing.
+            pose.last().pose().identity().translate(centre).rotate(facing);
+            pose.last().normal().identity().rotate(facing);
+            pose.scale(parentScale.x * sx, parentScale.y * sy, parentScale.x * sx);
+            bottom = -h * 0.5F;
+        }
+
+        PoseStack.Pose last = pose.last();
+        if (!image.doubleSided() && image.billboard() == HologramImage.Billboard.FIXED && facingAway(last, w, h)) {
+            pose.popPose();
+            return;
+        }
+
+        double duration = HologramAssets.duration(hash);
+        ResourceLocation texture = HologramAssets.texture(hash, image.assetTime(clock, duration));
+        lastImageLoaded = texture != null;
+        lastImageFrame = (int) Math.round(image.assetTime(clock, duration) * 1000.0);
+        if (texture == null) {
+            // Still downloading (or unknown): a faint frame where the picture will be, so placing it is not blind.
+            LevelRenderer.renderLineBox(pose, out.getBuffer(RenderType.lines()),
+                    -w * 0.5, bottom, -0.01, w * 0.5, bottom + h, 0.01, 0.55F, 0.85F, 1.0F, 0.6F);
+            pose.popPose();
+            return;
+        }
+
+        RenderType type = layer.fullbright()
+                ? RenderType.entityTranslucentEmissive(texture)
+                : RenderType.entityTranslucent(texture);
+        VertexConsumer vc = out.getBuffer(type);
+        float x0 = -w * 0.5F;
+        float x1 = w * 0.5F;
+        float y0 = bottom;
+        float y1 = bottom + h;
+        // Counter-clockwise seen from +Z, which is the side that reads unmirrored.
+        imageVertex(vc, last, x0, y0, 0.0F, 1.0F, light);
+        imageVertex(vc, last, x1, y0, 1.0F, 1.0F, light);
+        imageVertex(vc, last, x1, y1, 1.0F, 0.0F, light);
+        imageVertex(vc, last, x0, y1, 0.0F, 0.0F, light);
+        pose.popPose();
+    }
+
+    private static void imageVertex(VertexConsumer vc, PoseStack.Pose pose, float x, float y, float u, float v, int light) {
+        vc.addVertex(pose, x, y, 0.0F)
+                .setColor(255, 255, 255, 255)
+                .setUv(u, v)
+                .setOverlay(OverlayTexture.NO_OVERLAY)
+                .setLight(light)
+                .setNormal(pose, 0.0F, 0.0F, 1.0F);
+    }
+
+    /** True when the camera (the pass's origin) is behind the quad's front face. */
+    private static boolean facingAway(PoseStack.Pose pose, float w, float h) {
+        Vector3f centre = pose.pose().transformPosition(0.0F, h * 0.5F, 0.0F, new Vector3f());
+        Vector3f normal = pose.normal().transform(new Vector3f(0.0F, 0.0F, 1.0F));
+        return normal.dot(-centre.x, -centre.y, -centre.z) < 0.0F;
     }
 
     @SuppressWarnings({ "unchecked", "rawtypes" })

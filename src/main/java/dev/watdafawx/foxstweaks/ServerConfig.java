@@ -148,6 +148,12 @@ public final class ServerConfig {
                     "Maximum number of keyframes in one hologram's timeline, over all of its tracks.")
             .defineInRange("hologramTimelineMaxKeys", 2048, 0, 8192);
 
+    public static final ModConfigSpec.IntValue HOLOGRAM_IMAGE_MAX_LAYERS = BUILDER
+            .comment(
+                    "Maximum number of image layers (pictures, GIFs, videos from the asset store) in one hologram.",
+                    "Each visible image layer is one textured quad per frame plus one texture upload per animation frame.")
+            .defineInRange("hologramImageMaxLayers", 8, 0, 16);
+
     static {
         BUILDER.pop();
         BUILDER.push("media");
@@ -275,6 +281,14 @@ public final class ServerConfig {
 
     public static int hologramTimelineMaxTracks() {
         return loaded() ? HOLOGRAM_TIMELINE_MAX_TRACKS.get() : 64;
+    }
+
+    public static int hologramImageMaxLayers() {
+        return loaded() ? HOLOGRAM_IMAGE_MAX_LAYERS.get() : 8;
+    }
+
+    public static boolean assetUploadEveryone() {
+        return loaded() && ASSET_UPLOAD_EVERYONE.get();
     }
 
     public static int hologramTimelineMaxKeys() {

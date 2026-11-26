@@ -52,7 +52,7 @@ public final class HologramWebSession {
     private static final Logger LOG = LogUtils.getLogger();
 
     /** 2: layer uids, the timeline, and the preview-only playhead message. */
-    public static final int PROTOCOL = 2;
+    public static final int PROTOCOL = 3;
     /** Ticks with no screen at all (and no grab mode) after which the editor is treated as gone. */
     private static final int ORPHAN_TICKS = 100;
     private static final int MAX_DATA_KEYS = 128;
@@ -70,6 +70,7 @@ public final class HologramWebSession {
 
     private final WebEditor editor;
     private final WebServer server;
+    private final HologramWebAssets assets = new HologramWebAssets((c, o) -> c.send(o.toString()));
     private boolean ended;
     private String endReason = "closed";
 
@@ -159,6 +160,7 @@ public final class HologramWebSession {
             return;
         this.ended = true;
         this.endReason = reason;
+        this.assets.close();
         HologramTimelinePlayer.clearPlayhead();
         JsonObject closed = new JsonObject();
         closed.addProperty("type", "closed");
@@ -318,6 +320,7 @@ public final class HologramWebSession {
         caps.addProperty("maxTracks", ServerConfig.hologramTimelineMaxTracks());
         caps.addProperty("maxKeys", ServerConfig.hologramTimelineMaxKeys());
         hello.add("timelineCaps", caps);
+        hello.add("assetCaps", HologramWebAssets.capabilities());
         c.send(hello.toString());
 
         String spec = specJson();
@@ -367,7 +370,10 @@ public final class HologramWebSession {
             }
             case "hello" -> {
             }
-            default -> error(c, seq, "unknown", "unknown message type '" + truncate(type) + "'");
+            default -> {
+                if (!this.assets.handle(c, type, msg, seq))
+                    error(c, seq, "unknown", "unknown message type '" + truncate(type) + "'");
+            }
         }
     }
 

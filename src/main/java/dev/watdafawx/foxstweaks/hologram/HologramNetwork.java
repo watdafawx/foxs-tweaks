@@ -118,14 +118,24 @@ public final class HologramNetwork {
 
         HologramSpec incoming = HologramSpec.fromTag(payload.spec());
         String timelineProblem = incoming == null ? null : timelineProblem(incoming);
-        if (incoming == null || !validStructures(incoming) || timelineProblem != null) {
+        String imageProblem = incoming == null ? null : imageProblem(player.server, incoming);
+        if (incoming == null || !validStructures(incoming) || timelineProblem != null || imageProblem != null) {
             // Silent before: a refused save looked like Done working while the change vanished.
-            String reason = incoming == null ? "spec could not be read"
-                    : timelineProblem != null ? timelineProblem : "structure layer over the configured limits";
+            String reason;
+            if (incoming == null)
+                reason = "spec could not be read";
+            else if (timelineProblem != null)
+                reason = timelineProblem;
+            else if (imageProblem != null)
+                reason = imageProblem;
+            else
+                reason = "structure layer over the configured limits";
             if (payload.action() != HologramActionPayload.Action.PREVIEW) {
                 LOG.warn("Hologram {} from {} refused: {}", stored.id(), player.getGameProfile().getName(), reason);
+                String shown = imageProblem != null && timelineProblem == null ? imageProblem
+                        : "the data was refused by the server limits";
                 player.displayClientMessage(net.minecraft.network.chat.Component.literal(
-                        "Hologram change not saved: the data was refused by the server limits"), false);
+                        "Hologram change not saved: " + shown), false);
             }
             return;
         }
@@ -154,7 +164,8 @@ public final class HologramNetwork {
 
         ServerLevel level = player.serverLevel();
         HologramSpec style = HologramSpec.fromTag(tag);
-        if (style == null || style.layers().isEmpty() || !validStructures(style) || timelineProblem(style) != null)
+        if (style == null || style.layers().isEmpty() || !validStructures(style) || timelineProblem(style) != null
+                || imageProblem(player.server, style) != null)
             return;
         if (Holograms.capacityLeft(level) <= 0)
             return;
@@ -191,6 +202,27 @@ public final class HologramNetwork {
                 return false;
         }
         return true;
+    }
+
+    /**
+     * Null when every image layer names an asset this world's store holds and the hologram is within
+     * {@code hologramImageMaxLayers}; otherwise why not. Placing an existing asset needs no upload permission:
+     * anyone who may edit the hologram may use what is in the library.
+     */
+    @javax.annotation.Nullable
+    public static String imageProblem(net.minecraft.server.MinecraftServer server, HologramSpec spec) {
+        int images = 0;
+        for (HologramLayer layer : spec.layers()) {
+            if (layer.kind() != HologramLayer.Kind.IMAGE)
+                continue;
+            images++;
+            if (!dev.watdafawx.foxstweaks.hologram.asset.AssetNetwork.known(server, layer.id()))
+                return "image layer uses an asset that is not in this world's library";
+        }
+        int max = ServerConfig.hologramImageMaxLayers();
+        if (images > max)
+            return "too many image layers (" + images + ", limit " + max + ")";
+        return null;
     }
 
     /** Null when the spec's timeline (if any) fits the server's caps; otherwise why not. */

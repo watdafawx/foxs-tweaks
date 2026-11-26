@@ -34,8 +34,30 @@ public final class AssetStore {
     public Metadata info(String id) { return index.get(id); }
     public long bytes() { return index.values().stream().mapToLong(Metadata::byteSize).sum(); }
     public long count(UUID owner) { return index.values().stream().filter(m->m.owner().equals(owner)).count(); }
+    /** A sanitised upload, ready to store. Made off the server thread by {@link #prepare}. */
+    public record Prepared(AssetFrames frames, byte[] blob, String id) {}
+
+    /**
+     * The expensive half of an upload: decode, rescale and re-encode every frame, then hash. Pure (touches no
+     * store state), so it runs on a worker thread; decoding a 10 s GIF on the server thread stalls the tick.
+     */
+    public static Prepared prepare(byte[] input, AssetLimits limits) throws IOException {
+        return prepare(input, limits, limits.fileBytes());
+    }
+
+    public static Prepared prepare(byte[] input, AssetLimits limits, int inputCap) throws IOException {
+        AssetFrames frames = AssetFrames.sanitize(input, limits, inputCap);
+        byte[] blob = frames.encode();
+        return new Prepared(frames, blob, AssetFrames.hash(blob));
+    }
+
     public Metadata put(UUID owner, String name, byte[] input, AssetLimits limits) throws IOException {
-        AssetFrames frames=AssetFrames.sanitize(input,limits); byte[] blob=frames.encode(); String id=AssetFrames.hash(blob);
+        return commit(owner, name, prepare(input, limits), limits);
+    }
+
+    /** Server thread: quota checks and the index write for an already prepared upload. */
+    public Metadata commit(UUID owner, String name, Prepared prepared, AssetLimits limits) throws IOException {
+        AssetFrames frames = prepared.frames(); byte[] blob = prepared.blob(); String id = prepared.id();
         if(index.containsKey(id)) return index.get(id);
         if(count(owner)>=limits.perPlayer()) throw new IOException("Per-player asset cap exceeded");
         if(bytes()+blob.length>limits.worldBytes()) throw new IOException("World asset quota exceeded");
@@ -62,6 +84,25 @@ public final class AssetStore {
         Metadata next=new Metadata(m.id,m.owner,m.name,m.type,m.width,m.height,m.frameCount,m.delays,m.byteSize,m.created,Math.max(0,Math.addExact(m.references,delta)));
         index.put(id,next);try {save();} catch(IOException e) {index.put(id,m);throw e;}
     }
+    /**
+     * Sets every reference count to what the saved holograms actually use. Counts are kept up to date on each
+     * save, but a world that crashed before saving its holograms would otherwise keep a stale count forever.
+     */
+    public void reconcile(Map<String, Integer> used) throws IOException {
+        boolean changed = false;
+        for (var entry : List.copyOf(index.entrySet())) {
+            Metadata m = entry.getValue();
+            int actual = used.getOrDefault(m.id(), 0);
+            if (m.references() == actual)
+                continue;
+            index.put(m.id(), new Metadata(m.id, m.owner, m.name, m.type, m.width, m.height, m.frameCount, m.delays,
+                    m.byteSize, m.created, actual));
+            changed = true;
+        }
+        if (changed)
+            save();
+    }
+
     public boolean delete(String id) throws IOException {
         Metadata m=index.remove(id);if(m==null)return false;
         try {save();} catch(IOException e) {index.put(id,m);throw e;}
