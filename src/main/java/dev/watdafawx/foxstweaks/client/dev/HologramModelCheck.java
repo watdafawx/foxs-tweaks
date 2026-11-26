@@ -212,7 +212,7 @@ public final class HologramModelCheck {
     }
 
     private static void waitUpload(Runnable then) {
-        add(2, 400, () -> uploadDone, then);
+        add(30, 400, () -> uploadDone, then); // the server allows one upload per second
     }
 
     @Nullable
