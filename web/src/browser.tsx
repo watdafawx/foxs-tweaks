@@ -74,7 +74,7 @@ export function newLayer(kind: Kind, id: string): Layer {
     hover: 0,
     hoverPeriod: 4,
     // A picture is a sign, not a block: unlit it would go dark at night and in caves.
-    fullbright: kind === 'IMAGE',
+    fullbright: false,
     particleRate: 10,
     particleSpeed: 0.01,
     effects: [],

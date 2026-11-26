@@ -133,7 +133,7 @@ public record HologramLayer(
     public static HologramLayer image(String assetHash, float offsetY) {
         return new HologramLayer(Kind.IMAGE, assetHash, HologramImage.DEFAULT.toProps(), new CompoundTag(), "", true,
                 0.0F, offsetY, 0.0F, 0.0F, 0.0F, 0.0F, 1.0F,
-                0.0F, HologramSpec.AXIS_Y, 0.0F, 4.0F, true, List.of(), 10.0F, 0.01F);
+                0.0F, HologramSpec.AXIS_Y, 0.0F, 4.0F, false, List.of(), 10.0F, 0.01F);
     }
 
     /** The image settings of an {@link Kind#IMAGE} layer (defaults for any other kind). */
