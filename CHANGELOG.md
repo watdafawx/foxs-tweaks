@@ -1,5 +1,10 @@
 # Changelog
 
+## 1.46.0
+
+- **Web editor: upload any picture, GIF or video, whatever its size or length.** Files over the server's limits are no longer refused: the page scales pictures down and lowers a video's or animation's frame rate and size until it fits. A video or animation longer than the server keeps (10 s by default) opens a dialog to pick which part to keep, with a looping preview.
+- **Fixed: a 10-second video converted in the browser was refused** ("Animation duration limit exceeded"): its frames added up to 10.05 s.
+
 ## 1.45.0
 
 - **Web editor: real icons.** The content browser, layer list and inspector header in the web editor now show the same block, item, entity and particle icons as the game instead of letter badges. The game draws them only for what is on screen, a few per frame, so scrolling through 48,000 blocks does not stall it. Web protocol 5; an older page still works without icons.

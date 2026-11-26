@@ -1225,6 +1225,20 @@ through the real protocol, NBT round trip, screenshots at two times (GIF changes
 move, timeline scale, caps, 48-hologram benchmark (~5.9 µs each). The mp4 step is skipped when rig has no ffmpeg. Not
 verified: the Images tab and WebCodecs in a real browser, non-op uploads, shader packs, dedicated servers.
 
+**Uploads of any size (1.46.0).** The page never refuses a file for being big or long: `web/src/fit.ts` fits it to the
+caps first. Stills the server can read as they are (PNG/JPEG under `maxFileBytes`, inside the 4096 px / 4 MP decode guard)
+go unchanged; anything else is scaled to `maxDimension` and re-encoded (PNG, JPEG when PNG is too big and there is no
+alpha). Animations (GIF, animated WebP/PNG/AVIF, through `ImageDecoder`) and every video the browser can decode become an
+FTAS bundle: frame rate drops first (to 10), then size (to 128 px), then both further, measured on 6 sample frames and
+then on the real encode. Frames are JPEG unless the source has alpha (PNG). It aims at 85% (JPEG) / 75% (PNG) of
+`maxFileBytes` because the server re-encodes each frame, and retries at 70% then 45% when the server still answers with a
+byte-limit error. Longer than `maxSeconds`: the Images tab's trim dialog picks start + length first. Server ffmpeg is
+only used for a video this browser cannot decode (then 16 MiB input, first `maxSeconds`). Delays must be counted the
+server's way, `ceil(1000/fps)` each: 150 frames of 67 ms is 10.05 s and a 10 s cap refuses it (that bug shipped in the
+old browser converter). Verified headless (Chrome + the server's real `AssetFrames.sanitize`): 5000x3000 20 MB PNG, 40 s
+720p MP4 cut to 15-25 s, 6 MB 20 s GIF cut, alpha WebP, a 300 KB cap forcing 128 px / 9 fps. Not verified: an upload
+through a live game, Firefox/Safari (no `ImageDecoder` there means a GIF over the cap keeps only its first frame).
+
 **Entity life (1.44.0).** `client/HologramEntityLife` samples animation fields without calling `tick()` or `aiStep()`:
 walk/run from the hologram clock, FLY/SWIM set ground/water/swimming flags and wing/tail/tentacle fields, and public
 `AnimationState` fields (idle, fly, roar, sniff, croak, roll-up, sit) are restarted at the clock-derived age. Entity
