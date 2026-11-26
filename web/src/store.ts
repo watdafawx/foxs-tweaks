@@ -16,6 +16,7 @@ import type {
   Track,
 } from './protocol';
 import { PROTOCOL } from './protocol';
+import type { IconCaps } from './protocol';
 import { emptyTimeline, fixTimeline, localTime, normaliseKeys, readProp, roundTime, trackKey } from './anim';
 
 export type Status = 'connecting' | 'open' | 'lost' | 'closed';
@@ -42,6 +43,8 @@ export interface AppState {
   autoKey: boolean;
   /** Null until the hello (or from a game older than protocol 3). */
   assetCaps: AssetCaps | null;
+  /** Null until the hello, and from a game older than protocol 5 (then no icon is ever requested). */
+  iconCaps: IconCaps | null;
   library: Library;
   /** Asset id -> PNG data URL, filled in as the game sends them. */
   thumbs: Record<string, string>;
@@ -79,6 +82,7 @@ export const S: AppState = {
   timelineCaps: { maxTracks: 64, maxKeys: 2048 },
   autoKey: false,
   assetCaps: null,
+  iconCaps: null,
   library: { loaded: false, loading: false, error: '', canUpload: false, serverVideo: false, count: 0, entries: [] },
   thumbs: {},
   upload: null,
@@ -203,6 +207,8 @@ function handle(msg: any): void {
       reg.entities.forEach((e) => REG.entities.set(e.id, e.name));
       reg.effects.forEach((e) => REG.effects.set(e.type, e));
       S.assetCaps = msg.assetCaps ? (msg.assetCaps as AssetCaps) : null;
+      S.iconCaps = msg.iconCaps ? (msg.iconCaps as IconCaps) : null;
+      resetIcons();
       // A reconnect may land in another world: its library is not this one.
       S.library = { ...S.library, loaded: false, loading: false, entries: [], count: 0, error: '' };
       ASSETS.clear();
@@ -214,6 +220,9 @@ function handle(msg: any): void {
     case 'assets':
       libraryPage(msg);
       break;
+    case 'icons':
+      iconsReply(msg);
+      return;
     case 'assetThumb':
       if (typeof msg.id === 'string' && typeof msg.data === 'string') S.thumbs = { ...S.thumbs, [msg.id]: msg.data };
       break;
@@ -256,6 +265,10 @@ function handle(msg: any): void {
       // Upload errors are shown by the upload itself, next to its progress bar.
       if (msg.code === 'upload' && uploadListener) uploadListener(msg);
       else if (msg.code === 'assetThumb') break;
+      else if (msg.code === 'icons') {
+        iconsRefused(msg);
+        return;
+      }
       else toast(String(msg.message ?? 'The game refused that.'), 'error');
       break;
     case 'closed':
@@ -309,7 +322,8 @@ function send(obj: Record<string, unknown>): boolean {
   if (!ws || ws.readyState !== WebSocket.OPEN) return false;
   obj.seq = ++seq;
   // Only edits are acknowledged by a state message; anything else would hold back the game's next state.
-  if (obj.type !== 'assets' && obj.type !== 'assetThumb' && !String(obj.type).startsWith('upload')) lastSent = seq;
+  if (obj.type !== 'assets' && obj.type !== 'assetThumb' && obj.type !== 'icons' && !String(obj.type).startsWith('upload'))
+    lastSent = seq;
   ws.send(JSON.stringify(obj));
   return true;
 }
@@ -364,6 +378,131 @@ export function requestThumb(id: string): void {
   if (thumbsAsked.has(id)) return;
   thumbsAsked.add(id);
   send({ type: 'assetThumb', id });
+}
+
+
+// ---------------------------------------------------------------- icons (protocol 5)
+
+/** Where one icon sits in a sheet the game drew: the PNG data URL and the cell's column and row. */
+export interface IconCell {
+  sheet: string;
+  col: number;
+  row: number;
+  /** Sheet size in px and the cell size the game drew at. */
+  width: number;
+  height: number;
+  size: number;
+}
+
+export type IconKind = 'BLOCK' | 'ENTITY' | 'PARTICLE';
+
+/** "KIND:id" -> its cell, or null when the game cannot draw it (the page keeps its badge). Absent = not asked yet. */
+export const ICONS = new Map<string, IconCell | null>();
+/** Wanted by something on screen right now, not yet sent. */
+const iconWanted = new Map<string, { kind: IconKind; id: string }>();
+/** Sent, answer pending (never asked twice). */
+const iconAsked = new Set<string>();
+const iconInflight = new Map<number, { keys: string[]; at: number }>();
+let iconTimer = 0;
+const ICON_BATCH = 64;
+const ICON_MAX_INFLIGHT = 3;
+const ICON_DEBOUNCE_MS = 120;
+const ICON_STALE_MS = 20000;
+
+export const iconKey = (kind: IconKind, id: string): string => kind + ':' + id;
+
+function resetIcons(): void {
+  ICONS.clear();
+  iconWanted.clear();
+  iconAsked.clear();
+  iconInflight.clear();
+  window.clearTimeout(iconTimer);
+  iconTimer = 0;
+}
+
+/** A tile scrolled into view. Requests go out in batches a moment later, only for tiles still in view. */
+export function wantIcon(kind: IconKind, id: string): void {
+  if (!S.iconCaps?.available) return;
+  const key = iconKey(kind, id);
+  if (ICONS.has(key) || iconAsked.has(key)) return;
+  iconWanted.set(key, { kind, id });
+  scheduleIcons();
+}
+
+/** A tile left the view before its request went out: drop it. */
+export function unwantIcon(kind: IconKind, id: string): void {
+  iconWanted.delete(iconKey(kind, id));
+}
+
+function scheduleIcons(): void {
+  if (iconTimer) return;
+  iconTimer = window.setTimeout(flushIcons, ICON_DEBOUNCE_MS);
+}
+
+function flushIcons(): void {
+  iconTimer = 0;
+  const now = Date.now();
+  // A request the game never answered (dropped by its rate limit): free its ids to be asked again.
+  for (const [seq, f] of iconInflight)
+    if (now - f.at > ICON_STALE_MS) {
+      iconInflight.delete(seq);
+      f.keys.forEach((k) => iconAsked.delete(k));
+    }
+  const max = Math.min(ICON_BATCH, S.iconCaps?.maxIds ?? ICON_BATCH);
+  while (iconWanted.size > 0 && iconInflight.size < ICON_MAX_INFLIGHT) {
+    const first = iconWanted.values().next().value!;
+    const keys: string[] = [];
+    const ids: string[] = [];
+    for (const [key, w] of iconWanted) {
+      if (w.kind !== first.kind) continue;
+      keys.push(key);
+      ids.push(w.id);
+      if (ids.length >= max) break;
+    }
+    keys.forEach((k) => {
+      iconWanted.delete(k);
+      iconAsked.add(k);
+    });
+    if (!send({ type: 'icons', kind: first.kind, ids })) {
+      keys.forEach((k) => iconAsked.delete(k));
+      break;
+    }
+    iconInflight.set(seq, { keys, at: now });
+  }
+  // More waiting but every slot busy: look again when an answer frees one (or soon, for the stale check).
+  if (iconWanted.size > 0) scheduleIcons();
+}
+
+function iconsReply(msg: any): void {
+  const f = iconInflight.get(Number(msg.seq));
+  iconInflight.delete(Number(msg.seq));
+  const cells = (msg.cells ?? {}) as Record<string, number>;
+  const kind = String(msg.kind) as IconKind;
+  const cols = Math.max(1, Number(msg.cols) || 1);
+  const sheet = typeof msg.sheet === 'string' ? msg.sheet : '';
+  const prefix = kind + ':';
+  const keys = f ? f.keys : Object.keys(cells).map((id) => prefix + id);
+  for (const key of keys) {
+    const idx = cells[key.slice(prefix.length)];
+    ICONS.set(
+      key,
+      sheet && typeof idx === 'number' && idx >= 0
+        ? { sheet, col: idx % cols, row: Math.floor(idx / cols), width: Number(msg.width), height: Number(msg.height), size: Number(msg.size) }
+        : null,
+    );
+    iconAsked.delete(key);
+  }
+  notify();
+  if (iconWanted.size > 0) scheduleIcons();
+}
+
+/** The game refused a request (too many waiting): ask again later; the ids go back to wanted if still shown. */
+function iconsRefused(msg: any): void {
+  const f = iconInflight.get(Number(msg.seq));
+  if (!f) return;
+  iconInflight.delete(Number(msg.seq));
+  f.keys.forEach((k) => iconAsked.delete(k));
+  window.setTimeout(notify, 500);
 }
 
 // ---------------------------------------------------------------- upload transport (see upload.ts)

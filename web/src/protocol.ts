@@ -1,6 +1,6 @@
-// Wire types for docs/hologram-web-protocol.md (protocol 4). Keep in step with client/web/HologramWebJson.java.
+// Wire types for docs/hologram-web-protocol.md (protocol 5). Keep in step with client/web/HologramWebJson.java.
 
-export const PROTOCOL = 4;
+export const PROTOCOL = 5;
 
 export type Vec3 = [number, number, number];
 export type Kind = 'BLOCK' | 'ENTITY' | 'PARTICLE' | 'STRUCTURE' | 'IMAGE';
@@ -283,3 +283,16 @@ export interface AssetEntry {
  */
 export type Billboard = 'FIXED' | 'FACE' | 'FACE_Y';
 export type ImagePlayback = 'LOOP' | 'ONCE' | 'PINGPONG';
+
+// ---------------------------------------------------------------- icons (protocol 5)
+
+/** What the game said about icons in its hello; absent from a game older than protocol 5. */
+export interface IconCaps {
+  available: boolean;
+  /** Pixels per icon cell in a sheet. */
+  size: number;
+  /** Most ids per request. */
+  maxIds: number;
+  maxCols: number;
+  kinds: string[];
+}

@@ -3,6 +3,7 @@
 import { useState } from 'preact/hooks';
 import type { Group, Layer, Spec } from './protocol';
 import { ASSETS, REG, S, edit, select, solo } from './store';
+import { Icon } from './icons';
 
 export function layerName(l: Layer): string {
   switch (l.kind) {
@@ -162,7 +163,7 @@ export function Outliner() {
         onDrop={(e) => onLayerDrop(e, i)}
         onClick={() => select('layer', i)}
       >
-        <span class={`kind kind-${l.kind.toLowerCase()}`}>{KIND_BADGE[l.kind]}</span>
+        <Icon kind={l.kind} id={l.id} px={20} badge={KIND_BADGE[l.kind]} />
         <span class="tree-name" title={l.id}>
           {layerName(l)}
         </span>

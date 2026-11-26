@@ -20,12 +20,14 @@ import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.level.block.Block;
 import org.joml.Quaternionf;
 
+import javax.annotation.Nullable;
 import java.io.Reader;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
+import java.util.function.Consumer;
 
 /**
  * Lightweight, lazily-cached visual previews for the hologram Content Picker:
@@ -39,7 +41,7 @@ import java.util.Optional;
  * entities, and particles.
  * </ul>
  */
-final class HologramPickerPreview {
+public final class HologramPickerPreview {
     private static final int CARD_BG = 0xF00D1117;
     private static final int CARD_BORDER = 0x774CC9F0;
     private static final int BOX_BG = 0xFF161C24;
@@ -48,7 +50,7 @@ final class HologramPickerPreview {
 
     private static final Map<String, List<ResourceLocation>> PARTICLE_FRAMES = new HashMap<>();
 
-    static List<ResourceLocation> particleFrames(String particleId) {
+    public static List<ResourceLocation> particleFrames(String particleId) {
         return PARTICLE_FRAMES.computeIfAbsent(particleId, HologramPickerPreview::loadParticleFrames);
     }
 
@@ -107,6 +109,22 @@ final class HologramPickerPreview {
      */
     static boolean drawEntityIcon(GuiGraphics graphics, String entityId, int x, int y, int size,
                                   float yawDegrees, double seconds) {
+        graphics.enableScissor(x, y, x + size, y + size);
+        try {
+            return drawEntityUnclipped(graphics, entityId, x, y, size, yawDegrees, seconds, null);
+        } finally {
+            graphics.disableScissor();
+        }
+    }
+
+    /**
+     * The same drawing without the scissor: {@link GuiGraphics#enableScissor} converts GUI units to window pixels
+     * with the window's GUI scale, which is wrong for an off-screen target (the web editor's icon sheets). The
+     * caller clips instead. {@code onFail} (may be null) gets the exception when the renderer throws.
+     */
+    public static boolean drawEntityUnclipped(GuiGraphics graphics, String entityId, int x, int y, int size,
+                                              float yawDegrees, double seconds,
+                                              @Nullable Consumer<Throwable> onFail) {
         Entity entity = HologramEntities.getById(entityId, 0.0, 0.0, 0.0, 0.0F, (float) seconds);
         if (entity == null)
             return false;
@@ -116,7 +134,6 @@ final class HologramPickerPreview {
         float maxDim = Math.max(bbW * 1.15F, bbH);
         float scale = (size * 0.72F) / maxDim;
 
-        graphics.enableScissor(x, y, x + size, y + size);
         try {
             var pose = graphics.pose();
             pose.pushPose();
@@ -138,15 +155,16 @@ final class HologramPickerPreview {
             Lighting.setupFor3DItems();
             pose.popPose();
             return true;
-        } catch (Throwable ignored) {
+        } catch (Throwable t) {
             HologramEntities.markFailed(entityId);
             try {
+                Minecraft.getInstance().getEntityRenderDispatcher().setRenderShadow(true);
                 graphics.pose().popPose();
             } catch (Throwable ignored2) {
             }
+            if (onFail != null)
+                onFail.accept(t);
             return false;
-        } finally {
-            graphics.disableScissor();
         }
     }
 

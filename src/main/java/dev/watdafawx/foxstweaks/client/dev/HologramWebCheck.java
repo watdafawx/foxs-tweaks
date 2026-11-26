@@ -253,7 +253,7 @@ public final class HologramWebCheck {
             JsonObject hello = ws.last("hello");
             check("hello received", hello != null, ws.types());
             if (hello != null) {
-                check("hello protocol 4", hello.get("protocol").getAsInt() == HologramWebSession.PROTOCOL, hello.get("protocol").toString());
+                check("hello protocol 5", hello.get("protocol").getAsInt() == HologramWebSession.PROTOCOL, hello.get("protocol").toString());
                 check("hello names the hologram", hologramId.equals(hello.get("hologram").getAsString()), hello.get("hologram").toString());
                 JsonObject reg = hello.getAsJsonObject("registries");
                 JsonArray blocks = reg.getAsJsonArray("blocks");
@@ -675,6 +675,62 @@ public final class HologramWebCheck {
             origin = "http://127.0.0.1:" + port;
             ws = connect(wsUrl(), origin);
         });
+        // ---- protocol 5: icons drawn by the game, read back over the real socket ----
+        add(10, () -> {
+            if (ws == null)
+                return;
+            JsonObject hello = ws.last("hello");
+            JsonObject caps = hello == null ? null : hello.getAsJsonObject("iconCaps");
+            check("hello advertises icons (size 64, up to 256 ids, 3 kinds)", caps != null && caps.get("available").getAsBoolean()
+                    && caps.get("size").getAsInt() == 64 && caps.get("maxIds").getAsInt() == 256
+                    && caps.getAsJsonArray("kinds").size() == 3, String.valueOf(caps));
+            iconsBase = ws.msgs.size();
+            sendIcons(101, "BLOCK", "minecraft:diamond_block", "minecraft:chest", "minecraft:grass_block",
+                    "minecraft:oak_stairs", "minecraft:no_such_block", "minecraft:air", "minecraft:diamond_block");
+            sendIcons(102, "ENTITY", "minecraft:pig", "minecraft:creeper", "minecraft:ender_dragon", "minecraft:no_such_mob");
+            sendIcons(103, "PARTICLE", "minecraft:flame", "minecraft:heart", "minecraft:note", "minecraft:no_such_particle");
+        });
+        add(60, () -> {
+            if (ws == null)
+                return;
+            checkIcons(101, "BLOCK", "block", new String[]{"minecraft:diamond_block", "minecraft:chest", "minecraft:grass_block",
+                    "minecraft:oak_stairs"}, new String[]{"minecraft:no_such_block", "minecraft:air"});
+            checkIcons(102, "ENTITY", "entity", new String[]{"minecraft:pig", "minecraft:creeper"},
+                    new String[]{"minecraft:no_such_mob"});
+            checkIcons(103, "PARTICLE", "particle", new String[]{"minecraft:flame", "minecraft:heart", "minecraft:note"},
+                    new String[]{"minecraft:no_such_particle"});
+            shot("web-after-icons.png");
+        });
+        add(10, () -> {
+            if (ws == null)
+                return;
+            // The queue holds 4 requests per connection: a flood of 40 one-icon requests must be cut short
+            // (the page never sends more than 3 at once) and everything accepted must still be answered.
+            floodErrs = ws.msgs.stream().filter(m -> "error".equals(type(m)) && m.has("code")
+                    && "icons".equals(m.get("code").getAsString())).count();
+            floodBase = ws.msgs.size();
+            for (int i = 0; i < 40; i++)
+                sendIcons(200 + i, "BLOCK", "minecraft:stone");
+        });
+        add(40, () -> {
+            if (ws == null)
+                return;
+            long errs = ws.msgs.stream().filter(m -> "error".equals(type(m)) && m.has("code")
+                    && "icons".equals(m.get("code").getAsString())).count() - floodErrs;
+            long answered = ws.msgs.subList(floodBase, ws.msgs.size()).stream().filter(m -> "icons".equals(type(m))).count();
+            check("icon flood: the per-connection queue cap refuses the excess", errs >= 1, errs + " refused");
+            check("icon flood: every request is either answered or refused", errs + answered == 40, errs + " + " + answered);
+            sendIcons(300, "BOGUS", "minecraft:stone");
+            sendIcons(301, "BLOCK");
+        });
+        add(10, () -> {
+            if (ws == null)
+                return;
+            long bad = ws.msgs.stream().filter(m -> "error".equals(type(m)) && m.has("seq")
+                    && (m.get("seq").getAsLong() == 300 || m.get("seq").getAsLong() == 301)).count();
+            check("icons with a bad kind or no ids is refused", bad == 2, bad + " errors");
+        });
+
         add(8, () -> send("{\"type\":\"cancel\",\"seq\":1}"));
         add(10, () -> {
             JsonObject closed = ws == null ? null : ws.last("closed");
@@ -735,6 +791,91 @@ public final class HologramWebCheck {
             }
             Minecraft.getInstance().stop();
         });
+    }
+
+
+    // ---------------------------------------------------------------- icons (protocol 5)
+
+    private static int iconsBase;
+    private static int floodBase;
+    private static long floodErrs;
+
+    private static void sendIcons(long reqSeq, String kind, String... ids) {
+        JsonObject o = new JsonObject();
+        o.addProperty("type", "icons");
+        o.addProperty("seq", reqSeq);
+        o.addProperty("kind", kind);
+        JsonArray a = new JsonArray();
+        for (String id : ids)
+            a.add(id);
+        o.add("ids", a);
+        send(o.toString());
+    }
+
+    /**
+     * The reply to icon request {@code reqSeq}: the sheet must decode at {@code cols*size x rows*size}, every id in
+     * {@code good} must have a cell that is transparent at the corner and holds several colours, and every id in
+     * {@code none} must map to -1. The sheet is saved next to the other screenshots for a human to look at.
+     */
+    private static void checkIcons(long reqSeq, String kind, String file, String[] good, String[] none) {
+        JsonObject reply = null;
+        for (JsonObject m : ws.msgs.subList(iconsBase, ws.msgs.size()))
+            if ("icons".equals(type(m)) && m.get("seq").getAsLong() == reqSeq)
+                reply = m;
+        check(kind + " icons: answered with seq " + reqSeq, reply != null && kind.equals(reply.get("kind").getAsString()),
+                ws.types());
+        if (reply == null)
+            return;
+        int size = reply.get("size").getAsInt();
+        int cols = reply.get("cols").getAsInt();
+        int width = reply.get("width").getAsInt();
+        int height = reply.get("height").getAsInt();
+        JsonObject cells = reply.getAsJsonObject("cells");
+        String url = reply.has("sheet") ? reply.get("sheet").getAsString() : "";
+        check(kind + " icons: sheet is a PNG data URL", url.startsWith("data:image/png;base64,"),
+                url.length() > 30 ? url.substring(0, 30) : url);
+        if (!url.startsWith("data:image/png;base64,"))
+            return;
+        byte[] png = java.util.Base64.getDecoder().decode(url.substring("data:image/png;base64,".length()));
+        try {
+            Path out = Minecraft.getInstance().gameDirectory.toPath();
+            Files.write(out.resolve("web-icons-" + file + ".png"), png);
+        } catch (IOException e) {
+            log("info could not save the sheet: " + e);
+        }
+        try (NativeImage img = NativeImage.read(new java.io.ByteArrayInputStream(png))) {
+            check(kind + " icons: sheet decodes at " + width + "x" + height + " (cell " + size + ")",
+                    img.getWidth() == width && img.getHeight() == height && size == 64 && width == cols * size
+                            && height % size == 0, img.getWidth() + "x" + img.getHeight() + " vs " + width + "x" + height);
+            for (String id : good) {
+                int cell = cells.has(id) ? cells.get(id).getAsInt() : -2;
+                if (cell < 0) {
+                    check(kind + " icons: " + id + " has a cell", false, "cell " + cell);
+                    continue;
+                }
+                int cx = (cell % cols) * size, cy = (cell / cols) * size;
+                int opaque = 0;
+                java.util.Set<Integer> colours = new java.util.HashSet<>();
+                for (int y = 0; y < size; y++) {
+                    for (int x = 0; x < size; x++) {
+                        int px = img.getPixelRGBA(cx + x, cy + y);
+                        if ((px >>> 24) > 16) {
+                            opaque++;
+                            colours.add("PARTICLE".equals(kind) ? px : px & 0x00F8F8F8);
+                        }
+                    }
+                }
+                int corner = img.getPixelRGBA(cx, cy) >>> 24;
+                check(kind + " icons: " + id + " is drawn (" + opaque + " opaque px, " + colours.size() + " colours)",
+                        opaque > size * size / 20 && colours.size() >= ("PARTICLE".equals(kind) ? 2 : 4), opaque + " opaque, " + colours.size() + " colours");
+                check(kind + " icons: " + id + " has a transparent background", corner == 0, "corner alpha " + corner);
+            }
+            for (String id : none)
+                check(kind + " icons: " + id + " maps to no icon (-1)", cells.has(id) && cells.get(id).getAsInt() == -1,
+                        String.valueOf(cells.get(id)));
+        } catch (IOException e) {
+            check(kind + " icons: sheet decodes", false, e.toString());
+        }
     }
 
     // ---------------------------------------------------------------- timeline helpers

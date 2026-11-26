@@ -4,6 +4,7 @@ import type { Effect, Group, Layer, Motion, Spec } from './protocol';
 import { ASSETS, REG, S, edit, newGesture } from './store';
 import { AxisField, ColorField, NumRow, Row, Section, SelectField, Toggle, Vec3Field } from './ui';
 import { layerName } from './outliner';
+import { Icon } from './icons';
 import { effectRemoved, effectsSwapped } from './anim';
 import { aspectOf, imageHeight } from './library';
 import { EffectAudio, TargetAudio } from './audio';
@@ -361,7 +362,7 @@ function LayerHeader({ l, index }: { l: Layer; index: number }) {
   return (
     <>
       <div class="insp-title">
-        <span class={`kind kind-${l.kind.toLowerCase()}`}>{l.kind[0]}</span>
+        <Icon kind={l.kind} id={l.id} px={36} badge={l.kind[0]} />
         <div>
           <div class="insp-name">{layerName(l)}</div>
           <div class="muted mono small">
