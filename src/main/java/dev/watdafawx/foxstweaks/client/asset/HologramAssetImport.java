@@ -79,7 +79,7 @@ public final class HologramAssetImport {
             }
             byte[] data = loaded.bytes;
             String note = "";
-            if (!loaded.video) {
+            if (!loaded.video && !loaded.model) {
                 if (isWebp(data)) {
                     String msg = "WebP is not supported in game. Convert to PNG or GIF, or use the web editor.";
                     Minecraft.getInstance().execute(() -> {
@@ -107,7 +107,8 @@ public final class HologramAssetImport {
                     if (!fitNote.isEmpty())
                         listener.progress(0, fitNote);
                     HologramAssets.uploadBytes(loaded.name, sendBytes,
-                            loaded.video ? AssetPayload.MODE_VIDEO : bundle ? AssetPayload.MODE_BUNDLE : AssetPayload.MODE_IMAGE,
+                            loaded.model ? AssetPayload.MODE_MODEL : loaded.video ? AssetPayload.MODE_VIDEO
+                                    : bundle ? AssetPayload.MODE_BUNDLE : AssetPayload.MODE_IMAGE,
                             listener);
                 } catch (IOException e) {
                     listener.done(false, e.getMessage());
@@ -119,7 +120,19 @@ public final class HologramAssetImport {
         return true;
     }
 
-    private record Loaded(String name, byte[] bytes, boolean video) {
+    private record Loaded(String name, byte[] bytes, boolean video, boolean model) {
+        Loaded(String name, byte[] bytes, boolean video) {
+            this(name, bytes, video, !video && isModel(name, bytes));
+        }
+    }
+
+    /** A glTF binary, a Blockbench project, or a file with one of those extensions. */
+    static boolean isModel(String name, byte[] b) {
+        String lower = name.toLowerCase(Locale.ROOT);
+        if (lower.endsWith(".glb") || lower.endsWith(".gltf") || lower.endsWith(".bbmodel"))
+            return true;
+        return dev.watdafawx.foxstweaks.hologram.model.GlbReader.looksLikeGlb(b)
+                || dev.watdafawx.foxstweaks.hologram.model.BlockbenchReader.looksLikeBbmodel(b);
     }
 
     private static Loaded load(String source, HologramAssets.UploadListener listener) throws IOException {

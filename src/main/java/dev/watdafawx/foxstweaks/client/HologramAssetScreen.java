@@ -251,7 +251,7 @@ public final class HologramAssetScreen extends Screen {
         Asset a = tileAt(mx, my);
         if (a != null) {
             if (this.editor != null)
-                this.editor.creatorAddLayer(HologramLayer.image(a.id(), 0.0F));
+                this.editor.creatorAddLayer("MODEL".equals(a.type()) ? HologramLayer.model(a.id(), 0.0F) : HologramLayer.image(a.id(), 0.0F));
             onClose();
             return true;
         }
@@ -314,7 +314,7 @@ public final class HologramAssetScreen extends Screen {
         g.disableScissor();
 
         if (!this.assets.isEmpty() && shown.isEmpty() && !this.loading) {
-            g.drawCenteredString(this.font, "No picture matches that search.", (this.px0 + this.px1) / 2, this.gridTop + 30, MUTED);
+            g.drawCenteredString(this.font, "Nothing matches that search.", (this.px0 + this.px1) / 2, this.gridTop + 30, MUTED);
         }
         if (this.assets.isEmpty() && !this.loading) {
             String hint = "Nothing here yet. Drop a file on the window,";
@@ -330,7 +330,7 @@ public final class HologramAssetScreen extends Screen {
             g.fill(this.px1 - 5, barY, this.px1 - 3, barY + barH, FAINT);
         }
 
-        g.drawString(this.font, this.canUpload ? "Add a picture: drop a file here, or type a path / address" : "Uploads are not allowed for you here",
+        g.drawString(this.font, this.canUpload ? "Add a picture or 3D model (.glb, .bbmodel): drop a file here, or type a path / address" : "Uploads are not allowed for you here",
                 this.px0 + 8, this.py1 - 48, MUTED, false);
         super.render(g, mx, my, partial);
         boolean overUpload = mx >= uploadX() && mx < uploadX() + 48 && my >= this.py1 - 37 && my < this.py1 - 21;
@@ -339,7 +339,7 @@ public final class HologramAssetScreen extends Screen {
                 !this.canUpload || busy ? 0xFF1A222D : overUpload ? 0xFF2A7FA0 : 0xFF1F6A86);
         g.drawCenteredString(this.font, "Upload", uploadX() + 24, this.py1 - 33, this.canUpload && !busy ? TEXT : FAINT);
 
-        String line = this.font.plainSubstrByWidth(this.status.isEmpty() ? "Click a picture to add it. Right-click twice to delete. Esc closes." : this.status,
+        String line = this.font.plainSubstrByWidth(this.status.isEmpty() ? "Click an item to add it. Right-click twice to delete. Esc closes." : this.status,
                 this.px1 - this.px0 - 16);
         g.drawString(this.font, line, this.px0 + 8, this.py1 - 15, this.status.isEmpty() ? FAINT : this.statusColour, false);
     }
@@ -350,8 +350,11 @@ public final class HologramAssetScreen extends Screen {
             g.renderOutline(x, y, CELL, CELL, ACCENT);
 
         // The first frame of the asset; it loads on demand, so scrolling to a tile is what starts its download.
-        ResourceLocation tex = HologramAssets.texture(a.id(), 0.0);
-        if (tex != null && a.width() > 0 && a.height() > 0) {
+        boolean model = "MODEL".equals(a.type());
+        ResourceLocation tex = model ? null : HologramAssets.texture(a.id(), 0.0);
+        if (model) {
+            g.drawCenteredString(this.font, "3D", x + CELL / 2, y + CELL / 2 - 4, ACCENT);
+        } else if (tex != null && a.width() > 0 && a.height() > 0) {
             double s = Math.min((CELL - 4) / (double) a.width(), (CELL - 4) / (double) a.height());
             int w = Math.max(1, (int) Math.round(a.width() * s));
             int h = Math.max(1, (int) Math.round(a.height() * s));
@@ -359,15 +362,15 @@ public final class HologramAssetScreen extends Screen {
         } else {
             g.drawCenteredString(this.font, "...", x + CELL / 2, y + CELL / 2 - 4, FAINT);
         }
-        if (a.frames() > 1) {
-            String badge = a.frames() + "f";
+        if (a.frames() > 1 || model && a.frames() > 0) {
+            String badge = model ? a.frames() + (a.frames() == 1 ? " anim" : " anims") : a.frames() + "f";
             g.fill(x + CELL - this.font.width(badge) - 5, y + 2, x + CELL - 2, y + 12, 0xAA000000);
             g.drawString(this.font, badge, x + CELL - this.font.width(badge) - 3, y + 3, ACCENT, false);
         }
         String name = a.name().isEmpty() ? a.id().substring(0, Math.min(8, a.id().length())) : a.name();
         g.drawString(this.font, this.font.plainSubstrByWidth(name, CELL), x, y + CELL + 2, TEXT, false);
         g.drawString(this.font, this.font.plainSubstrByWidth(
-                a.width() + "x" + a.height() + (a.type().isEmpty() ? "" : " " + a.type().toLowerCase(Locale.ROOT)), CELL),
+                model ? "model" : a.width() + "x" + a.height() + (a.type().isEmpty() ? "" : " " + a.type().toLowerCase(Locale.ROOT)), CELL),
                 x, y + CELL + 11, FAINT, false);
     }
 

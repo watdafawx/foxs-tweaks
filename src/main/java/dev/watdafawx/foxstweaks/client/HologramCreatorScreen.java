@@ -686,6 +686,8 @@ public final class HologramCreatorScreen extends Screen {
             g.drawString(this.font, this.font.plainSubstrByWidth("Add new images in the Web editor", w), x, y + 1, FAINT, false);
             y += 12;
         }
+        if (layer.kind() == HologramLayer.Kind.MODEL)
+            y = renderModelShape(g, mx, my, layer, sel, x, y, w);
         float scale = this.editor.creatorScale();
         y = slider(g, mx, my, x, y, w, "Size", String.format(Locale.ROOT, "%.2f×", scale),
                 (scale - 0.1F) / 3.9F, ACCENT, false, v -> this.editor.creatorSetScale(round(0.1F + (float) v * 3.9F, 0.05F)),
@@ -723,6 +725,55 @@ public final class HologramCreatorScreen extends Screen {
             y += ROW + 2;
         }
         return y;
+    }
+
+    /** Animation, playback and height of a 3D model layer. */
+    private int renderModelShape(GuiGraphics g, int mx, int my, HologramLayer layer, int sel, int x, int y, int w) {
+        var m = layer.model();
+        java.util.List<String> names = HologramModels.animations(layer.id());
+        g.drawString(this.font, this.font.plainSubstrByWidth(
+                names.isEmpty() ? "3D model (loading or no animations)" : "3D model \u00B7 " + names.size() + (names.size() == 1 ? " animation" : " animations"), w),
+                x, y + 1, ACCENT, false);
+        y += 12;
+        if (!names.isEmpty()) {
+            String cur = m.animation().isEmpty() ? "none (still)" : m.animation();
+            chip(g, mx, my, x, y, w, this.font.plainSubstrByWidth("Animation: " + cur, w - 8), !m.animation().isEmpty(), () -> {
+                java.util.List<String> cycle = new java.util.ArrayList<>();
+                cycle.add("");
+                cycle.addAll(names);
+                int i = cycle.indexOf(m.animation());
+                String next = cycle.get((i + 1) % cycle.size());
+                this.editor.creatorPushUndo();
+                this.editor.creatorUpdateLayer(sel, l -> l.withModel(l.model().withAnimation(next)));
+            }).tooltip = "Click to cycle the model's animations";
+            y += ROW + 2;
+            int cw = (w - 4) / 2;
+            chip(g, mx, my, x, y, cw, "Loop: " + m.playback().name().toLowerCase(Locale.ROOT), false, () -> {
+                var all = HologramImage.Playback.values();
+                var next = all[(m.playback().ordinal() + 1) % all.length];
+                this.editor.creatorPushUndo();
+                this.editor.creatorUpdateLayer(sel, l -> l.withModel(l.model().withPlayback(next, l.model().speed(), l.model().start())));
+            }).tooltip = "Click to cycle: loop, once, ping-pong";
+            y = slider(g, mx, my, x + cw + 4, y, w - cw - 4, "Speed", String.format(Locale.ROOT, "%.1f\u00D7", m.speed()),
+                    (m.speed() + 4.0F) / 8.0F, ACCENT, false,
+                    v -> setModelSpeed(sel, round((float) v * 8.0F - 4.0F, 0.1F)),
+                    d -> setModelSpeed(sel, Mth.clamp(layer.model().speed() + (float) d * wheelStep(0.1F), -4.0F, 4.0F)),
+                    "Playback speed. Negative runs backwards.");
+        }
+        y = slider(g, mx, my, x, y, w, "Height", m.height() <= 0.0F ? "native" : String.format(Locale.ROOT, "%.2f", m.height()),
+                m.height() / 16.0F, ACCENT, false,
+                v -> setModelHeight(sel, round((float) v * 16.0F, 0.25F)),
+                d -> setModelHeight(sel, Mth.clamp(layer.model().height() + (float) d * wheelStep(0.25F), 0.0F, 16.0F)),
+                "Height in blocks. 0 keeps the model's own size.");
+        return y;
+    }
+
+    private void setModelSpeed(int sel, float speed) {
+        this.editor.creatorUpdateLayer(sel, l -> l.withModel(l.model().withPlayback(l.model().playback(), speed, l.model().start())));
+    }
+
+    private void setModelHeight(int sel, float height) {
+        this.editor.creatorUpdateLayer(sel, l -> l.withModel(l.model().withHeight(height)));
     }
 
     // ---- place: position and rotation as numbers (the same values the gizmo drags) ----
@@ -1774,6 +1825,10 @@ public final class HologramCreatorScreen extends Screen {
             }
             case IMAGE -> {
                 g.drawString(this.font, "I", x + 6, y + 4, ACCENT, false);
+                return;
+            }
+            case MODEL -> {
+                g.drawString(this.font, "M", x + 5, y + 4, ACCENT, false);
                 return;
             }
         }
