@@ -62,6 +62,10 @@ public final class HologramCreatorCheck {
     private static int layersBefore;
     private static Path droppedFile;
     private static Path bigFile;
+    private static Path gifFile;
+    private static Path webpFile;
+    private static int gifBefore;
+    private static int deleteBefore;
     private static int bigBefore;
 
     public static void install() {
@@ -397,6 +401,83 @@ public final class HologramCreatorCheck {
             } catch (IOException ignored) {
             }
         });
+        // Animated GIF at 100 fps, 5200 px wide: fit must thin the frames and shrink it into a bundle.
+        add(2, () -> {
+            try {
+                Path gif = Minecraft.getInstance().gameDirectory.toPath().resolve("foxstweaks-creator-check.gif");
+                writeGif(gif);
+                gifFile = gif;
+                var s = (dev.watdafawx.foxstweaks.client.HologramAssetScreen) Minecraft.getInstance().screen;
+                gifBefore = s == null ? 0 : s.devAssetCount();
+                if (s != null)
+                    s.devImport(gif.toString());
+            } catch (IOException e) {
+                check("test gif written", false, e.toString());
+            }
+        });
+        add(140, () -> {
+            var s = (dev.watdafawx.foxstweaks.client.HologramAssetScreen) Minecraft.getInstance().screen;
+            check("fast oversized GIF fitted and uploaded", s != null && s.devAssetCount() > gifBefore,
+                    s == null ? "no screen" : "before=" + gifBefore + " count=" + s.devAssetCount() + " status=" + s.devStatus());
+            try {
+                if (gifFile != null)
+                    Files.deleteIfExists(gifFile);
+            } catch (IOException ignored) {
+            }
+        });
+        // WebP is refused with a clear message instead of a server error.
+        add(2, () -> {
+            try {
+                Path webp = Minecraft.getInstance().gameDirectory.toPath().resolve("foxstweaks-creator-check.webp");
+                byte[] b = new byte[64];
+                System.arraycopy("RIFF".getBytes(), 0, b, 0, 4);
+                System.arraycopy("WEBPVP8 ".getBytes(), 0, b, 8, 8);
+                Files.write(webp, b);
+                webpFile = webp;
+                var s = (dev.watdafawx.foxstweaks.client.HologramAssetScreen) Minecraft.getInstance().screen;
+                if (s != null)
+                    s.devImport(webp.toString());
+            } catch (IOException e) {
+                check("test webp written", false, e.toString());
+            }
+        });
+        add(40, () -> {
+            var s = (dev.watdafawx.foxstweaks.client.HologramAssetScreen) Minecraft.getInstance().screen;
+            check("WebP gets a clear message", s != null && s.devStatus().startsWith("WebP is not supported"),
+                    s == null ? "no screen" : s.devStatus());
+            try {
+                if (webpFile != null)
+                    Files.deleteIfExists(webpFile);
+            } catch (IOException ignored) {
+            }
+        });
+        // Search narrows the grid; clearing it restores everything.
+        add(2, () -> {
+            var s = (dev.watdafawx.foxstweaks.client.HologramAssetScreen) Minecraft.getInstance().screen;
+            if (s != null) {
+                int all = s.devAssetCount();
+                s.devSearch("zzz-no-such-picture");
+                check("search hides non-matches", s.devVisibleCount() == 0, "visible=" + s.devVisibleCount());
+                s.devSearch("");
+                check("clearing search restores all", s.devVisibleCount() == all, "visible=" + s.devVisibleCount() + " all=" + all);
+            }
+        });
+        // Delete: first right-click arms, second deletes.
+        add(2, () -> {
+            var s = (dev.watdafawx.foxstweaks.client.HologramAssetScreen) Minecraft.getInstance().screen;
+            if (s != null) {
+                deleteBefore = s.devAssetCount();
+                s.devRightClickFirst();
+                check("first right-click only asks", s.devAssetCount() == deleteBefore && s.devStatus().startsWith("Delete "),
+                        s.devStatus());
+                s.devRightClickFirst();
+            }
+        });
+        add(60, () -> {
+            var s = (dev.watdafawx.foxstweaks.client.HologramAssetScreen) Minecraft.getInstance().screen;
+            check("second right-click deletes the picture", s != null && s.devAssetCount() == deleteBefore - 1,
+                    s == null ? "no screen" : "before=" + deleteBefore + " count=" + s.devAssetCount() + " status=" + s.devStatus());
+        });
         add(20, () -> shot("creator-s2-pictures.png"));
         add(2, () -> guiScale(3));
         add(14, () -> shot("creator-s3-pictures.png"));
@@ -562,6 +643,46 @@ public final class HologramCreatorCheck {
     private static void log(String line) {
         LOG.info("HologramCreatorCheck {}", line);
         REPORT.add(line);
+    }
+
+    private static void writeGif(Path out) throws IOException {
+        javax.imageio.ImageWriter w = javax.imageio.ImageIO.getImageWritersByFormatName("gif").next();
+        try (var os = javax.imageio.ImageIO.createImageOutputStream(out.toFile())) {
+            w.setOutput(os);
+            w.prepareWriteSequence(null);
+            for (int f = 0; f < 30; f++) {
+                var img = new java.awt.image.BufferedImage(5200, 1000, java.awt.image.BufferedImage.TYPE_INT_ARGB);
+                var g = img.createGraphics();
+                g.setPaint(new java.awt.GradientPaint(f * 100, 0, java.awt.Color.ORANGE, 5200, 1000, java.awt.Color.GREEN));
+                g.fillRect(0, 0, 5200, 1000);
+                g.setColor(java.awt.Color.BLACK);
+                g.fillOval(f * 150, 200, 300, 300);
+                g.dispose();
+                var param = w.getDefaultWriteParam();
+                var meta = w.getDefaultImageMetadata(javax.imageio.ImageTypeSpecifier.createFromRenderedImage(img), param);
+                String fmt = "javax_imageio_gif_image_1.0";
+                var root = (javax.imageio.metadata.IIOMetadataNode) meta.getAsTree(fmt);
+                javax.imageio.metadata.IIOMetadataNode gce = null;
+                for (var n = root.getFirstChild(); n != null; n = n.getNextSibling()) {
+                    if (n.getNodeName().equals("GraphicControlExtension"))
+                        gce = (javax.imageio.metadata.IIOMetadataNode) n;
+                }
+                if (gce == null) {
+                    gce = new javax.imageio.metadata.IIOMetadataNode("GraphicControlExtension");
+                    root.appendChild(gce);
+                }
+                gce.setAttribute("delayTime", "1");
+                gce.setAttribute("disposalMethod", "none");
+                gce.setAttribute("userInputFlag", "FALSE");
+                gce.setAttribute("transparentColorFlag", "FALSE");
+                gce.setAttribute("transparentColorIndex", "0");
+                meta.setFromTree(fmt, root);
+                w.writeToSequence(new javax.imageio.IIOImage(img, null, meta), param);
+            }
+            w.endWriteSequence();
+        } finally {
+            w.dispose();
+        }
     }
 
     private static void check(String name, boolean ok, String detail) {

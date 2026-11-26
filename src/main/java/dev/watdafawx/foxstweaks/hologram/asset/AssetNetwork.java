@@ -439,7 +439,11 @@ public final class AssetNetwork {
         Boolean video = ffmpegAvailable();
         if (video != null)
             page.addProperty("video", video);
-        page.addProperty("maxBytes", AssetLimits.current().fileBytes());
+        AssetLimits lim = AssetLimits.current();
+        page.addProperty("maxBytes", lim.fileBytes());
+        page.addProperty("dimension", lim.dimension());
+        page.addProperty("fps", lim.fps());
+        page.addProperty("seconds", lim.seconds());
         page.addProperty("count", all.size());
         page.addProperty("offset", offset);
         JsonArray entries = new JsonArray();

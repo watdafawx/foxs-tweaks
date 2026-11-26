@@ -52,6 +52,8 @@ public final class HologramAssetScreen extends Screen {
     private final String firstImport;
 
     private EditBox source;
+    private EditBox search;
+    private String pendingDelete = "";
     private boolean canUpload = true;
     private boolean loading = true;
     private int total;
@@ -88,6 +90,14 @@ public final class HologramAssetScreen extends Screen {
         this.source.setValue(keep);
         this.addRenderableWidget(this.source);
 
+        String keepSearch = this.search == null ? "" : this.search.getValue();
+        this.search = new EditBox(this.font, this.px0 + 70, this.py0 + 3, 110, 14, Component.literal("Search"));
+        this.search.setMaxLength(64);
+        this.search.setHint(Component.literal("Search"));
+        this.search.setValue(keepSearch);
+        this.search.setResponder(v -> this.scroll = 0);
+        this.addRenderableWidget(this.search);
+
         if (!this.opened) {
             this.opened = true;
             reload();
@@ -110,6 +120,9 @@ public final class HologramAssetScreen extends Screen {
                 return;
             }
             this.canUpload = !json.has("canUpload") || json.get("canUpload").getAsBoolean();
+            if (json.has("dimension"))
+                HologramAssetImport.serverLimits(json.get("maxBytes").getAsInt(), json.get("dimension").getAsInt(),
+                        json.get("fps").getAsInt(), json.get("seconds").getAsInt());
             this.total = json.has("count") ? json.get("count").getAsInt() : 0;
             JsonArray entries = json.has("entries") ? json.getAsJsonArray("entries") : new JsonArray();
             for (JsonElement e : entries) {
@@ -162,6 +175,19 @@ public final class HologramAssetScreen extends Screen {
         return this.px1 - 8 - 48;
     }
 
+    private List<Asset> visible() {
+        String q = this.search == null ? "" : this.search.getValue().trim().toLowerCase(Locale.ROOT);
+        if (q.isEmpty())
+            return this.assets;
+        List<Asset> out = new ArrayList<>();
+        for (Asset a : this.assets) {
+            if (a.name().toLowerCase(Locale.ROOT).contains(q) || a.type().toLowerCase(Locale.ROOT).contains(q)
+                    || a.id().startsWith(q))
+                out.add(a);
+        }
+        return out;
+    }
+
     private int tileX(int index) {
         return this.px0 + 8 + (index % this.cols) * (CELL + GAP);
     }
@@ -171,18 +197,19 @@ public final class HologramAssetScreen extends Screen {
     }
 
     private int contentHeight() {
-        int rows = (this.assets.size() + this.cols - 1) / this.cols;
+        int rows = (visible().size() + this.cols - 1) / this.cols;
         return rows * (CELL + LABEL + GAP);
     }
 
     private Asset tileAt(double mx, double my) {
         if (my < this.gridTop || my >= this.gridBottom)
             return null;
-        for (int i = 0; i < this.assets.size(); i++) {
+        List<Asset> list = visible();
+        for (int i = 0; i < list.size(); i++) {
             int x = tileX(i);
             int y = tileY(i);
             if (mx >= x && mx < x + CELL && my >= y && my < y + CELL + LABEL)
-                return this.assets.get(i);
+                return list.get(i);
         }
         return null;
     }
@@ -191,6 +218,27 @@ public final class HologramAssetScreen extends Screen {
     public boolean mouseClicked(double mx, double my, int button) {
         if (super.mouseClicked(mx, my, button))
             return true;
+        if (button == 1) {
+            Asset d = tileAt(mx, my);
+            if (d == null)
+                return false;
+            String label = d.name().isEmpty() ? d.id().substring(0, 8) : d.name();
+            if (!d.id().equals(this.pendingDelete)) {
+                this.pendingDelete = d.id();
+                say("Delete " + label + "? Right-click it again to confirm.", BAD);
+            } else {
+                this.pendingDelete = "";
+                HologramAssets.requestDelete(d.id(), false, err -> {
+                    if (err == null) {
+                        say("Deleted " + label + ".", GOOD);
+                        reload();
+                    } else {
+                        say(err, BAD);
+                    }
+                });
+            }
+            return true;
+        }
         if (button != 0)
             return false;
         if (mx >= uploadX() && mx < uploadX() + 48 && my >= this.py1 - 37 && my < this.py1 - 21) {
@@ -251,19 +299,23 @@ public final class HologramAssetScreen extends Screen {
         g.fill(this.px0, this.py0, this.px1, this.py1, PANEL);
         g.renderOutline(this.px0, this.py0, this.px1 - this.px0, this.py1 - this.py0, PANEL_EDGE);
         g.drawString(this.font, "PICTURES", this.px0 + 8, this.py0 + 7, ACCENT, false);
-        String count = this.loading ? "loading..." : this.total + (this.total == 1 ? " in this world" : " in this world");
+        String count = this.loading ? "loading..." : this.total + " in world";
         g.drawString(this.font, count, this.px1 - 8 - this.font.width(count), this.py0 + 7, FAINT, false);
 
         g.enableScissor(this.px0 + 1, this.gridTop, this.px1 - 1, this.gridBottom);
         Asset hover = tileAt(mx, my);
-        for (int i = 0; i < this.assets.size(); i++) {
+        List<Asset> shown = visible();
+        for (int i = 0; i < shown.size(); i++) {
             int y = tileY(i);
             if (y + CELL + LABEL < this.gridTop || y > this.gridBottom)
                 continue;
-            drawTile(g, this.assets.get(i), tileX(i), y, this.assets.get(i) == hover);
+            drawTile(g, shown.get(i), tileX(i), y, shown.get(i) == hover);
         }
         g.disableScissor();
 
+        if (!this.assets.isEmpty() && shown.isEmpty() && !this.loading) {
+            g.drawCenteredString(this.font, "No picture matches that search.", (this.px0 + this.px1) / 2, this.gridTop + 30, MUTED);
+        }
         if (this.assets.isEmpty() && !this.loading) {
             String hint = "Nothing here yet. Drop a file on the window,";
             String hint2 = "or type a path or address below.";
@@ -287,7 +339,7 @@ public final class HologramAssetScreen extends Screen {
                 !this.canUpload || busy ? 0xFF1A222D : overUpload ? 0xFF2A7FA0 : 0xFF1F6A86);
         g.drawCenteredString(this.font, "Upload", uploadX() + 24, this.py1 - 33, this.canUpload && !busy ? TEXT : FAINT);
 
-        String line = this.font.plainSubstrByWidth(this.status.isEmpty() ? "Click a picture to add it as a layer. Esc closes." : this.status,
+        String line = this.font.plainSubstrByWidth(this.status.isEmpty() ? "Click a picture to add it. Right-click twice to delete. Esc closes." : this.status,
                 this.px1 - this.px0 - 16);
         g.drawString(this.font, line, this.px0 + 8, this.py1 - 15, this.status.isEmpty() ? FAINT : this.statusColour, false);
     }
@@ -334,13 +386,28 @@ public final class HologramAssetScreen extends Screen {
         return this.status;
     }
 
+    public void devSearch(String text) {
+        this.search.setValue(text);
+    }
+
+    public int devVisibleCount() {
+        return visible().size();
+    }
+
+    /** Dev checks: right-click the first tile, as a user would. */
+    public boolean devRightClickFirst() {
+        if (visible().isEmpty())
+            return false;
+        return mouseClicked(tileX(0) + 4, tileY(0) + 4, 1);
+    }
+
     public void devImport(String text) {
         startImport(text);
     }
 
     /** Dev checks: click the first tile, as a user would. */
     public boolean devPickFirst() {
-        if (this.assets.isEmpty())
+        if (visible().isEmpty())
             return false;
         return mouseClicked(tileX(0) + 4, tileY(0) + 4, 0);
     }

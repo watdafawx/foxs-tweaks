@@ -26,7 +26,22 @@ import java.util.concurrent.atomic.AtomicBoolean;
 public final class HologramAssetImport {
     private static final AtomicBoolean BUSY = new AtomicBoolean();
 
+    /** Largest source we open to shrink; the upload itself is still capped at 16 MiB after fitting. */
+    private static final int MAX_SOURCE = 64 * 1024 * 1024;
+    private static volatile AssetLimits learned;
+
     private HologramAssetImport() {
+    }
+
+    /** The server's real caps, from the library listing; until one arrives the synced config is used. */
+    public static void serverLimits(int fileBytes, int dimension, int fps, int seconds) {
+        AssetLimits base = AssetLimits.current();
+        learned = new AssetLimits(fileBytes, base.worldBytes(), dimension, fps, seconds, base.perPlayer());
+    }
+
+    private static AssetLimits limits() {
+        AssetLimits l = learned;
+        return l != null ? l : AssetLimits.current();
     }
 
     public static boolean busy() {
@@ -65,8 +80,16 @@ public final class HologramAssetImport {
             byte[] data = loaded.bytes;
             String note = "";
             if (!loaded.video) {
+                if (isWebp(data)) {
+                    String msg = "WebP is not supported in game. Convert to PNG or GIF, or use the web editor.";
+                    Minecraft.getInstance().execute(() -> {
+                        BUSY.set(false);
+                        listener.done(false, msg);
+                    });
+                    return;
+                }
                 try {
-                    HologramAssetFit.Result fitted = HologramAssetFit.fit(data, AssetLimits.current());
+                    HologramAssetFit.Result fitted = HologramAssetFit.fit(data, limits());
                     data = fitted.bytes();
                     note = fitted.note();
                 } catch (IOException | RuntimeException | OutOfMemoryError e) {
@@ -112,11 +135,14 @@ public final class HologramAssetImport {
         }
         if (!Files.isRegularFile(path))
             throw new IOException("No such file: " + path.getFileName());
-        if (Files.size(path) > AssetLimits.MAX_BYTES)
-            throw new IOException("File is over the 16 MiB upload limit");
+        if (Files.size(path) > MAX_SOURCE)
+            throw new IOException("File is over the 64 MiB limit");
         byte[] bytes = Files.readAllBytes(path);
         String name = path.getFileName().toString();
-        return new Loaded(name, bytes, isVideo(name, bytes));
+        boolean video = isVideo(name, bytes);
+        if (video && bytes.length > AssetLimits.MAX_BYTES)
+            throw new IOException("Video is over the 16 MiB upload limit");
+        return new Loaded(name, bytes, video);
     }
 
     private static Loaded download(String address, HologramAssets.UploadListener listener) throws IOException {
@@ -136,19 +162,27 @@ public final class HologramAssetImport {
                 throw new IOException("The address answered " + response.statusCode());
             try (InputStream in = response.body()) {
                 // One byte more than the ceiling is enough to know it is too big, without reading a huge file.
-                byte[] bytes = in.readNBytes(AssetLimits.MAX_BYTES + 1);
-                if (bytes.length > AssetLimits.MAX_BYTES)
-                    throw new IOException("Download is over the 16 MiB upload limit");
+                byte[] bytes = in.readNBytes(MAX_SOURCE + 1);
+                if (bytes.length > MAX_SOURCE)
+                    throw new IOException("Download is over the 64 MiB limit");
                 String name = uri.getPath() == null || uri.getPath().isEmpty() ? "download" : uri.getPath();
                 name = name.substring(name.lastIndexOf('/') + 1);
                 if (name.isEmpty())
                     name = "download";
-                return new Loaded(name, bytes, isVideo(name, bytes));
+                boolean video = isVideo(name, bytes);
+                if (video && bytes.length > AssetLimits.MAX_BYTES)
+                    throw new IOException("Video is over the 16 MiB upload limit");
+                return new Loaded(name, bytes, video);
             }
         } catch (InterruptedException e) {
             Thread.currentThread().interrupt();
             throw new IOException("Download was interrupted");
         }
+    }
+
+    private static boolean isWebp(byte[] b) {
+        return b.length >= 12 && b[0] == 'R' && b[1] == 'I' && b[2] == 'F' && b[3] == 'F' && b[8] == 'W'
+                && b[9] == 'E' && b[10] == 'B' && b[11] == 'P';
     }
 
     /** By extension, else by the file's own first bytes (a URL often has no extension). */
