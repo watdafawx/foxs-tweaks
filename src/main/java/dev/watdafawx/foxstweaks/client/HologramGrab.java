@@ -861,6 +861,7 @@ public final class HologramGrab {
                     case ENTITY -> "[E] ";
                     case STRUCTURE -> "[S] ";
                     case IMAGE -> "[I] ";
+                    case MODEL -> "[M] ";
                     case PARTICLE -> "[P] ";
                     case BLOCK -> "[B] ";
                 };

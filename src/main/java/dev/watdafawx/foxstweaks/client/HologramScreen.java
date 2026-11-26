@@ -3836,6 +3836,7 @@ public class HologramScreen extends Screen {
             case ENTITY -> HologramLayer.entity(id, 1.0F);
             case PARTICLE -> HologramLayer.particle(id, 1.5F);
             case IMAGE -> HologramLayer.image(id, 1.0F);
+            case MODEL -> HologramLayer.model(id, 0.0F);
             case BLOCK, STRUCTURE -> HologramLayer.block(id, Map.of(), 1.0F);
         };
         this.layers.add(layer);

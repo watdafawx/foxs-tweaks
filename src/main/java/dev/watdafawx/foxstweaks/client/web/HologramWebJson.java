@@ -309,7 +309,7 @@ final class HologramWebJson {
             // A structure layer's id is its display name ("Structure 5x4x6"), not a registry id; an image layer's
             // is an asset hash. Neither is looked up in a registry.
             boolean structure = kind == HologramLayer.Kind.STRUCTURE;
-            boolean image = kind == HologramLayer.Kind.IMAGE;
+            boolean image = kind == HologramLayer.Kind.IMAGE || kind == HologramLayer.Kind.MODEL;
             ResourceLocation key = structure || image ? null : ResourceLocation.tryParse(id);
             if (key == null && !structure && !image)
                 throw new Invalid("bad id '" + id + "'");
@@ -342,14 +342,14 @@ final class HologramWebJson {
                     if (!(BuiltInRegistries.PARTICLE_TYPE.getOptional(key).orElse(null) instanceof SimpleParticleType))
                         throw new Invalid("unknown or unsupported particle '" + id + "'");
                 }
-                case IMAGE -> {
+                case IMAGE, MODEL -> {
                     // Image settings are plain strings; the layer clamps them (HologramImage#normalize), and the
                     // server checks that the asset exists when the hologram is saved.
                     JsonObject p = l.has("props") ? asObj(l.get("props"), "props") : new JsonObject();
                     if (p.size() > MAX_PROPS)
                         throw new Invalid("too many properties");
                     for (var e : p.entrySet())
-                        props.put(e.getKey(), asStr(e.getValue(), "image setting", 32));
+                        props.put(e.getKey(), asStr(e.getValue(), "asset setting", 64));
                 }
                 case STRUCTURE -> {
                 }

@@ -6,6 +6,7 @@ import com.mojang.blaze3d.platform.NativeImage;
 import com.mojang.brigadier.arguments.StringArgumentType;
 import dev.watdafawx.foxstweaks.hologram.HologramImage;
 import dev.watdafawx.foxstweaks.hologram.asset.AssetFrames;
+import dev.watdafawx.foxstweaks.hologram.model.ModelData;
 import dev.watdafawx.foxstweaks.hologram.asset.AssetLimits;
 import dev.watdafawx.foxstweaks.hologram.asset.AssetPayload;
 import dev.watdafawx.foxstweaks.hologram.asset.AssetStore;
@@ -133,6 +134,8 @@ public final class HologramAssets {
 
     private static final class Entry {
         AssetFrames frames;
+        /** Set instead of {@link #frames} when the asset is a 3D model. */
+        ModelData model;
         DynamicTexture texture;
         ResourceLocation location;
         int frame = -1;
@@ -226,6 +229,21 @@ public final class HologramAssets {
         }
         e.last = System.currentTimeMillis();
         return e;
+    }
+
+    /**
+     * The decoded 3D model of {@code hash}, starting a load if needed; null while it loads (or if the asset is
+     * not a model). The caller owns nothing: the entry is evicted like any other.
+     */
+    @Nullable
+    public static ModelData model(String hash) {
+        Entry e = entry(hash);
+        return e == null ? null : e.model;
+    }
+
+    private static void loadedModel(Entry entry, ModelData model, long bytes) {
+        entry.model = model;
+        entry.bytes = bytes;
     }
 
     private static void loaded(String hash, Entry entry, AssetFrames frames, long bytes) {
@@ -375,11 +393,16 @@ public final class HologramAssets {
                     Files.delete(path);
                     throw new IOException("Cache hash mismatch");
                 }
-                AssetFrames frames = AssetFrames.bundle(bytes);
+                ModelData model = ModelData.isModel(bytes) ? ModelData.decode(bytes) : null;
+                AssetFrames frames = model == null ? AssetFrames.bundle(bytes) : null;
                 Files.setLastModifiedTime(path, FileTime.fromMillis(System.currentTimeMillis()));
                 Minecraft.getInstance().execute(() -> {
-                    if (gen == generation && ENTRIES.get(hash) == entry)
-                        loaded(hash, entry, frames, bytes.length);
+                    if (gen == generation && ENTRIES.get(hash) == entry) {
+                        if (model != null)
+                            loadedModel(entry, model, bytes.length);
+                        else
+                            loaded(hash, entry, frames, bytes.length);
+                    }
                 });
             } catch (IOException ex) {
                 Minecraft.getInstance().execute(() -> {
@@ -483,13 +506,18 @@ public final class HologramAssets {
             incoming = null;
             submit(() -> {
                 try {
-                    AssetFrames frames = AssetFrames.bundle(bytes);
+                    ModelData model = ModelData.isModel(bytes) ? ModelData.decode(bytes) : null;
+                    AssetFrames frames = model == null ? AssetFrames.bundle(bytes) : null;
                     Files.createDirectories(cachePath());
                     AssetStore.atomic(cachePath().resolve(hash), bytes);
                     trimDisk();
                     Minecraft.getInstance().execute(() -> {
-                        if (gen == generation && entry != null && ENTRIES.get(hash) == entry)
-                            loaded(hash, entry, frames, bytes.length);
+                        if (gen == generation && entry != null && ENTRIES.get(hash) == entry) {
+                            if (model != null)
+                                loadedModel(entry, model, bytes.length);
+                            else
+                                loaded(hash, entry, frames, bytes.length);
+                        }
                     });
                 } catch (IOException e) {
                     Minecraft.getInstance().execute(() -> {

@@ -170,6 +170,7 @@ final class HologramWebAssets {
             case "image" -> AssetPayload.MODE_IMAGE;
             case "video" -> AssetPayload.MODE_VIDEO;
             case "bundle" -> AssetPayload.MODE_BUNDLE;
+            case "model" -> AssetPayload.MODE_MODEL;
             default -> -1;
         };
         if (mode < 0) {

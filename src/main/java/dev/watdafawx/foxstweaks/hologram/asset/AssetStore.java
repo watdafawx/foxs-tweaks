@@ -35,7 +35,22 @@ public final class AssetStore {
     public long bytes() { return index.values().stream().mapToLong(Metadata::byteSize).sum(); }
     public long count(UUID owner) { return index.values().stream().filter(m->m.owner().equals(owner)).count(); }
     /** A sanitised upload, ready to store. Made off the server thread by {@link #prepare}. */
-    public record Prepared(AssetFrames frames, byte[] blob, String id) {}
+    public record Prepared(AssetFrames frames, byte[] blob, String id, @javax.annotation.Nullable dev.watdafawx.foxstweaks.hologram.model.ModelData model) {
+        public Prepared(AssetFrames frames, byte[] blob, String id) { this(frames, blob, id, null); }
+    }
+
+    /** A 3D model upload (.glb / .gltf / .bbmodel): parsed, validated and re-encoded as the canonical FTM1 blob. */
+    public static Prepared prepareModel(byte[] input) throws IOException {
+        dev.watdafawx.foxstweaks.hologram.model.ModelData model;
+        if(dev.watdafawx.foxstweaks.hologram.model.GlbReader.looksLikeGlb(input)) model=dev.watdafawx.foxstweaks.hologram.model.GlbReader.read(input);
+        else if(dev.watdafawx.foxstweaks.hologram.model.BlockbenchReader.looksLikeBbmodel(input)) model=dev.watdafawx.foxstweaks.hologram.model.BlockbenchReader.read(input);
+        else if(dev.watdafawx.foxstweaks.hologram.model.ModelData.isModel(input)) model=dev.watdafawx.foxstweaks.hologram.model.ModelData.decode(input);
+        else if(new String(input,0,Math.min(input.length,64),java.nio.charset.StandardCharsets.UTF_8).stripLeading().startsWith("{")) model=dev.watdafawx.foxstweaks.hologram.model.GlbReader.read(input);
+        else throw new IOException("Not a .glb, .gltf or .bbmodel file");
+        byte[] blob=model.encode();
+        if(blob.length>AssetLimits.MAX_BYTES) throw new IOException("The model is too large after processing (max "+(AssetLimits.MAX_BYTES>>20)+" MiB)");
+        return new Prepared(null,blob,AssetFrames.hash(blob),model);
+    }
 
     /**
      * The expensive half of an upload: decode, rescale and re-encode every frame, then hash. Pure (touches no
@@ -57,12 +72,14 @@ public final class AssetStore {
 
     /** Server thread: quota checks and the index write for an already prepared upload. */
     public Metadata commit(UUID owner, String name, Prepared prepared, AssetLimits limits) throws IOException {
-        AssetFrames frames = prepared.frames(); byte[] blob = prepared.blob(); String id = prepared.id();
+        AssetFrames frames = prepared.frames(); byte[] blob = prepared.blob(); String id = prepared.id(); var model = prepared.model();
         if(index.containsKey(id)) return index.get(id);
         if(count(owner)>=limits.perPlayer()) throw new IOException("Per-player asset cap exceeded");
         if(bytes()+blob.length>limits.worldBytes()) throw new IOException("World asset quota exceeded");
         String clean=name.replaceAll("[\\p{Cntrl}]", "_"); if(clean.length()>128) clean=clean.substring(0,128);
-        Metadata meta=new Metadata(id,owner,clean,frames.frames().size()==1?"IMAGE":"ANIMATION",frames.width(),frames.height(),
+        Metadata meta=model!=null
+                ? new Metadata(id,owner,clean,"MODEL",0,0,model.animations.size(),List.of(),blob.length,System.currentTimeMillis(),0)
+                : new Metadata(id,owner,clean,frames.frames().size()==1?"IMAGE":"ANIMATION",frames.width(),frames.height(),
                 frames.frames().size(),List.copyOf(frames.delays()),blob.length,System.currentTimeMillis(),0);
         atomic(root.resolve("blobs").resolve(id),blob);
         index.put(id,meta);

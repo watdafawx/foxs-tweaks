@@ -50,7 +50,9 @@ public record HologramLayer(
         PARTICLE,
         STRUCTURE,
         /** A flat picture or animation from the asset store; {@code id} is the asset hash, settings in {@link HologramImage}. */
-        IMAGE
+        IMAGE,
+        /** A 3D model from the asset store; {@code id} is the asset hash, settings in {@link HologramModelSettings}. */
+        MODEL
     }
 
     public static final int MAX_LAYERS = 16;
@@ -58,7 +60,8 @@ public record HologramLayer(
     public HologramLayer {
         id = id == null ? "" : id;
         // Image settings are untrusted strings until normalised; clamping here covers every way a layer is made.
-        props = kind == Kind.IMAGE ? Map.copyOf(HologramImage.normalize(props)) : Map.copyOf(props);
+        props = kind == Kind.IMAGE ? Map.copyOf(HologramImage.normalize(props))
+                : kind == Kind.MODEL ? Map.copyOf(HologramModelSettings.normalize(props)) : Map.copyOf(props);
         int maxBytes = Holograms.maxDataBytes(kind);
         data = (data == null || data.sizeInBytes() > maxBytes) ? new CompoundTag() : data.copy();
         groupId = groupId == null ? "" : groupId;
@@ -143,6 +146,22 @@ public record HologramLayer(
 
     public HologramLayer withImage(HologramImage image) {
         return withProps(image.toProps());
+    }
+
+    /** A new model layer: one block tall, plays no animation until one is picked. */
+    public static HologramLayer model(String assetHash, float offsetY) {
+        return new HologramLayer(Kind.MODEL, assetHash, HologramModelSettings.DEFAULT.toProps(), new CompoundTag(), "", true,
+                0.0F, offsetY, 0.0F, 0.0F, 0.0F, 0.0F, 1.0F,
+                0.0F, HologramSpec.AXIS_Y, 0.0F, 4.0F, false, List.of(), 10.0F, 0.01F);
+    }
+
+    /** The model settings of a {@link Kind#MODEL} layer (defaults for any other kind). */
+    public HologramModelSettings model() {
+        return this.kind == Kind.MODEL ? HologramModelSettings.of(this.props) : HologramModelSettings.DEFAULT;
+    }
+
+    public HologramLayer withModel(HologramModelSettings settings) {
+        return withProps(settings.toProps());
     }
 
     public HologramLayer withContent(Kind kind, String id, Map<String, String> props, CompoundTag data) {
@@ -230,13 +249,13 @@ public record HologramLayer(
      * uploaded asset), so picking a block, entity or particle must never overwrite them.
      */
     public boolean fixedContent() {
-        return this.kind == Kind.STRUCTURE || this.kind == Kind.IMAGE;
+        return this.kind == Kind.STRUCTURE || this.kind == Kind.IMAGE || this.kind == Kind.MODEL;
     }
 
     public boolean resolvable() {
         if (this.kind == Kind.STRUCTURE)
             return HologramStructure.isValidTag(this.data);
-        if (this.kind == Kind.IMAGE)
+        if (this.kind == Kind.IMAGE || this.kind == Kind.MODEL)
             return dev.watdafawx.foxstweaks.hologram.asset.AssetFrames.validId(this.id);
         ResourceLocation key = ResourceLocation.tryParse(this.id);
         if (key == null)
@@ -245,11 +264,13 @@ public record HologramLayer(
             case BLOCK -> BuiltInRegistries.BLOCK.containsKey(key);
             case ENTITY -> BuiltInRegistries.ENTITY_TYPE.containsKey(key);
             case PARTICLE -> BuiltInRegistries.PARTICLE_TYPE.containsKey(key);
-            case STRUCTURE, IMAGE -> true;
+            case STRUCTURE, IMAGE, MODEL -> true;
         };
     }
 
     public String shortName() {
+        if (this.kind == Kind.MODEL)
+            return "Model " + (this.id.length() >= 8 ? this.id.substring(0, 8) : this.id);
         if (this.kind == Kind.IMAGE)
             return "Image " + (this.id.length() >= 8 ? this.id.substring(0, 8) : this.id);
         if (this.kind == Kind.STRUCTURE) {
@@ -269,6 +290,7 @@ public record HologramLayer(
             case PARTICLE -> "P";
             case STRUCTURE -> "S";
             case IMAGE -> "I";
+            case MODEL -> "M";
         };
         return "[" + k + "] " + shortName();
     }

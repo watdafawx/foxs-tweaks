@@ -229,10 +229,21 @@ public final class HologramNetwork {
      * {@code hologramImageMaxLayers}; otherwise why not. Placing an existing asset needs no upload permission:
      * anyone who may edit the hologram may use what is in the library.
      */
+    /** A model is drawn from CPU-skinned vertices every frame, so a hologram may hold only a few. */
+    public static final int MAX_MODEL_LAYERS = 4;
+
     @javax.annotation.Nullable
     public static String imageProblem(net.minecraft.server.MinecraftServer server, HologramSpec spec) {
         int images = 0;
+        int models = 0;
         for (HologramLayer layer : spec.layers()) {
+            if (layer.kind() == HologramLayer.Kind.MODEL) {
+                if (++models > MAX_MODEL_LAYERS)
+                    return "too many model layers (limit " + MAX_MODEL_LAYERS + ")";
+                if (!dev.watdafawx.foxstweaks.hologram.asset.AssetNetwork.known(server, layer.id()))
+                    return "model layer uses an asset that is not in this world's library";
+                continue;
+            }
             if (layer.kind() != HologramLayer.Kind.IMAGE)
                 continue;
             images++;

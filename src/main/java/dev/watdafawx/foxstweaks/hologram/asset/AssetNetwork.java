@@ -63,6 +63,8 @@ public final class AssetNetwork {
     private static final int LISTING_BYTES = 28000;
     /** A video's input may be larger than the asset limit: the canonical frames are what that limit is for. */
     private static final int VIDEO_INPUT_BYTES = AssetLimits.MAX_BYTES;
+    /** A .bbmodel carries its textures as base64, so the input is larger than the stored model. */
+    private static final int MODEL_INPUT_BYTES = AssetLimits.MAX_BYTES;
 
     /** One worker, a short queue: uploads are rare and a full queue is answered with a refusal, not a backlog. */
     private static final ThreadPoolExecutor WORKER = new ThreadPoolExecutor(1, 1, 30, TimeUnit.SECONDS,
@@ -267,13 +269,15 @@ public final class AssetNetwork {
         if (UPLOADS.containsKey(id) || PROCESSING.containsKey(id))
             throw new IOException("An upload is already in progress");
         int mode = p.number();
-        if (mode != AssetPayload.MODE_IMAGE && mode != AssetPayload.MODE_VIDEO && mode != AssetPayload.MODE_BUNDLE)
+        if (mode != AssetPayload.MODE_IMAGE && mode != AssetPayload.MODE_VIDEO && mode != AssetPayload.MODE_BUNDLE
+                && mode != AssetPayload.MODE_MODEL)
             throw new IOException("Unknown upload mode");
         if (mode == AssetPayload.MODE_VIDEO && !ServerConfig.mediaFfmpegEnabled())
             throw new IOException("Video import is switched off on this server (mediaFfmpegEnabled)");
         if (mode == AssetPayload.MODE_VIDEO && Boolean.FALSE.equals(ffmpegFound))
             throw new IOException("This server has no ffmpeg; convert the video in the browser instead");
-        int cap = mode == AssetPayload.MODE_IMAGE ? AssetLimits.current().fileBytes() : VIDEO_INPUT_BYTES;
+        int cap = mode == AssetPayload.MODE_IMAGE ? AssetLimits.current().fileBytes()
+                : mode == AssetPayload.MODE_MODEL ? MODEL_INPUT_BYTES : VIDEO_INPUT_BYTES;
         if (p.total() < 8 || p.total() > cap)
             throw new IOException("File byte limit exceeded (" + cap + " bytes)");
         UPLOADS.put(id, new Upload(p.text(), p.total(), mode));
@@ -288,7 +292,7 @@ public final class AssetNetwork {
         boolean video = upload.mode == AssetPayload.MODE_VIDEO;
         var settings = video ? MediaConfig.read() : null;
         PROCESSING.put(id, System.currentTimeMillis());
-        progress(player, 0, video ? "converting video" : "processing image");
+        progress(player, 0, video ? "converting video" : upload.mode == AssetPayload.MODE_MODEL ? "reading model" : "processing image");
         try {
             WORKER.execute(() -> {
                 AssetStore.Prepared prepared = null;
@@ -304,6 +308,8 @@ public final class AssetNetwork {
                             throw new IOException("A frame bundle upload must be an FTAS bundle");
                         // Re-encoding at the server's size limits usually shrinks the browser's frames.
                         prepared = AssetStore.prepare(bytes, limits, VIDEO_INPUT_BYTES);
+                    } else if (upload.mode == AssetPayload.MODE_MODEL) {
+                        prepared = AssetStore.prepareModel(bytes);
                     } else {
                         prepared = AssetStore.prepare(bytes, limits);
                     }
@@ -511,7 +517,7 @@ public final class AssetNetwork {
         if (spec == null)
             return uses;
         for (HologramLayer layer : spec.layers()) {
-            if (layer.kind() == HologramLayer.Kind.IMAGE && AssetFrames.validId(layer.id()))
+            if ((layer.kind() == HologramLayer.Kind.IMAGE || layer.kind() == HologramLayer.Kind.MODEL) && AssetFrames.validId(layer.id()))
                 uses.merge(layer.id(), 1, Integer::sum);
         }
         return uses;

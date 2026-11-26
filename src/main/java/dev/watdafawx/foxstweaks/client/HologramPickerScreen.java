@@ -317,7 +317,7 @@ public class HologramPickerScreen extends Screen {
             case BLOCK -> BLOCKS;
             case ENTITY -> MOBS;
             case PARTICLE -> PARTICLES;
-            case STRUCTURE, IMAGE -> List.of();
+            case STRUCTURE, IMAGE, MODEL -> List.of();
         };
     }
 
@@ -479,7 +479,7 @@ public class HologramPickerScreen extends Screen {
                 case BLOCK -> query.matchesBlock(e.block());
                 case ENTITY -> query.matchesEntity(e.type(), e.id(), e.name());
                 case PARTICLE -> query.matchesParticle(e.id());
-                case STRUCTURE, IMAGE -> false;
+                case STRUCTURE, IMAGE, MODEL -> false;
             };
             if (!ok)
                 continue;
@@ -1047,6 +1047,7 @@ public class HologramPickerScreen extends Screen {
             case PARTICLE -> "Particles";
             case STRUCTURE -> "Structures";
             case IMAGE -> "Images";
+            case MODEL -> "Models";
         };
         g.drawString(this.font, title, this.midX + 8, this.py0 + 6, ACCENT, false);
         String closeLabel = "Close (Esc)";

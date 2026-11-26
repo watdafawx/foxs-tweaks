@@ -265,6 +265,13 @@ public record HologramSpec(
                 halfZ = dims[2] * 0.5F + 0.05F;
                 minY = -0.05F;
                 maxY = dims[1] + 0.05F;
+            } else if (layer.kind() == HologramLayer.Kind.MODEL) {
+                // The server never loads the model, so its reach box is a generous column of the drawn height.
+                float h = layer.model().height() > 0.0F ? layer.model().height() : 1.0F;
+                halfX = h * 0.6F + 0.05F;
+                halfZ = halfX;
+                minY = -0.05F;
+                maxY = h * 1.1F + 0.05F;
             } else if (layer.kind() == HologramLayer.Kind.IMAGE) {
                 // Bottom-centred quad. A billboard can face any way, so its box is the sphere around its centre.
                 HologramImage img = layer.image();
