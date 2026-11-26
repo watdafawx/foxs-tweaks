@@ -23,6 +23,7 @@ import net.minecraft.core.BlockPos;
 import net.minecraft.world.level.block.RenderShape;
 import net.minecraft.world.level.block.entity.BlockEntity;
 import net.minecraft.world.level.block.state.BlockState;
+import net.minecraft.world.level.material.FluidState;
 import net.minecraft.world.phys.AABB;
 import net.minecraft.world.phys.Vec3;
 import net.neoforged.neoforge.client.event.RenderLevelStageEvent;
@@ -468,10 +469,13 @@ public final class HologramRenderer {
                 BlockState state = HologramStates.resolve(layer.id(), layer.props());
                 if (state == null)
                     return;
+
                 boolean hasModel = state.getRenderShape() == RenderShape.MODEL;
+                FluidState fluid = state.getFluidState();
+                boolean hasFluid = !fluid.isEmpty();
                 BlockEntity be = HologramBlockEntities.getForLayer(spec.id(), layerIndex, spec.pos(), state, layer.data());
                 var ber = be == null ? null : HologramBlockEntities.renderer(be);
-                if (!hasModel && ber == null)
+                if (!hasModel && !hasFluid && ber == null)
                     return;
 
                 pose.pushPose();
@@ -486,6 +490,8 @@ public final class HologramRenderer {
                     Minecraft.getInstance().getBlockRenderer()
                             .renderSingleBlock(state, pose, out, light, OverlayTexture.NO_OVERLAY, md, null);
                 }
+                if (hasFluid)
+                    HologramStructureMesh.renderSingleFluid(state, fluid, pose, out, light, spec.pos());
                 if (ber != null) {
                     renderBlockEntity(pose, out, be, ber, partialTick, light);
                     drawnBlockEntities++;
@@ -516,21 +522,36 @@ public final class HologramRenderer {
                     HologramStructure struct = compiled.structure;
                     BlockState[] pal = compiled.resolvedPalette;
                     int count = struct.blockCount();
+                    BlockPos.MutableBlockPos localPos = new BlockPos.MutableBlockPos();
                     for (int i = 0; i < count; i++) {
                         int posIdx = struct.positionAt(i);
                         int palIdx = struct.paletteIndexAt(i);
                         if (palIdx < 0 || palIdx >= pal.length)
                             continue;
                         BlockState st = pal[palIdx];
-                        if (st.isAir() || st.getRenderShape() != RenderShape.MODEL)
+                        if (st.isAir())
                             continue;
+
+                        FluidState fluid = st.getFluidState();
+                        boolean hasFluid = !fluid.isEmpty();
+                        boolean hasModel = st.getRenderShape() == RenderShape.MODEL;
+                        if (!hasFluid && !hasModel)
+                            continue;
+
                         int bx = struct.unpackX(posIdx);
                         int by = struct.unpackY(posIdx);
                         int bz = struct.unpackZ(posIdx);
                         pose.pushPose();
                         pose.translate(bx - halfW, by, bz - halfD);
-                        blockRenderer.renderSingleBlock(st, pose, out, light, OverlayTexture.NO_OVERLAY,
-                                ModelData.EMPTY, null);
+                        if (hasModel) {
+                            blockRenderer.renderSingleBlock(st, pose, out, light, OverlayTexture.NO_OVERLAY,
+                                    ModelData.EMPTY, null);
+                        }
+                        if (hasFluid) {
+                            localPos.set(bx, by, bz);
+                            HologramStructureMesh.renderFluidImmediate(blockRenderer, compiled.blockGetter, localPos,
+                                    st, fluid, pose, out);
+                        }
                         pose.popPose();
                     }
                 } else {

@@ -6,11 +6,15 @@ import com.mojang.blaze3d.vertex.ByteBufferBuilder;
 import com.mojang.blaze3d.vertex.MeshData;
 import com.mojang.blaze3d.vertex.PoseStack;
 import com.mojang.blaze3d.vertex.VertexBuffer;
+import com.mojang.blaze3d.vertex.VertexConsumer;
+import com.mojang.blaze3d.vertex.VertexSorting;
 import dev.watdafawx.foxstweaks.hologram.HologramStructure;
 import dev.watdafawx.foxstweaks.hologram.HologramLayer;
 import dev.watdafawx.foxstweaks.hologram.HologramSpec;
 import net.minecraft.client.Minecraft;
+import net.minecraft.client.renderer.ItemBlockRenderTypes;
 import net.minecraft.client.renderer.LightTexture;
+import net.minecraft.client.renderer.MultiBufferSource;
 import net.minecraft.client.renderer.RenderType;
 import net.minecraft.client.renderer.ShaderInstance;
 import net.minecraft.client.renderer.block.BlockRenderDispatcher;
@@ -32,8 +36,10 @@ import net.minecraft.world.level.block.state.BlockState;
 import net.minecraft.world.level.lighting.LevelLightEngine;
 import net.minecraft.world.level.material.FluidState;
 import net.neoforged.neoforge.client.ChunkRenderTypeSet;
+import net.neoforged.neoforge.client.RenderTypeHelper;
 import net.neoforged.neoforge.client.model.data.ModelData;
 import org.joml.Matrix4f;
+import org.joml.Vector3f;
 
 import javax.annotation.Nullable;
 import java.util.ArrayList;
@@ -43,19 +49,62 @@ import java.util.List;
 import java.util.Map;
 
 /**
- * Compiles each {@link HologramStructure} layer's block models ONCE into per-{@link RenderType}
- * GPU {@link VertexBuffer}s with internal neighbour culling across the structure's own blocks.
+ * Compiles each {@link HologramStructure} layer's block models and fluids ONCE into per-{@link RenderType}
+ * GPU {@link VertexBuffer}s with internal neighbour culling across the structure's own blocks and fluids.
  *
  * <p>Drawing a cached structure costs one {@link VertexBuffer#drawWithShader} per used render type
- * (typically 1-3 draw calls regardless of whether the structure holds 10 or 4,096 blocks). Uniform
- * colour FX (TINT, PULSE, RAINBOW, GLITCH) are applied cheaply via {@link RenderSystem#setShaderColor};
- * per-vertex Y-dependent FX (SCANLINE, GRADIENT) fall back to immediate emission in
- * {@link HologramRenderer}. Block entities inside the structure are collected once at compile time
- * and rendered through {@link HologramBlockEntities}.
+ * (typically 1-4 draw calls regardless of whether the structure holds 10 or 4,096 blocks). Translucent
+ * layers (water, stained glass) keep a {@link MeshData.SortState} and lazily re-upload only their index
+ * buffer when the camera moves more than half a block in structure-local space. Uniform colour FX (TINT,
+ * PULSE, RAINBOW, GLITCH) are applied cheaply via {@link RenderSystem#setShaderColor}; per-vertex
+ * Y-dependent FX (SCANLINE, GRADIENT) fall back to immediate emission in {@link HologramRenderer}. Block
+ * entities inside the structure are collected once at compile time and rendered through
+ * {@link HologramBlockEntities}.
  */
 public final class HologramStructureMesh {
 
-    record CompiledBuffer(RenderType renderType, VertexBuffer vbo) {
+    static final class CompiledBuffer {
+        final RenderType renderType;
+        final VertexBuffer vbo;
+        @Nullable
+        final MeshData.SortState sortState;
+        private float lastSortX = Float.NaN;
+        private float lastSortY;
+        private float lastSortZ;
+
+        CompiledBuffer(RenderType renderType, VertexBuffer vbo, @Nullable MeshData.SortState sortState) {
+            this.renderType = renderType;
+            this.vbo = vbo;
+            this.sortState = sortState;
+        }
+
+        /**
+         * Re-sorts translucent quads back-to-front in structure-local space whenever the camera moves
+         * more than half a block relative to this structure. Only the index buffer is re-uploaded;
+         * the compiled vertices stay static.
+         */
+        void sortIfNeeded(Vector3f camLocal) {
+            if (this.sortState == null)
+                return;
+
+            if (!Float.isNaN(this.lastSortX)
+                    && camLocal.distanceSquared(this.lastSortX, this.lastSortY, this.lastSortZ) <= 0.25F)
+                return;
+
+            int bytes = Math.max(256, this.sortState.centroids().length * 6 * this.sortState.indexType().bytes);
+            try (ByteBufferBuilder bb = new ByteBufferBuilder(bytes)) {
+                ByteBufferBuilder.Result idx = this.sortState.buildSortedIndexBuffer(bb, VertexSorting.byDistance(camLocal));
+                if (idx != null) {
+                    this.vbo.bind();
+                    this.vbo.uploadIndexBuffer(idx);
+                    VertexBuffer.unbind();
+                }
+            }
+            this.lastSortX = camLocal.x;
+            this.lastSortY = camLocal.y;
+            this.lastSortZ = camLocal.z;
+        }
+
         void close() {
             this.vbo.close();
         }
@@ -67,30 +116,48 @@ public final class HologramStructureMesh {
     static final class CompiledStructure {
         final HologramStructure structure;
         final BlockState[] resolvedPalette;
+        final StructureBlockGetter blockGetter;
         final List<CompiledBuffer> buffers;
         final List<BeSlot> blockEntities;
         final int contentHash;
         final int packedLight;
+        final BlockPos anchorPos;
         CompoundTag lastTag;
 
         CompiledStructure(HologramStructure structure, BlockState[] resolvedPalette,
-                          List<CompiledBuffer> buffers, List<BeSlot> blockEntities,
-                          int contentHash, int packedLight, CompoundTag lastTag) {
+                          StructureBlockGetter blockGetter, List<CompiledBuffer> buffers,
+                          List<BeSlot> blockEntities, int contentHash, int packedLight,
+                          BlockPos anchorPos, CompoundTag lastTag) {
             this.structure = structure;
             this.resolvedPalette = resolvedPalette;
+            this.blockGetter = blockGetter;
             this.buffers = buffers;
             this.blockEntities = blockEntities;
             this.contentHash = contentHash;
             this.packedLight = packedLight;
+            this.anchorPos = anchorPos.immutable();
             this.lastTag = lastTag;
         }
 
         void draw(PoseStack pose, Matrix4f view, Matrix4f projection, float r, float g, float b) {
             if (this.buffers.isEmpty())
                 return;
-            Matrix4f mv = new Matrix4f(view).mul(pose.last().pose());
+
+            Matrix4f poseMat = pose.last().pose();
+            Matrix4f mv = new Matrix4f(view).mul(poseMat);
+            Vector3f camLocal = null;
             for (int i = 0; i < this.buffers.size(); i++) {
                 CompiledBuffer cb = this.buffers.get(i);
+                if (cb.sortState != null) {
+                    if (camLocal == null && Math.abs(poseMat.determinant()) > 1.0E-8F) {
+                        poseMat.invert(TMP_INV);
+                        // Camera sits at the origin in poseMat's output space (camera-relative world coords).
+                        camLocal = TMP_INV.transformPosition(0.0F, 0.0F, 0.0F, TMP_CAM);
+                    }
+                    if (camLocal != null)
+                        cb.sortIfNeeded(camLocal);
+                }
+
                 cb.renderType.setupRenderState();
                 ShaderInstance shader = RenderSystem.getShader();
                 try {
@@ -120,6 +187,9 @@ public final class HologramStructureMesh {
     }
 
     private static final Map<String, CompiledStructure> CACHE = new HashMap<>();
+    private static final Matrix4f TMP_INV = new Matrix4f();
+    private static final Vector3f TMP_CAM = new Vector3f();
+    private static final PoseFluidConsumer POSE_FLUID_CONSUMER = new PoseFluidConsumer();
     private static int buildCount;
 
     private HologramStructureMesh() {
@@ -146,9 +216,10 @@ public final class HologramStructureMesh {
     static CompiledStructure get(String specId, int layerIndex, CompoundTag data, int packedLight, BlockPos anchorPos) {
         if (data == null || data.isEmpty())
             return null;
+
         String key = specId + "#layer" + layerIndex;
         CompiledStructure existing = CACHE.get(key);
-        if (existing != null && existing.packedLight == packedLight) {
+        if (existing != null && existing.packedLight == packedLight && existing.anchorPos.equals(anchorPos)) {
             if (existing.lastTag == data)
                 return existing;
             int h = data.hashCode();
@@ -224,6 +295,7 @@ public final class HologramStructureMesh {
         PoseStack pose = new PoseStack();
         RandomSource random = RandomSource.create(42L);
         BlockPos.MutableBlockPos localPos = new BlockPos.MutableBlockPos();
+        TranslatingFluidConsumer fluidConsumer = new TranslatingFluidConsumer();
         double halfW = w * 0.5;
         double halfD = d * 0.5;
 
@@ -232,13 +304,31 @@ public final class HologramStructureMesh {
             for (int i = 0; i < count; i++) {
                 int posIdx = structure.positionAt(i);
                 BlockState state = grid[posIdx];
-                if (state == null || state.isAir() || state.getRenderShape() != RenderShape.MODEL)
+                if (state == null || state.isAir())
                     continue;
 
                 int x = structure.unpackX(posIdx);
                 int y = structure.unpackY(posIdx);
                 int z = structure.unpackZ(posIdx);
                 localPos.set(x, y, z);
+
+                // Render fluids (source, flowing, and waterlogged blocks such as stairs/slabs/kelp)
+                // using vanilla's liquid renderer so neighbour culling, slopes and biome tint match the world.
+                FluidState fluid = state.getFluidState();
+                if (!fluid.isEmpty()) {
+                    RenderType fluidRt = ItemBlockRenderTypes.getRenderLayer(fluid);
+                    BufferBuilder fluidBuilder = getOrCreateBuilder(fluidRt, builders, byteBuffers, count);
+                    // LiquidBlockRenderer emits section-relative (pos & 15) coordinates with no PoseStack;
+                    // shift them into the structure's centered local space.
+                    fluidConsumer.reset(fluidBuilder,
+                            (float) (x - halfW) - (x & 15),
+                            (float) y - (y & 15),
+                            (float) (z - halfD) - (z & 15));
+                    dispatcher.renderLiquid(localPos, getter, fluidConsumer, state, fluid);
+                }
+
+                if (state.getRenderShape() != RenderShape.MODEL)
+                    continue;
 
                 BakedModel model = dispatcher.getBlockModel(state);
                 BlockEntity be = localBes.get(posIdx);
@@ -250,13 +340,7 @@ public final class HologramStructureMesh {
                 pose.pushPose();
                 pose.translate(x - halfW, y, z - halfD);
                 for (RenderType rt : types) {
-                    BufferBuilder builder = builders.get(rt);
-                    if (builder == null) {
-                        ByteBufferBuilder bb = new ByteBufferBuilder(Math.min(262144, Math.max(4096, count * 256)));
-                        byteBuffers.put(rt, bb);
-                        builder = new BufferBuilder(bb, rt.mode(), rt.format());
-                        builders.put(rt, builder);
-                    }
+                    BufferBuilder builder = getOrCreateBuilder(rt, builders, byteBuffers, count);
                     random.setSeed(seed);
                     modelRenderer.tesselateBlock(getter, model, state, localPos, pose, builder,
                             true, random, seed, OverlayTexture.NO_OVERLAY, modelData, rt);
@@ -274,8 +358,8 @@ public final class HologramStructureMesh {
             for (var leftover : builders.entrySet())
                 uploadBuffer(leftover.getKey(), leftover.getValue(), compiled);
 
-            return new CompiledStructure(structure, resolvedPalette, List.copyOf(compiled),
-                    List.copyOf(beSlots), sourceTag.hashCode(), packedLight, sourceTag);
+            return new CompiledStructure(structure, resolvedPalette, getter, List.copyOf(compiled),
+                    List.copyOf(beSlots), sourceTag.hashCode(), packedLight, anchorPos, sourceTag);
         } finally {
             ModelBlockRenderer.clearCache();
             for (ByteBufferBuilder bb : byteBuffers.values()) {
@@ -287,15 +371,65 @@ public final class HologramStructureMesh {
         }
     }
 
+    private static BufferBuilder getOrCreateBuilder(RenderType rt, Map<RenderType, BufferBuilder> builders,
+                                                    Map<RenderType, ByteBufferBuilder> byteBuffers, int blockCount) {
+        BufferBuilder builder = builders.get(rt);
+        if (builder == null) {
+            ByteBufferBuilder bb = new ByteBufferBuilder(Math.min(262144, Math.max(4096, blockCount * 256)));
+            byteBuffers.put(rt, bb);
+            builder = new BufferBuilder(bb, rt.mode(), rt.format());
+            builders.put(rt, builder);
+        }
+        return builder;
+    }
+
     private static void uploadBuffer(RenderType rt, BufferBuilder builder, List<CompiledBuffer> out) {
         MeshData meshData = builder.build();
         if (meshData == null)
             return;
-        VertexBuffer vbo = new VertexBuffer(VertexBuffer.Usage.STATIC);
-        vbo.bind();
-        vbo.upload(meshData);
-        VertexBuffer.unbind();
-        out.add(new CompiledBuffer(rt, vbo));
+
+        MeshData.SortState sortState = null;
+        ByteBufferBuilder sortBuf = null;
+        try {
+            if (rt.sortOnUpload()) {
+                int sortBytes = Math.max(256, meshData.drawState().indexCount() * meshData.drawState().indexType().bytes);
+                sortBuf = new ByteBufferBuilder(sortBytes);
+                sortState = meshData.sortQuads(sortBuf, VertexSorting.DISTANCE_TO_ORIGIN);
+            }
+            VertexBuffer vbo = new VertexBuffer(VertexBuffer.Usage.STATIC);
+            vbo.bind();
+            vbo.upload(meshData);
+            VertexBuffer.unbind();
+            out.add(new CompiledBuffer(rt, vbo, sortState));
+        } finally {
+            if (sortBuf != null)
+                sortBuf.close();
+        }
+    }
+
+    /**
+     * Emits one fluid block into a {@link MultiBufferSource} (e.g. {@link TintedBuffer} during the uncached
+     * SCANLINE/GRADIENT structure path) with the current {@code pose} already translated to the block's corner.
+     */
+    static void renderFluidImmediate(BlockRenderDispatcher dispatcher, BlockAndTintGetter getter, BlockPos localPos,
+                                     BlockState state, FluidState fluid, PoseStack pose, MultiBufferSource out) {
+        RenderType chunkRt = ItemBlockRenderTypes.getRenderLayer(fluid);
+        RenderType entityRt = RenderTypeHelper.getEntityRenderType(chunkRt, false);
+        VertexConsumer delegate = out.getBuffer(entityRt);
+        POSE_FLUID_CONSUMER.reset(delegate, pose.last(),
+                -(localPos.getX() & 15),
+                -(localPos.getY() & 15),
+                -(localPos.getZ() & 15));
+        dispatcher.renderLiquid(localPos, getter, POSE_FLUID_CONSUMER, state, fluid);
+    }
+
+    /** Renders the fluid of a standalone {@link HologramLayer.Kind#BLOCK} layer (e.g. water, lava, or waterlogged block). */
+    static void renderSingleFluid(BlockState state, FluidState fluid, PoseStack pose, MultiBufferSource out,
+                                  int packedLight, BlockPos anchorPos) {
+        Minecraft mc = Minecraft.getInstance();
+        StructureBlockGetter single = new StructureBlockGetter(mc, 1, 1, 1,
+                new BlockState[] { state }, Map.of(), anchorPos, packedLight);
+        renderFluidImmediate(mc.getBlockRenderer(), single, BlockPos.ZERO, state, fluid, pose, out);
     }
 
     public static void prune(List<HologramSpec> specs) {
@@ -421,6 +555,123 @@ public final class HologramStructureMesh {
         @Override
         public int getMinBuildHeight() {
             return 0;
+        }
+    }
+
+    /**
+     * Shifts {@link net.minecraft.client.renderer.block.LiquidBlockRenderer}'s section-relative vertices
+     * into the structure's centered local space for cached VBO compilation.
+     */
+    private static final class TranslatingFluidConsumer implements VertexConsumer {
+        private VertexConsumer delegate;
+        private float ox;
+        private float oy;
+        private float oz;
+
+        void reset(VertexConsumer delegate, float ox, float oy, float oz) {
+            this.delegate = delegate;
+            this.ox = ox;
+            this.oy = oy;
+            this.oz = oz;
+        }
+
+        @Override
+        public VertexConsumer addVertex(float x, float y, float z) {
+            this.delegate.addVertex(x + this.ox, y + this.oy, z + this.oz);
+            return this;
+        }
+
+        @Override
+        public VertexConsumer setColor(int r, int g, int b, int a) {
+            this.delegate.setColor(r, g, b, a);
+            return this;
+        }
+
+        @Override
+        public VertexConsumer setUv(float u, float v) {
+            this.delegate.setUv(u, v);
+            return this;
+        }
+
+        @Override
+        public VertexConsumer setUv1(int u, int v) {
+            this.delegate.setUv1(u, v);
+            return this;
+        }
+
+        @Override
+        public VertexConsumer setUv2(int u, int v) {
+            this.delegate.setUv2(u, v);
+            return this;
+        }
+
+        @Override
+        public VertexConsumer setNormal(float x, float y, float z) {
+            this.delegate.setNormal(x, y, z);
+            return this;
+        }
+    }
+
+    /**
+     * Transforms {@link net.minecraft.client.renderer.block.LiquidBlockRenderer}'s section-relative vertices
+     * through a {@link PoseStack.Pose} for immediate emission into a {@link MultiBufferSource} (such as
+     * {@link TintedBuffer}). Supplies {@link OverlayTexture#NO_OVERLAY} for each vertex because entity-format
+     * block sheets require UV1 while the liquid renderer only writes {@code BLOCK} elements.
+     */
+    private static final class PoseFluidConsumer implements VertexConsumer {
+        private final Vector3f tmpPos = new Vector3f();
+        private final Vector3f tmpNormal = new Vector3f();
+        private VertexConsumer delegate;
+        private PoseStack.Pose pose;
+        private float ox;
+        private float oy;
+        private float oz;
+
+        void reset(VertexConsumer delegate, PoseStack.Pose pose, float ox, float oy, float oz) {
+            this.delegate = delegate;
+            this.pose = pose;
+            this.ox = ox;
+            this.oy = oy;
+            this.oz = oz;
+        }
+
+        @Override
+        public VertexConsumer addVertex(float x, float y, float z) {
+            this.pose.pose().transformPosition(x + this.ox, y + this.oy, z + this.oz, this.tmpPos);
+            this.delegate.addVertex(this.tmpPos.x, this.tmpPos.y, this.tmpPos.z);
+            this.delegate.setOverlay(OverlayTexture.NO_OVERLAY);
+            return this;
+        }
+
+        @Override
+        public VertexConsumer setColor(int r, int g, int b, int a) {
+            this.delegate.setColor(r, g, b, a);
+            return this;
+        }
+
+        @Override
+        public VertexConsumer setUv(float u, float v) {
+            this.delegate.setUv(u, v);
+            return this;
+        }
+
+        @Override
+        public VertexConsumer setUv1(int u, int v) {
+            this.delegate.setUv1(u, v);
+            return this;
+        }
+
+        @Override
+        public VertexConsumer setUv2(int u, int v) {
+            this.delegate.setUv2(u, v);
+            return this;
+        }
+
+        @Override
+        public VertexConsumer setNormal(float x, float y, float z) {
+            this.pose.transformNormal(x, y, z, this.tmpNormal);
+            this.delegate.setNormal(this.tmpNormal.x, this.tmpNormal.y, this.tmpNormal.z);
+            return this;
         }
     }
 }
