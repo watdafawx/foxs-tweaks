@@ -903,18 +903,9 @@ select {
 
 .fx-card {
   border: 1px solid var(--line);
-  border-left: 3px solid var(--accent);
   border-radius: var(--radius);
   background: var(--panel-2);
   margin-bottom: 6px;
-}
-
-.fx-card.fam-motion {
-  border-left-color: var(--ok);
-}
-
-.fx-card.fam-entity {
-  border-left-color: var(--entity);
 }
 
 .fx-head {
@@ -926,13 +917,22 @@ select {
   border-bottom: 1px solid var(--line-soft);
 }
 
+/* The badge colour says which family an effect belongs to: look (fx), motion or entity animation. */
 .fx-badge {
   font-family: var(--mono);
   font-size: 10px;
-  color: var(--muted);
+  color: var(--accent);
   background: var(--bg);
   padding: 1px 5px;
   border-radius: 3px;
+}
+
+.fam-motion .fx-badge {
+  color: var(--ok);
+}
+
+.fam-entity .fx-badge {
+  color: var(--entity);
 }
 
 .fx-name {
