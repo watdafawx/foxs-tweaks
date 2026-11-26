@@ -3,7 +3,7 @@
 
 import { useEffect, useRef, useState } from 'preact/hooks';
 import type { AssetEntry, Layer } from './protocol';
-import { ASSETS, S, edit, refreshAssets, requestThumb } from './store';
+import { ASSETS, S, deleteAsset, edit, refreshAssets, requestThumb } from './store';
 import { addLayer } from './browser';
 import { uploadFile, webCodecsAvailable, type TrimRequest } from './upload';
 import type { Range } from './fit';
@@ -201,6 +201,11 @@ function AssetCard(p: {
   const thumb = S.thumbs[a.id];
   useEffect(() => requestThumb(a.id), [a.id]);
   const owner = a.mine ? 'you' : a.owner || 'unknown';
+  const [confirm, setConfirm] = useState(false);
+  // a.used counts saved holograms, the open one included once saved; it may also use the picture unsaved. The page
+  // cannot tell which, so take the larger count rather than adding the two.
+  const here = S.spec?.layers.filter((l) => l.kind === 'IMAGE' && l.id === a.id).length ?? 0;
+  const inUse = Math.max(a.used, here);
   return (
     <div
       class={`asset ${p.current ? 'current' : ''}`}
@@ -217,8 +222,43 @@ function AssetCard(p: {
       <div class="muted small">
         {size(a.bytes)} · by {owner}
       </div>
+      {confirm && (
+        <div class="asset-confirm" onClick={(e) => e.stopPropagation()} onDblClick={(e) => e.stopPropagation()}>
+          <div class="small">
+            {inUse > 0
+              ? `Used by ${inUse} layer${inUse === 1 ? '' : 's'}. Deleting leaves ${inUse === 1 ? 'it' : 'them'} empty, for everyone.`
+              : 'Delete from this world? This cannot be undone.'}
+          </div>
+          <div class="asset-confirm-buttons">
+            <button class="btn" onClick={() => setConfirm(false)}>
+              Keep
+            </button>
+            <button
+              class="btn danger"
+              onClick={() => {
+                setConfirm(false);
+                deleteAsset(a.id, inUse > 0);
+              }}
+            >
+              Delete
+            </button>
+          </div>
+        </div>
+      )}
       <div class="asset-foot">
         <span class={`small ${a.used > 0 ? '' : 'muted'}`}>used by {a.used}</span>
+        {a.canDelete && (
+          <button
+            class="icon-btn asset-delete"
+            title="Delete from this world"
+            onClick={(e) => {
+              e.stopPropagation();
+              setConfirm(true);
+            }}
+          >
+            ✕
+          </button>
+        )}
         <button
           class="icon-btn add"
           title={p.addTitle}

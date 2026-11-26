@@ -748,8 +748,42 @@ select {
 .asset-foot {
   display: flex;
   align-items: center;
-  justify-content: space-between;
+  gap: 4px;
   margin-top: 2px;
+}
+
+.asset-foot > span {
+  flex: 1;
+}
+
+.asset-delete {
+  opacity: 0.55;
+}
+
+.asset:hover .asset-delete {
+  opacity: 1;
+}
+
+.asset-delete:hover {
+  color: var(--danger);
+}
+
+.asset-confirm {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin-top: 4px;
+  padding: 6px;
+  border-radius: var(--radius);
+  border: 1px solid var(--danger);
+  background: var(--panel-2);
+  cursor: default;
+}
+
+.asset-confirm-buttons {
+  display: flex;
+  justify-content: flex-end;
+  gap: 6px;
 }
 
 .empty.error {

@@ -1,4 +1,4 @@
-# Hologram web editor protocol (version 5)
+# Hologram web editor protocol (version 6)
 
 The web editor is a second client of the in-game hologram editor. The game stays in charge: it owns the
 preview, undo history and saving, and it validates everything the browser sends. The browser only proposes
@@ -245,11 +245,18 @@ asset limits `maxFileBytes`, `maxDimension` (px), `maxFps`, `maxSeconds`. A page
 stay inside those or the server rejects the result.
 
 **Library.** `assets {offset}` answers with `{type: "assets", seq, canUpload, video, maxBytes, count, offset,
-entries: [{id, name, type: "IMAGE"|"ANIMATION", width, height, frames, durationMs, bytes, used, mine, owner,
-created}]}` or `{type: "assets", seq, error}`. Pages are cut by size; ask again from `offset + entries.length`
+entries: [{id, name, type: "IMAGE"|"ANIMATION", width, height, frames, durationMs, bytes, used, mine, canDelete,
+owner, created}]}` or `{type: "assets", seq, error}`. Pages are cut by size; ask again from `offset + entries.length`
 until `count` is reached. `canUpload` follows the server's `assetUploadEveryone` (otherwise operators only);
 anyone who may edit the hologram may place an asset already in the library. `video` says the server has
-ffmpeg. `used` counts the image layers that use the asset; the server refuses to delete one in use.
+ffmpeg. `used` counts the image layers of saved holograms that use the asset.
+
+**Delete (v6).** `assetDelete {id, force}` answers `assetDeleted {seq, id}` or `error {code: "assetDelete",
+message}`. `canDelete` says who may: operators (permission 2) always, anyone else only their own uploads and only
+while they may upload. Without `force` the server refuses an asset that `used` > 0; with it, every layer showing the
+asset turns into an empty frame on every client, so the page asks first and counts the open, unsaved hologram's
+layers too. The client's disk cache keeps the blob until its LRU drops it (it is content-addressed, so a re-upload
+of the same picture finds it again).
 
 ### Uploads
 

@@ -226,6 +226,16 @@ function handle(msg: any): void {
     case 'assetThumb':
       if (typeof msg.id === 'string' && typeof msg.data === 'string') S.thumbs = { ...S.thumbs, [msg.id]: msg.data };
       break;
+    case 'assetDeleted':
+      if (typeof msg.id === 'string') {
+        const name = ASSETS.get(msg.id)?.name ?? 'Picture';
+        const { [msg.id]: _gone, ...rest } = S.thumbs;
+        S.thumbs = rest;
+        thumbsAsked.delete(msg.id);
+        toast(`${name} deleted.`);
+        refreshAssets();
+      }
+      break;
     case 'uploadStarted':
     case 'uploadAck':
     case 'uploadProgress':
@@ -371,6 +381,14 @@ function libraryPage(msg: any): void {
     refreshQueued = false;
     refreshAssets();
   }
+}
+
+/**
+ * Deletes a picture from the world's library (protocol 6). {@code force} also deletes it while saved holograms use
+ * it; their layers then show nothing. The answer is an assetDeleted message or an error toast.
+ */
+export function deleteAsset(id: string, force: boolean): void {
+  send({ type: 'assetDelete', id, force });
 }
 
 /** Asks for a thumbnail once; it arrives as an assetThumb message whenever the game has the asset. */

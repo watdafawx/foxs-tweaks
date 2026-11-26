@@ -101,6 +101,9 @@ public final class HologramAssets {
     private static Upload upload;
     @Nullable
     private static Consumer<JsonObject> listingCallback;
+    /** Gets null when the delete went through, else the server's reason. */
+    @Nullable
+    private static Consumer<String> deleteCallback;
     public static String lastResult = "";
     public static boolean lastSuccess;
 
@@ -410,6 +413,13 @@ public final class HologramAssets {
             failDownload();
             return;
         }
+        if (p.total() == AssetPayload.DELETE) {
+            Consumer<String> callback = deleteCallback;
+            deleteCallback = null;
+            if (callback != null)
+                callback.accept(p.number() == 1 ? null : p.text());
+            return;
+        }
         if (p.total() == AssetPayload.LIST) {
             Consumer<JsonObject> callback = listingCallback;
             listingCallback = null;
@@ -555,6 +565,20 @@ public final class HologramAssets {
         PacketDistributor.sendToServer(AssetPayload.request(AssetPayload.LIST, offset, 0, ""));
     }
 
+    /** Asks the server to delete {@code hash}; the callback gets null on success, else the reason. */
+    public static void requestDelete(String hash, boolean force, Consumer<String> callback) {
+        if (!available()) {
+            callback.accept("Server has no asset channel");
+            return;
+        }
+        if (deleteCallback != null) {
+            callback.accept("Another delete is still running");
+            return;
+        }
+        deleteCallback = callback;
+        PacketDistributor.sendToServer(AssetPayload.request(AssetPayload.DELETE, force ? 1 : 0, 0, hash));
+    }
+
     /** {@code /foxstweaksc asset upload <path>}: a file under {@code foxstweaks/upload}. */
     public static void upload(String relative) throws IOException {
         Path root = Minecraft.getInstance().gameDirectory.toPath().resolve("foxstweaks/upload");
@@ -657,6 +681,10 @@ public final class HologramAssets {
         if (u != null)
             u.listener.done(false, "Disconnected");
         listingCallback = null;
+        Consumer<String> deleting = deleteCallback;
+        deleteCallback = null;
+        if (deleting != null)
+            deleting.accept("Disconnected");
     }
 
     @SubscribeEvent

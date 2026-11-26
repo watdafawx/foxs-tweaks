@@ -156,7 +156,7 @@ public final class HologramImageCheck {
             check("hello received", hello != null, ws.types());
             if (hello == null)
                 return;
-            check("hello speaks protocol 5", hello.get("protocol").getAsInt() == 5 && HologramWebSession.PROTOCOL == 5,
+            check("hello speaks protocol 6", hello.get("protocol").getAsInt() == 6 && HologramWebSession.PROTOCOL == 6,
                     hello.get("protocol").toString());
             JsonObject caps = hello.getAsJsonObject("assetCaps");
             check("hello carries asset capabilities", caps != null && caps.get("available").getAsBoolean()
@@ -245,6 +245,29 @@ public final class HologramImageCheck {
                     && t.get("data").getAsString().startsWith("data:image/png;base64,"), String.valueOf(t));
             check("JPEG-frame bundle decodes to a texture",
                     dev.watdafawx.foxstweaks.client.asset.HologramAssets.texture(bundle, 0) != null, bundle);
+            JsonObject page = ws.last("assets");
+            boolean deletable = false;
+            if (page != null && page.has("entries"))
+                for (JsonElement e : page.getAsJsonArray("entries"))
+                    if (e.getAsJsonObject().get("id").getAsString().equals(bundle))
+                        deletable = e.getAsJsonObject().has("canDelete") && e.getAsJsonObject().get("canDelete").getAsBoolean();
+            check("library marks the uploader's own picture deletable", deletable, String.valueOf(page));
+            send("{\"type\":\"assetDelete\",\"id\":\"" + bundle + "\",\"force\":false,\"seq\":" + (++seq) + "}");
+        });
+
+        // ---- delete from the web library ----
+        add(2, 100, () -> ws.last("assetDeleted") != null, () -> {
+            JsonObject d = ws.last("assetDeleted");
+            check("unused picture deleted through the page protocol", d != null && d.get("id").getAsString().equals(bundle),
+                    String.valueOf(d));
+            check("deleted picture is gone from the server's store", metadata(bundle) == null, bundle);
+            pendingErrors = ws.count("error");
+            send("{\"type\":\"assetDelete\",\"id\":\"" + "0".repeat(64) + "\",\"seq\":" + (++seq) + "}");
+        });
+        add(2, 100, () -> ws.count("error") > pendingErrors, () -> {
+            JsonObject err = ws.last("error");
+            check("deleting a missing picture answers with an assetDelete error",
+                    err != null && err.get("code").getAsString().equals("assetDelete"), String.valueOf(err));
         });
 
         // ---- refused input ----

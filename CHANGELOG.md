@@ -1,5 +1,9 @@
 # Changelog
 
+## 1.47.0
+
+- **Web editor: delete pictures and videos from the Images tab.** Each card you may delete (operators: any; everyone else: what they uploaded) has a ✕. It asks first, and when holograms use the picture it says how many layers will turn empty. Web protocol 6.
+
 ## 1.46.1
 
 - **Fixed: uploaded videos showed nothing**, in game and in the web editor's library (the preview stayed on "…"). Video frames are stored as JPEG, and the game's JPEG decoding failed silently; they are now decoded the way Minecraft decodes its own images. A frame that still cannot be decoded is logged once instead of failing silently, and the library shows the name instead of waiting forever.

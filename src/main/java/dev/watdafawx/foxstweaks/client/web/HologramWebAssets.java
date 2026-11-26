@@ -80,6 +80,7 @@ final class HologramWebAssets {
         switch (type) {
             case "assets" -> listing(c, msg, seq);
             case "assetThumb" -> thumbnail(c, msg, seq);
+            case "assetDelete" -> delete(c, msg, seq);
             case "upload" -> begin(c, msg, seq);
             case "uploadChunk" -> chunk(c, msg, seq);
             case "uploadCancel" -> cancel(c, seq);
@@ -105,6 +106,26 @@ final class HologramWebAssets {
         HologramAssets.requestListing(offset, page -> {
             JsonObject o = page.deepCopy();
             o.addProperty("type", "assets");
+            o.addProperty("seq", seq);
+            send(c, o);
+        });
+    }
+
+    private void delete(WebSocketConnection c, JsonObject msg, long seq) {
+        String id = str(msg, "id", 64);
+        if (!AssetFrames.validId(id)) {
+            fail(c, seq, "assetDelete", "bad asset id");
+            return;
+        }
+        boolean force = msg.has("force") && msg.get("force").isJsonPrimitive() && msg.get("force").getAsBoolean();
+        HologramAssets.requestDelete(id, force, error -> {
+            if (error != null) {
+                fail(c, seq, "assetDelete", error);
+                return;
+            }
+            JsonObject o = new JsonObject();
+            o.addProperty("type", "assetDeleted");
+            o.addProperty("id", id);
             o.addProperty("seq", seq);
             send(c, o);
         });

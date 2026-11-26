@@ -1153,7 +1153,7 @@ rate limited, dies with the editor. The game stays the viewport and the authorit
 opaque key from what the session sent (a structure layer without its key is rejected). The Preact/Vite app's build output
 is committed under `assets/foxstweaks/web/`: after changing `web/src`, run `npm ci && npm run build` in `web/` and commit
 both. Dev check `runHologramWebCheck` (`run-hologram-web/`) speaks the real protocol over a socket. Protocol versions:
-2 timeline, 3 image layers and assets, 4 audio modulations and the meter, 5 icons (`HologramWebSession.PROTOCOL` and
+2 timeline, 3 image layers and assets, 4 audio modulations and the meter, 5 icons, 6 asset delete (`HologramWebSession.PROTOCOL` and
 `web/src/protocol.ts` must match). Planned next: WaterMedia when installed, audio tracks.
 
 **Icons (protocol 5).** `client/web/HologramWebIcons` draws the content browser's, outliner's and inspector's pictures:

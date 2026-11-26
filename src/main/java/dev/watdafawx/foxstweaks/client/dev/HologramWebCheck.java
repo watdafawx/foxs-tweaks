@@ -253,7 +253,7 @@ public final class HologramWebCheck {
             JsonObject hello = ws.last("hello");
             check("hello received", hello != null, ws.types());
             if (hello != null) {
-                check("hello protocol 5", hello.get("protocol").getAsInt() == HologramWebSession.PROTOCOL, hello.get("protocol").toString());
+                check("hello protocol matches", hello.get("protocol").getAsInt() == HologramWebSession.PROTOCOL, hello.get("protocol").toString());
                 check("hello names the hologram", hologramId.equals(hello.get("hologram").getAsString()), hello.get("hologram").toString());
                 JsonObject reg = hello.getAsJsonObject("registries");
                 JsonArray blocks = reg.getAsJsonArray("blocks");

@@ -136,6 +136,32 @@ public final class AssetNetwork {
         return ServerConfig.assetUploadEveryone() || player.hasPermissions(2);
     }
 
+    /** Operators may delete anything; anyone else only what they uploaded, and only while they may still upload. */
+    public static boolean mayDelete(ServerPlayer player, AssetStore.Metadata m) {
+        return player.hasPermissions(2) || (m.owner().equals(player.getUUID()) && mayUpload(player));
+    }
+
+    /**
+     * The web library's Delete. Refused while saved holograms use the asset unless {@code force}: a deleted asset
+     * turns every layer showing it into an empty frame on every client, so the page asks first.
+     */
+    private static void delete(ServerPlayer player, String id, boolean force) throws IOException {
+        if (!AssetFrames.validId(id))
+            throw new IOException("Invalid asset id");
+        AssetStore s = store(player.server);
+        AssetStore.Metadata m = s.info(id);
+        if (m == null)
+            throw new IOException("That picture is already gone");
+        if (!mayDelete(player, m))
+            throw new IOException("Only operators or the player who uploaded it may delete this picture");
+        if (m.references() > 0 && !force)
+            throw new IOException("Used by " + m.references() + " hologram layer(s)");
+        s.delete(id);
+        LOG.info("Hologram asset {} ({}) deleted by {}{}", id.substring(0, 8), m.name(), player.getGameProfile().getName(),
+                m.references() > 0 ? " while " + m.references() + " layer(s) used it" : "");
+        reply(player, true, id, AssetPayload.DELETE);
+    }
+
     private static void reply(ServerPlayer p, boolean ok, String message, int operation) {
         if (p.connection.hasChannel(AssetPayload.TYPE))
             PacketDistributor.sendToPlayer(p, AssetPayload.request(AssetPayload.RESULT, ok ? 1 : 0, operation, clip(message)));
@@ -177,6 +203,10 @@ public final class AssetNetwork {
             }
             if (p.kind() == AssetPayload.LIST) {
                 listing(player, Math.max(0, p.number()));
+                return;
+            }
+            if (p.kind() == AssetPayload.DELETE) {
+                delete(player, p.text(), p.number() == 1);
                 return;
             }
 
@@ -415,7 +445,7 @@ public final class AssetNetwork {
         JsonArray entries = new JsonArray();
         int used = 200;
         for (int i = offset; i < all.size(); i++) {
-            JsonObject e = entry(player.server, all.get(i), player.getUUID());
+            JsonObject e = entry(player, all.get(i));
             int size = e.toString().length() + 1;
             if (used + size > LISTING_BYTES && !entries.isEmpty())
                 break;
@@ -428,7 +458,9 @@ public final class AssetNetwork {
                 json.length > AssetPayload.CHUNK_BYTES ? Arrays.copyOf(json, 0) : json));
     }
 
-    private static JsonObject entry(MinecraftServer srv, AssetStore.Metadata m, UUID viewer) {
+    private static JsonObject entry(ServerPlayer player, AssetStore.Metadata m) {
+        MinecraftServer srv = player.server;
+        UUID viewer = player.getUUID();
         JsonObject e = new JsonObject();
         e.addProperty("id", m.id());
         e.addProperty("name", m.name().length() > 64 ? m.name().substring(0, 64) : m.name());
@@ -443,6 +475,7 @@ public final class AssetNetwork {
         e.addProperty("bytes", m.byteSize());
         e.addProperty("used", m.references());
         e.addProperty("mine", m.owner().equals(viewer));
+        e.addProperty("canDelete", mayDelete(player, m));
         e.addProperty("owner", ownerName(srv, m.owner()));
         e.addProperty("created", m.created());
         return e;

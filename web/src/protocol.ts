@@ -1,6 +1,6 @@
-// Wire types for docs/hologram-web-protocol.md (protocol 5). Keep in step with client/web/HologramWebJson.java.
+// Wire types for docs/hologram-web-protocol.md (protocol 6). Keep in step with client/web/HologramWebJson.java.
 
-export const PROTOCOL = 5;
+export const PROTOCOL = 6;
 
 export type Vec3 = [number, number, number];
 export type Kind = 'BLOCK' | 'ENTITY' | 'PARTICLE' | 'STRUCTURE' | 'IMAGE';
@@ -273,6 +273,8 @@ export interface AssetEntry {
   /** How many saved image layers use it; the server refuses to delete one that is in use. */
   used: number;
   mine: boolean;
+  /** Protocol 6: this player may delete it (operator, or the uploader). Absent from older games. */
+  canDelete?: boolean;
   owner: string;
   created: number;
 }
