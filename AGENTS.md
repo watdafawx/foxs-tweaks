@@ -90,7 +90,7 @@ quality-of-life features sharing a jar, among them:
     raw key. Tooltips fall back to the value's `.comment(...)`.
     **Both config files are grouped into sections** (`BUILDER.push(...)` in `push`/`pop` static initializers), which
     NeoForge renders as one "Edit" row per section instead of a flat list: common = relics, world, apotheosis,
-    storage, performance, integrations, misc; server = portal, performance, spawnAnchors. Each section name needs
+    storage, performance, integrations, misc, holograms; server = portal, performance, spawnAnchors, holograms, media, assets. Each section name needs
     its own `foxstweaks.configuration.<section>` label too. Moving a key into a section **changes its path in the
     toml**, so values written before that move are ignored and fall back to defaults - say so in the CHANGELOG.
     Dev check: `build.bat runConfigCheck` (game dir `run-config/`, no extra mods) reads the specs to assert the

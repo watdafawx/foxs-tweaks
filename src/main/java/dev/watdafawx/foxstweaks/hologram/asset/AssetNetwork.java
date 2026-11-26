@@ -82,7 +82,14 @@ public final class AssetNetwork {
                 var meta=store(player.server).put(id,u.name,u.data.toByteArray(),AssetLimits.current());
                 reply(player,true,meta.id(),p.kind());
             }
-        } catch(IOException|RuntimeException e) {UPLOADS.remove(id);reply(player,false,Objects.toString(e.getMessage(),"Asset operation failed"),p.kind());}
+        } catch(IOException|RuntimeException e) {
+            UPLOADS.remove(id);
+            // File system errors carry absolute server paths in their message; never send those to a client.
+            String message = e instanceof java.nio.file.FileSystemException ? "Asset storage error" : Objects.toString(e.getMessage(), "Asset operation failed");
+            if (e instanceof java.nio.file.FileSystemException)
+                com.mojang.logging.LogUtils.getLogger().warn("Asset operation failed for {}", player.getName().getString(), e);
+            reply(player,false,message,p.kind());
+        }
     }
     @SubscribeEvent public static void tick(ServerTickEvent.Post e) {
         long now=System.currentTimeMillis();UPLOADS.values().removeIf(u->now-u.touched>TIMEOUT);DOWNLOADS.values().removeIf(d->now-d.touched>TIMEOUT);

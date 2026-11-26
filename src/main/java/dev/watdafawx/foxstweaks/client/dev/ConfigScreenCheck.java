@@ -42,8 +42,8 @@ public final class ConfigScreenCheck {
     private static final Logger LOG = LogUtils.getLogger();
 
     private static final List<String> COMMON_SECTIONS = List.of(
-            "relics", "world", "apotheosis", "storage", "performance", "integrations", "misc");
-    private static final List<String> SERVER_SECTIONS = List.of("portal", "performance", "spawnAnchors");
+            "relics", "world", "apotheosis", "storage", "performance", "integrations", "misc", "holograms");
+    private static final List<String> SERVER_SECTIONS = List.of("portal", "performance", "spawnAnchors", "holograms", "media", "assets");
 
     private record Step(int waitTicks, Runnable run) {
     }
