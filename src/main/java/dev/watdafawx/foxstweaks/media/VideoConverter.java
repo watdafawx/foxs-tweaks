@@ -206,7 +206,7 @@ public final class VideoConverter {
         }
 
         args.add("-i");
-        args.add(input.toString());
+        args.add(input.toAbsolutePath().toString()); // absolute: a name starting with "-" must never read as an option
         args.add("-t");
         args.add(Integer.toString(limits.maxSeconds()));
         args.add("-an");
