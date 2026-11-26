@@ -265,7 +265,7 @@ public final class HologramCreatorScreen extends Screen {
     }
 
     private void renderTopBar(GuiGraphics g, int mx, int my) {
-        String[] labels = { "Undo", "Redo", "Frame", HologramRenderer.isPaused() ? "Play" : "Pause" };
+        String[] labels = { "Undo", "Redo", "Frame", HologramRenderer.isPaused() ? "Play" : "Pause", "Web" };
         int[] widths = new int[labels.length];
         int total = 0;
         for (int i = 0; i < labels.length; i++) {
@@ -283,14 +283,18 @@ public final class HologramCreatorScreen extends Screen {
                 default -> true;
             };
             final int idx = i;
-            button(g, mx, my, x, y, widths[i], 15, labels[i], i == 3 && HologramRenderer.isPaused(), enabled, () -> {
+            boolean lit = i == 3 ? HologramRenderer.isPaused() : i == 4 && HologramWebBridge.activeFor(this.editor);
+            Hit hit = button(g, mx, my, x, y, widths[i], 15, labels[i], lit, enabled, () -> {
                 switch (idx) {
                     case 0 -> this.editor.undo();
                     case 1 -> this.editor.redo();
                     case 2 -> this.editor.creatorFrameCamera();
-                    default -> HologramRenderer.setPaused(!HologramRenderer.isPaused());
+                    case 3 -> HologramRenderer.setPaused(!HologramRenderer.isPaused());
+                    default -> HologramWebBridge.open(this.editor);
                 }
             });
+            if (i == 4)
+                hit.tooltip = "Open the advanced editor in your browser";
             x += widths[i] + 2;
         }
     }

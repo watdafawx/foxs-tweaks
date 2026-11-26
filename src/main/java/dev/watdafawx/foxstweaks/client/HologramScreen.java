@@ -653,7 +653,7 @@ public class HologramScreen extends Screen {
         int btnW = 36;
         int utilGap = 4;
         int totalW = modes.length * (btnW + 2) + utilGap + 32 + 2 + 32 + 2 + 38 + 2 + 30 + 2 + 30
-                + 2 + 38 + 2 + 26 + 2 + 34 + 2 + 46;
+                + 2 + 38 + 2 + 26 + 2 + 34 + 2 + 46 + 2 + 30;
         int gx = (this.width - totalW) / 2;
         for (int i = 0; i < modes.length; i++) {
             HologramGizmo.Mode m = modes[i];
@@ -679,6 +679,8 @@ public class HologramScreen extends Screen {
         this.flatBtns.add(new FlatBtn(ux + 240, 5, 34, 15, "Grab", false, false,
                 this.layers.size() < HologramLayer.MAX_LAYERS, this::startGrabMode));
         this.flatBtns.add(new FlatBtn(ux + 276, 5, 46, 15, "< Simple", false, false, true, this::openCreator));
+        this.flatBtns.add(new FlatBtn(ux + 324, 5, 30, 15, "Web", HologramWebBridge.activeFor(this), false, true,
+                () -> HologramWebBridge.open(this)));
 
         // ---- Left panel header / collapse & add-layer button ----
         if (this.pickerCollapsed) {
@@ -3148,6 +3150,88 @@ public class HologramScreen extends Screen {
         HologramEditorPrefs.setStartInCreator(true);
         if (this.minecraft != null)
             this.minecraft.setScreen(new HologramCreatorScreen(this));
+    }
+
+    // ---------------------------------------------------------------- web companion bridge
+    //
+    // client/web drives this editor through HologramWebBridge, the same way the Creator does: the browser is a
+    // second view, this instance keeps the preview, the undo history and save/cancel. Package-private on purpose.
+
+    int webMaxRenderDistance() {
+        return this.maxRenderDistance;
+    }
+
+    boolean webAlive() {
+        return !this.finalized;
+    }
+
+    dev.watdafawx.foxstweaks.client.web.WebEditor.Selection webSelection() {
+        String kind = switch (this.targetKind) {
+            case ROOT -> "root";
+            case GROUP -> "group";
+            case LAYER -> "layer";
+        };
+        return new dev.watdafawx.foxstweaks.client.web.WebEditor.Selection(kind, this.selectedLayer,
+                this.selectedGroupId, this.soloLayerIndex, this.soloGroupId);
+    }
+
+    /** Takes everything but identity from {@code spec} (already validated by the caller), keeping the selection. */
+    void webApply(HologramSpec spec, boolean newUndoStep) {
+        cancelInlineBox();
+        if (newUndoStep)
+            pushUndo();
+        this.rootOffsetX = spec.offsetX();
+        this.rootOffsetY = spec.offsetY();
+        this.rootOffsetZ = spec.offsetZ();
+        this.rootYaw = spec.yaw();
+        this.rootPitch = spec.pitch();
+        this.rootRoll = spec.roll();
+        this.rootScale = spec.scale();
+        this.renderDistance = Math.min(spec.renderDistance(), this.maxRenderDistance);
+        this.appearRadius = spec.appearRadius();
+        this.appearSeconds = spec.appearSeconds();
+        this.appearStyle = spec.appearStyle();
+        this.groups = new ArrayList<>(spec.groups());
+        this.layers = new ArrayList<>(spec.layers());
+        if (this.layers.isEmpty())
+            this.layers.add(HologramLayer.block("minecraft:stone", Map.of(), new CompoundTag()));
+        this.selectedLayer = Mth.clamp(this.selectedLayer, 0, this.layers.size() - 1);
+        if (this.targetKind == TargetKind.GROUP && indexOfGroup(this.selectedGroupId) < 0)
+            this.targetKind = this.groups.isEmpty() ? TargetKind.LAYER : TargetKind.GROUP;
+        if (this.targetKind == TargetKind.GROUP && indexOfGroup(this.selectedGroupId) < 0)
+            this.selectedGroupId = this.groups.get(0).id();
+        clearSoloIfInvalid();
+        rebuildInspector();
+        refresh();
+    }
+
+    void webSelect(String kind, int layer, @Nullable String group) {
+        switch (kind) {
+            case "root" -> selectRoot();
+            case "group" -> {
+                if (group != null)
+                    selectGroup(group);
+            }
+            case "layer" -> selectLayer(layer);
+            default -> {
+            }
+        }
+    }
+
+    /** Solo exactly one layer, one group, or (both unset) nothing; not a toggle, so repeats are harmless. */
+    void webSolo(int layer, @Nullable String group) {
+        if (group != null && indexOfGroup(group) >= 0) {
+            if (!group.equals(this.soloGroupId))
+                toggleSoloGroup(group);
+        } else if (layer >= 0 && layer < this.layers.size()) {
+            if (this.soloLayerIndex != layer)
+                toggleSoloLayer(layer);
+        } else if (this.soloLayerIndex >= 0 || this.soloGroupId != null) {
+            this.soloLayerIndex = -1;
+            this.soloGroupId = null;
+            HologramClient.clearSolo();
+            rebuildInspector();
+        }
     }
 
     // ---------------------------------------------------------------- dev-check hooks
