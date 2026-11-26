@@ -208,6 +208,14 @@ neoForge {
             systemProperty 'foxstweaks.hologramImageCheck', 'true'
         }
 
+        // Dev-only check of MODEL hologram layers (client/dev/HologramModelCheck): bbmodel + glb uploads, refusal of
+        // junk, client decode, drawing and animation. Report in run-hologram-model/.
+        hologramModelCheck {
+            client()
+            gameDirectory = file('run-hologram-model')
+            systemProperty 'foxstweaks.hologramModelCheck', 'true'
+        }
+
         // Dev-only interactive QA driver (client/dev/HologramQaDev): flat world, then runs one-line commands from
         // run-hologram-qa/qa-cmd.txt until told to quit. Put iris/sodium in run-hologram-qa/mods for shader QA.
         hologramQa {

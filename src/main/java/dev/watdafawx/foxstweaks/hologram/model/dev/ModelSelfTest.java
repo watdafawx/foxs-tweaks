@@ -37,7 +37,8 @@ public final class ModelSelfTest {
     }
 
     // A one-triangle mesh skinned to two joints; joint 1 moves +1 in Y between t=0 and t=1.
-    private static void glb() throws Exception {
+    /** A one-triangle skinned glb with a 1 s "rise" animation (shared with the in-game check). */
+    public static byte[] glbBytes() {
         ByteBuffer bin = ByteBuffer.allocate(512).order(ByteOrder.LITTLE_ENDIAN);
         float[] pos = { 0, 0, 0, 1, 0, 0, 0, 1, 0 };
         for (float f : pos)
@@ -83,8 +84,11 @@ public final class ModelSelfTest {
         for (int i = j.length; i < jp; i++)
             glb.put((byte) 0x20);
         glb.putInt(bp).putInt(0x004E4942).put(bin.array(), 0, binLen);
+        return glb.array();
+    }
 
-        ModelData m = GlbReader.read(glb.array());
+    private static void glb() throws Exception {
+        ModelData m = GlbReader.read(glbBytes());
         check("glb: 3 nodes", m.nodes.size() == 3);
         int bone = byName(m, "bone"), mesh = byName(m, "mesh");
         check("glb: parents first", m.nodes.get(bone).parent >= 0 && m.nodes.get(bone).parent < bone);
@@ -110,7 +114,16 @@ public final class ModelSelfTest {
         return -1;
     }
 
-    private static void bbmodel() throws Exception {
+    /** An orange 1-block cube that turns 180 degrees about Y in 2 s ("turn"), as a Blockbench file. */
+    public static byte[] bbmodelBytes() {
+        try {
+            return bbmodelJson().getBytes(StandardCharsets.UTF_8);
+        } catch (Exception e) {
+            throw new IllegalStateException(e);
+        }
+    }
+
+    private static String bbmodelJson() throws Exception {
         BufferedImage img = new BufferedImage(16, 16, BufferedImage.TYPE_INT_ARGB);
         for (int x = 0; x < 16; x++)
             for (int y = 0; y < 16; y++)
@@ -128,7 +141,11 @@ public final class ModelSelfTest {
                 + "\"animations\":[{\"name\":\"turn\",\"loop\":\"loop\",\"length\":2,\"animators\":{\"g1\":{\"name\":\"spin\","
                 + "\"keyframes\":[{\"channel\":\"rotation\",\"time\":0,\"data_points\":[{\"x\":0,\"y\":0,\"z\":0}]},"
                 + "{\"channel\":\"rotation\",\"time\":2,\"data_points\":[{\"x\":0,\"y\":\"180\",\"z\":0}]}]}}}]}";
-        ModelData m = BlockbenchReader.read(json.getBytes(StandardCharsets.UTF_8));
+        return json;
+    }
+
+    private static void bbmodel() throws Exception {
+        ModelData m = BlockbenchReader.read(bbmodelBytes());
         check("bb: group node exists", m.nodes.size() == 1 && m.nodes.get(0).name.equals("spin"));
         check("bb: cube merged into group, 12 triangles", m.triangleCount() == 12);
         check("bb: texture embedded 16x16", m.textures.size() == 1 && m.textures.get(0).width == 16);

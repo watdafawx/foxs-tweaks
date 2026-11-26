@@ -155,6 +155,8 @@ public class FoxsTweaks {
         if (FMLEnvironment.dist.isClient() && !FMLEnvironment.production && Boolean.getBoolean("foxstweaks.hologramWebCheck"))
             dev.watdafawx.foxstweaks.client.dev.HologramWebCheck.install();
 
+        if (FMLEnvironment.dist.isClient() && !FMLEnvironment.production && Boolean.getBoolean("foxstweaks.hologramModelCheck"))
+            dev.watdafawx.foxstweaks.client.dev.HologramModelCheck.install();
         // Dev-only check of image layers; `build.bat runHologramImageCheck` sets the property.
         if (FMLEnvironment.dist.isClient() && !FMLEnvironment.production && Boolean.getBoolean("foxstweaks.hologramImageCheck"))
             dev.watdafawx.foxstweaks.client.dev.HologramImageCheck.install();
