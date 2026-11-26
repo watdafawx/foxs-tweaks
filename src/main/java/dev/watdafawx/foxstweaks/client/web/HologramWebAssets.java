@@ -117,6 +117,10 @@ final class HologramWebAssets {
             return;
         }
         HologramAssets.thumbnail(id, png -> {
+            if (png == null) {
+                fail(c, seq, "assetThumb", "no preview");
+                return;
+            }
             JsonObject o = new JsonObject();
             o.addProperty("type", "assetThumb");
             o.addProperty("id", id);

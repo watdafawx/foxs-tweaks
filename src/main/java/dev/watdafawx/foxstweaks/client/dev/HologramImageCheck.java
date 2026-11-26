@@ -231,6 +231,20 @@ public final class HologramImageCheck {
             JsonObject thumb = ws.last("assetThumb");
             check("thumbnail arrives as a PNG data URL", thumb != null && thumb.get("data").getAsString()
                     .startsWith("data:image/png;base64,"), String.valueOf(thumb));
+            send("{\"type\":\"assetThumb\",\"id\":\"" + bundle + "\",\"seq\":" + (++seq) + "}");
+        });
+
+        // ---- JPEG frames (every browser-converted video) decode in game: thumbnail and texture ----
+        add(2, 200, () -> {
+            JsonObject t = ws.last("assetThumb");
+            boolean thumbed = t != null && t.get("id").getAsString().equals(bundle);
+            return thumbed && dev.watdafawx.foxstweaks.client.asset.HologramAssets.texture(bundle, 0) != null;
+        }, () -> {
+            JsonObject t = ws.last("assetThumb");
+            check("JPEG-frame bundle gets a thumbnail", t != null && t.get("id").getAsString().equals(bundle)
+                    && t.get("data").getAsString().startsWith("data:image/png;base64,"), String.valueOf(t));
+            check("JPEG-frame bundle decodes to a texture",
+                    dev.watdafawx.foxstweaks.client.asset.HologramAssets.texture(bundle, 0) != null, bundle);
         });
 
         // ---- refused input ----

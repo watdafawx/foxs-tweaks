@@ -1,5 +1,9 @@
 # Changelog
 
+## 1.46.1
+
+- **Fixed: uploaded videos showed nothing**, in game and in the web editor's library (the preview stayed on "…"). Video frames are stored as JPEG, and the game's JPEG decoding failed silently; they are now decoded the way Minecraft decodes its own images. A frame that still cannot be decoded is logged once instead of failing silently, and the library shows the name instead of waiting forever.
+
 ## 1.46.0
 
 - **Web editor: upload any picture, GIF or video, whatever its size or length.** Files over the server's limits are no longer refused: the page scales pictures down and lowers a video's or animation's frame rate and size until it fits. A video or animation longer than the server keeps (10 s by default) opens a dialog to pick which part to keep, with a looping preview.

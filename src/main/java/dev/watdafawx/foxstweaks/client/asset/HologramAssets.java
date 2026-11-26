@@ -23,13 +23,17 @@ import net.neoforged.neoforge.client.event.RegisterClientCommandsEvent;
 import net.neoforged.neoforge.network.PacketDistributor;
 
 import javax.annotation.Nullable;
-import javax.imageio.ImageIO;
-import java.awt.Graphics2D;
-import java.awt.RenderingHints;
-import java.awt.image.BufferedImage;
+import com.mojang.logging.LogUtils;
+import org.lwjgl.stb.STBImage;
+import org.lwjgl.system.MemoryStack;
+import org.lwjgl.system.MemoryUtil;
+import org.slf4j.Logger;
 import java.io.ByteArrayInputStream;
 import java.io.ByteArrayOutputStream;
 import java.io.IOException;
+import java.nio.ByteBuffer;
+import java.nio.ByteOrder;
+import java.nio.IntBuffer;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -39,6 +43,8 @@ import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Comparator;
 import java.util.HashMap;
+import java.util.HashSet;
+import java.util.Set;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Locale;
@@ -77,6 +83,8 @@ public final class HologramAssets {
         HologramImage.aspectLookup = HologramAssets::aspect;
     }
 
+    private static final Logger LOGGER = LogUtils.getLogger();
+    private static final Set<String> LOGGED = new HashSet<>();
     private static final Map<String, Entry> ENTRIES = new LinkedHashMap<>();
     private static final Map<String, Long> RETRY = new HashMap<>();
     private static final ArrayDeque<String> REQUESTS = new ArrayDeque<>();
@@ -261,64 +269,83 @@ public final class HologramAssets {
                         entry.busy = false;
                     }
                 });
-            } catch (IOException | RuntimeException ex) {
+            } catch (Throwable t) {
                 if (image != null)
                     image.close();
+                failed(hash, "frame " + frame, t);
                 Minecraft.getInstance().execute(() -> entry.busy = false);
             }
         }, () -> entry.busy = false);
     }
 
     /**
-     * Worker thread. PNG frames go straight to NativeImage; JPEG frames (video imports keep JPEG so a clip fits
-     * the size limit) are decoded with ImageIO, since NativeImage only reads PNG.
+     * Worker thread. PNG frames go straight to NativeImage; JPEG frames (video imports keep JPEG so a clip fits the
+     * size limit) are decoded with Minecraft's own STB, since NativeImage.read only takes PNG. Not ImageIO: its JPEG
+     * decoder failed inside the game (an Error, so the frame and the thumbnail just never appeared) while working in
+     * a plain JVM.
      */
     private static NativeImage read(byte[] bytes) throws IOException {
         if (!AssetFrames.isJpeg(bytes))
             return NativeImage.read(new ByteArrayInputStream(bytes));
 
-        BufferedImage source = ImageIO.read(new ByteArrayInputStream(bytes));
-        if (source == null)
-            throw new IOException("Unreadable JPEG frame");
-        int w = source.getWidth();
-        int h = source.getHeight();
-        int[] argb = source.getRGB(0, 0, w, h, null, 0, w);
-        NativeImage image = new NativeImage(NativeImage.Format.RGBA, w, h, false);
-        for (int y = 0; y < h; y++) {
-            for (int x = 0; x < w; x++) {
-                int c = argb[y * w + x];
-                // NativeImage packs ABGR; JPEG has no alpha, so it is always opaque.
-                int abgr = 0xFF000000 | (c & 0xFF) << 16 | (c & 0xFF00) | (c >> 16 & 0xFF);
-                image.setPixelRGBA(x, y, abgr);
+        ByteBuffer input = MemoryUtil.memAlloc(bytes.length);
+        try (MemoryStack stack = MemoryStack.stackPush()) {
+            input.put(bytes).flip();
+            IntBuffer w = stack.mallocInt(1);
+            IntBuffer h = stack.mallocInt(1);
+            IntBuffer channels = stack.mallocInt(1);
+            ByteBuffer rgba = STBImage.stbi_load_from_memory(input, w, h, channels, 4);
+            if (rgba == null)
+                throw new IOException("Unreadable JPEG frame: " + STBImage.stbi_failure_reason());
+            try {
+                int width = w.get(0);
+                int height = h.get(0);
+                NativeImage image = new NativeImage(NativeImage.Format.RGBA, width, height, false);
+                // STB gives R,G,B,A bytes; read little-endian that is the ABGR int NativeImage stores.
+                IntBuffer pixels = rgba.order(ByteOrder.LITTLE_ENDIAN).asIntBuffer();
+                for (int y = 0; y < height; y++) {
+                    for (int x = 0; x < width; x++)
+                        image.setPixelRGBA(x, y, pixels.get(y * width + x) | 0xFF000000);
+                }
+                return image;
+            } finally {
+                STBImage.stbi_image_free(rgba);
             }
+        } finally {
+            MemoryUtil.memFree(input);
         }
-        return image;
     }
 
-    /** A {@value #THUMB_SIZE} px PNG of the first frame, for the web library. Worker thread, then client. */
+    /** Logs the first decode failure of each asset, so a broken asset shows up in the log instead of just blank. */
+    private static void failed(String hash, String what, Throwable t) {
+        synchronized (LOGGED) {
+            if (LOGGED.add(hash))
+                LOGGER.warn("Hologram asset {}: {} failed", hash.substring(0, 8), what, t);
+        }
+    }
+
+    /**
+     * A {@value #THUMB_SIZE} px PNG of the first frame for the web library, or {@code null} when it cannot be made.
+     * Worker thread, then client. Same decoder as the in-world texture, so a thumbnail shows exactly when the
+     * hologram can.
+     */
     public static void thumbnail(String hash, Consumer<byte[]> done) {
         whenLoaded(hash, frames -> submit(() -> {
-            try {
-                BufferedImage source = ImageIO.read(new ByteArrayInputStream(frames.frames().getFirst()));
-                if (source == null)
-                    return;
+            byte[] png = null;
+            try (NativeImage source = read(frames.frames().getFirst())) {
                 double scale = Math.min(1.0, THUMB_SIZE / (double) Math.max(source.getWidth(), source.getHeight()));
                 int w = Math.max(1, (int) Math.round(source.getWidth() * scale));
                 int h = Math.max(1, (int) Math.round(source.getHeight() * scale));
-                BufferedImage thumb = new BufferedImage(w, h, BufferedImage.TYPE_INT_ARGB);
-                Graphics2D g = thumb.createGraphics();
-                g.setRenderingHint(RenderingHints.KEY_INTERPOLATION, RenderingHints.VALUE_INTERPOLATION_BILINEAR);
-                g.drawImage(source, 0, 0, w, h, null);
-                g.dispose();
-                ByteArrayOutputStream out = new ByteArrayOutputStream();
-                ImageIO.write(thumb, "png", out);
-                byte[] png = out.toByteArray();
-                Minecraft.getInstance().execute(() -> done.accept(png));
-            } catch (IOException | RuntimeException ignored) {
-                // No thumbnail is not an error: the library shows the name instead.
+                try (NativeImage thumb = new NativeImage(NativeImage.Format.RGBA, w, h, false)) {
+                    source.resizeSubRectTo(0, 0, source.getWidth(), source.getHeight(), thumb);
+                    png = thumb.asByteArray();
+                }
+            } catch (Throwable t) {
+                failed(hash, "thumbnail", t);
             }
-        }, () -> {
-        }));
+            byte[] result = png;
+            Minecraft.getInstance().execute(() -> done.accept(result));
+        }, () -> Minecraft.getInstance().execute(() -> done.accept(null))));
     }
 
     private static void submit(Runnable work, Runnable rejected) {

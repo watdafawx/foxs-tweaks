@@ -1200,7 +1200,9 @@ frame budgets), downscaled and re-encoded on the server. `foxstweaks:asset` payl
 40 packets/s, 30 s expiry. File system errors are logged and sent to the client only as "Asset storage error" (their
 message carries absolute server paths). `Holograms` retains/releases assets on save and removal; release never deletes.
 Client: hash-verified 200 MiB disk LRU, 32 MiB compressed in RAM, `HologramAssets.texture(hash, seconds)` returns null
-while loading and reuses one `DynamicTexture` per asset. SERVER section `assets`. Dev check `runHologramAssetCheck`
+while loading and reuses one `DynamicTexture` per asset. JPEG frames (every converted video) decode through LWJGL's `STBImage`, never
+ImageIO: ImageIO's JPEG reader failed in a real pack with an `Error` that left the frame blank and the thumbnail
+unanswered, while working in dev runs (1.46.1). `runHologramImageCheck` asserts the JPEG bundle's thumbnail and texture. SERVER section `assets`. Dev check `runHologramAssetCheck`
 (`run-hologram-asset/`). Not verified: non-op multiplayer, cache eviction under stress; ImageIO normalisation runs on the
 server thread and can stall an upload tick.
 
