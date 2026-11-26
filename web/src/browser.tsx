@@ -33,6 +33,30 @@ function matches(it: Item, words: string[], mod: string | null): boolean {
   return words.every((w) => hay.includes(w));
 }
 
+/**
+ * How well a name answers the search words, 0 best: the whole name, a name that starts with them, starts with the
+ * first word and has the rest, the words as whole words inside the name ("Dark Oak Stairs" for "oak stairs"), a
+ * substring, anything else (matched through the id). Mirrors HologramSearch#rank in the game's own browser, so
+ * "Oak Stairs" comes before "Dark Oak Stairs".
+ */
+export function rank(name: string, words: string[]): number {
+  if (words.length === 0) return 0;
+  const n = name.toLowerCase();
+  const phrase = words.join(' ');
+  if (n === phrase) return 0;
+  if (n.startsWith(phrase)) return 1;
+  if (n.startsWith(words[0]) && words.every((w) => n.includes(w))) return 2;
+  let from = 0;
+  for (;;) {
+    const at = n.indexOf(phrase, from);
+    if (at < 0) break;
+    const end = at + phrase.length;
+    if ((at === 0 || n[at - 1] === ' ') && (end === n.length || n[end] === ' ')) return 3;
+    from = at + 1;
+  }
+  return n.includes(phrase) ? 4 : 5;
+}
+
 export function newLayer(kind: Kind, id: string): Layer {
   return {
     kind,
@@ -86,7 +110,11 @@ export function ContentBrowser() {
     const mod = raw.split(/\s+/).find((w) => w.startsWith('@'));
     const words = raw.split(/\s+/).filter((w) => w && !w.startsWith('@'));
     const ns = mod && mod.length > 1 ? mod.slice(1) + ':' : null;
-    return all.filter((it) => matches(it, words, ns));
+    const hits = all.filter((it) => matches(it, words, ns));
+    if (words.length === 0) return hits;
+    // Array#sort is stable, so equal ranks stay in id order.
+    const ranks = new Map(hits.map((it) => [it, rank(it.name, words)] as const));
+    return hits.sort((a, b) => ranks.get(a)! - ranks.get(b)! || a.name.length - b.name.length);
   }, [all, query]);
 
   const replace = (it: Item) => {

@@ -53,6 +53,8 @@ function Header() {
     return () => clearTimeout(t);
   }, [confirmCancel]);
   const live = S.status === 'open';
+  // A finished session has nothing left to undo, save or discard: the buttons would only be dead weight.
+  const ended = S.status === 'closed';
   return (
     <header class="topbar">
       <div class="brand">
@@ -74,26 +76,28 @@ function Header() {
               ? 'Reconnecting…'
               : 'Session ended'}
       </div>
-      <div class="actions">
-        <button class="btn" disabled={!live || !S.canUndo} onClick={undo} title="Undo (Ctrl+Z)">
-          Undo
-        </button>
-        <button class="btn" disabled={!live || !S.canRedo} onClick={redo} title="Redo (Ctrl+Shift+Z)">
-          Redo
-        </button>
-        <span class="sep" />
-        <button
-          class={`btn ${confirmCancel ? 'danger' : ''}`}
-          disabled={!live}
-          onClick={() => (confirmCancel ? cancel() : setConfirmCancel(true))}
-          title="Discard every change since the editor opened"
-        >
-          {confirmCancel ? 'Discard changes?' : 'Cancel'}
-        </button>
-        <button class="btn primary" disabled={!live} onClick={save} title="Save to the world (Ctrl+S)">
-          Save
-        </button>
-      </div>
+      {!ended && (
+        <div class="actions">
+          <button class="btn" disabled={!live || !S.canUndo} onClick={undo} title="Undo (Ctrl+Z)">
+            Undo
+          </button>
+          <button class="btn" disabled={!live || !S.canRedo} onClick={redo} title="Redo (Ctrl+Shift+Z)">
+            Redo
+          </button>
+          <span class="sep" />
+          <button
+            class={`btn ${confirmCancel ? 'danger' : ''}`}
+            disabled={!live}
+            onClick={() => (confirmCancel ? cancel() : setConfirmCancel(true))}
+            title="Discard every change since the editor opened"
+          >
+            {confirmCancel ? 'Discard changes?' : 'Cancel'}
+          </button>
+          <button class="btn primary" disabled={!live} onClick={save} title="Save to the world (Ctrl+S)">
+            Save
+          </button>
+        </div>
+      )}
     </header>
   );
 }
@@ -154,7 +158,7 @@ function App() {
     <div class={`app ${S.status !== 'open' ? 'offline' : ''}`}>
       <Header />
       {ready && (
-        <main class="workspace">
+        <main class="workspace" inert={S.status !== 'open'}>
           <aside class="left">
             <Outliner />
           </aside>
