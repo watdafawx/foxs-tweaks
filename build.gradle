@@ -171,6 +171,14 @@ neoForge {
             systemProperty 'foxstweaks.hologramCreatorCheck', 'true'
         }
 
+        // Dev-only check of the hologram web companion (client/dev/HologramWebCheck): Web buttons, HTTP token /
+        // Host / traversal, a real WebSocket client speaking the protocol, save, shutdown. Report in run-hologram-web/.
+        hologramWebCheck {
+            client()
+            gameDirectory = file('run-hologram-web')
+            systemProperty 'foxstweaks.hologramWebCheck', 'true'
+        }
+
         // Dev-only end-to-end check of hologram Grab Mode & entity NBT rendering (client/dev/HologramGrabCheck).
         // Report + screenshots land in run-hologram-grab/.
         hologramGrabCheck {

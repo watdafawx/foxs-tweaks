@@ -55,6 +55,7 @@ public final class HologramClient {
         NeoForge.EVENT_BUS.addListener(HologramClient::onLevelUnload);
         HologramTriggers.install();
         HologramGrab.init();
+        dev.watdafawx.foxstweaks.client.web.HologramWebSession.init();
     }
 
     public static void acceptSync(HologramSyncPayload payload) {
