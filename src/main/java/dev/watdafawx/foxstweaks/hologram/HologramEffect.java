@@ -27,7 +27,7 @@ import java.util.List;
  * read by the types for which {@link Type#usesAxis()} is true.
  */
 public record HologramEffect(Type type, float strength, float speed, int color, int axis, float phase,
-                             Trigger trigger, int color2) {
+                             Trigger trigger, int color2, List<HologramAudioMod> audio) {
 
     /** When an effect plays. Everything but {@code ALWAYS} is decided on the client from the world around it. */
     public enum Trigger {
@@ -273,6 +273,13 @@ public record HologramEffect(Type type, float strength, float speed, int color, 
         if (trigger == null)
             trigger = Trigger.ALWAYS;
         color2 &= 0xFFFFFF;
+        audio = HologramAudioMod.sanitiseEffectMods(audio);
+    }
+
+    /** No audio modulation; the shape every call site used before modulations existed. */
+    public HologramEffect(Type type, float strength, float speed, int color, int axis, float phase, Trigger trigger,
+                          int color2) {
+        this(type, strength, speed, color, axis, phase, trigger, color2, List.of());
     }
 
     public HologramEffect(Type type, float strength, float speed, int color, int axis, float phase, Trigger trigger) {
@@ -293,32 +300,41 @@ public record HologramEffect(Type type, float strength, float speed, int color, 
     }
 
     public HologramEffect withStrength(float strength) {
-        return new HologramEffect(this.type, strength, this.speed, this.color, this.axis, this.phase, this.trigger, this.color2);
+        return new HologramEffect(this.type, strength, this.speed, this.color, this.axis, this.phase, this.trigger, this.color2, this.audio);
     }
 
     public HologramEffect withSpeed(float speed) {
-        return new HologramEffect(this.type, this.strength, speed, this.color, this.axis, this.phase, this.trigger, this.color2);
+        return new HologramEffect(this.type, this.strength, speed, this.color, this.axis, this.phase, this.trigger, this.color2, this.audio);
     }
 
     public HologramEffect withColor(int color) {
-        return new HologramEffect(this.type, this.strength, this.speed, color, this.axis, this.phase, this.trigger, this.color2);
+        return new HologramEffect(this.type, this.strength, this.speed, color, this.axis, this.phase, this.trigger, this.color2, this.audio);
     }
 
     public HologramEffect withAxis(int axis) {
-        return new HologramEffect(this.type, this.strength, this.speed, this.color, axis, this.phase, this.trigger, this.color2);
+        return new HologramEffect(this.type, this.strength, this.speed, this.color, axis, this.phase, this.trigger, this.color2, this.audio);
     }
 
     /** Where in its cycle this animation starts, 0..1. Lets two copies of one animation run out of step. */
     public HologramEffect withPhase(float phase) {
-        return new HologramEffect(this.type, this.strength, this.speed, this.color, this.axis, phase, this.trigger, this.color2);
+        return new HologramEffect(this.type, this.strength, this.speed, this.color, this.axis, phase, this.trigger, this.color2, this.audio);
     }
 
     public HologramEffect withTrigger(Trigger trigger) {
-        return new HologramEffect(this.type, this.strength, this.speed, this.color, this.axis, this.phase, trigger, this.color2);
+        return new HologramEffect(this.type, this.strength, this.speed, this.color, this.axis, this.phase, trigger, this.color2, this.audio);
     }
 
     public HologramEffect withColor2(int color2) {
-        return new HologramEffect(this.type, this.strength, this.speed, this.color, this.axis, this.phase, this.trigger, color2);
+        return new HologramEffect(this.type, this.strength, this.speed, this.color, this.axis, this.phase, this.trigger, color2, this.audio);
+    }
+
+    /** Audio modulations of this effect's own parameters; see {@link HologramAudioMod}. */
+    public HologramEffect withAudio(List<HologramAudioMod> audio) {
+        return new HologramEffect(this.type, this.strength, this.speed, this.color, this.axis, this.phase, this.trigger, this.color2, audio);
+    }
+
+    public boolean hasAudio() {
+        return !this.audio.isEmpty();
     }
 
     public String axisLabel() {
@@ -443,6 +459,8 @@ public record HologramEffect(Type type, float strength, float speed, int color, 
             tag.putString("when", this.trigger.name());
         if (this.type == Type.GRADIENT)
             tag.putInt("color2", this.color2);
+        if (!this.audio.isEmpty())
+            tag.put("audio", HologramAudioMod.listToTag(this.audio));
         return tag;
     }
 
@@ -468,7 +486,9 @@ public record HologramEffect(Type type, float strength, float speed, int color, 
                     tag.contains("axis") ? tag.getByte("axis") : DEFAULT_AXIS,
                     tag.contains("phase") ? tag.getFloat("phase") : 0.0F,
                     triggerOf(tag.getString("when")),
-                    tag.contains("color2") ? tag.getInt("color2") : DEFAULT_COLOR2));
+                    tag.contains("color2") ? tag.getInt("color2") : DEFAULT_COLOR2,
+                    tag.contains("audio") ? HologramAudioMod.listFromTag(tag.getList("audio", Tag.TAG_COMPOUND),
+                            HologramAudioMod.HARD_MAX_PER_VALUE * 4, true) : List.of()));
         }
         return effects;
     }

@@ -1,5 +1,6 @@
 package dev.watdafawx.foxstweaks.client;
 
+import dev.watdafawx.foxstweaks.hologram.HologramAudioMod;
 import dev.watdafawx.foxstweaks.hologram.HologramEffect;
 import dev.watdafawx.foxstweaks.hologram.HologramGroup;
 import dev.watdafawx.foxstweaks.hologram.HologramLayer;
@@ -888,6 +889,7 @@ public class HologramScreen extends Screen {
         HologramGroup group = currentGroup();
 
         // Position X / Y / Z
+        addAudioChip(rx + rw - 14, y - 1, HologramAudioMod.Param.OFFSET_Y, HologramAudioMod.Param.OFFSET_X, HologramAudioMod.Param.OFFSET_Y, HologramAudioMod.Param.OFFSET_Z);
         y += 10;
         this.numControls.add(new NumControl(rx, y, colW, 17, "X", AXIS_X, false,
                 -16.0, 16.0, 0.25, 0.0, this::getTargetOffsetX, v -> setTargetOffsetX((float) v), "", 2));
@@ -922,6 +924,7 @@ public class HologramScreen extends Screen {
         }
 
         // Rotation Pitch / Yaw / Roll
+        addAudioChip(rx + rw - 14, y - 1, HologramAudioMod.Param.ROT_Y, HologramAudioMod.Param.ROT_X, HologramAudioMod.Param.ROT_Y, HologramAudioMod.Param.ROT_Z);
         y += 10;
         this.numControls.add(new NumControl(rx, y, colW, 17, "P", AXIS_X, false,
                 -180.0, 180.0, 15.0, 0.0, this::getTargetPitch, v -> setTargetPitch(wrap(v)), "°", 0));
@@ -931,7 +934,8 @@ public class HologramScreen extends Screen {
                 -180.0, 180.0, 15.0, 0.0, this::getTargetRoll, v -> setTargetRoll(wrap(v)), "°", 0));
         y += 23;
 
-        // Scale slider
+        // Scale slider (its ♪ also covers visible and brightness, which have no control of their own)
+        addAudioChip(rx + rw - 14, y - 1, HologramAudioMod.Param.SCALE, HologramAudioMod.Param.SCALE, HologramAudioMod.Param.VISIBLE, HologramAudioMod.Param.BRIGHT);
         y += 10;
         double minScale = this.targetKind == TargetKind.ROOT ? 0.25 : 0.1;
         this.numControls.add(new NumControl(rx, y, rw, 17, "Scale", TEXT, true,
@@ -1098,8 +1102,9 @@ public class HologramScreen extends Screen {
             boolean phase = type.usesPhase();
             int controls = (amount ? 1 : 0) + (speed ? 1 : 0) + (phase ? 1 : 0);
             int trigW = 30;
-            int items = controls + (type.usesAxis() ? 1 : 0) + 2;
-            int avail = rw - xBtn - axisW - trigW - 3 * (items - 1);
+            int audioW = 13;
+            int items = controls + (type.usesAxis() ? 1 : 0) + 3;
+            int avail = rw - xBtn - axisW - trigW - audioW - 3 * (items - 1);
             int weightSum = (amount ? 4 : 0) + (speed ? 3 : 0) + (phase ? 3 : 0);
             int amountW = amount ? avail * 4 / Math.max(1, weightSum) : 0;
             int speedW = speed ? avail * 3 / Math.max(1, weightSum) : 0;
@@ -1144,6 +1149,8 @@ public class HologramScreen extends Screen {
             this.flatBtns.add(new FlatBtn(cx, y, trigW, 17, fx.trigger().shortLabel(),
                     fx.trigger() != HologramEffect.Trigger.ALWAYS, false, true, () -> cycleEffectTrigger(idx)));
             cx += trigW + 3;
+            addEffectAudioChip(cx, y, 17, idx, fx);
+            cx += audioW + 3;
             if (type.usesAxis()) {
                 this.flatBtns.add(new FlatBtn(cx, y, axisW, 17, fx.axisLabel(), false, false, true,
                         () -> cycleEffectAxis(idx)));
@@ -1152,6 +1159,18 @@ public class HologramScreen extends Screen {
                     () -> removeEffect(idx)));
             y += 24;
         }
+    }
+
+    /** ♪ at the end of a section label: opens the audio panel on {@code open}; lit when any of {@code lit} reacts. */
+    private void addAudioChip(int x, int y, HologramAudioMod.Param open, HologramAudioMod.Param... lit) {
+        this.flatBtns.add(new FlatBtn(x, y, 14, 10, "\u266A", audioTargetHas(lit), false, true,
+                () -> openTargetAudio(this, open)));
+    }
+
+    /** ♪ on an effect row; lit when the effect has audio. */
+    private void addEffectAudioChip(int x, int y, int h, int idx, HologramEffect fx) {
+        this.flatBtns.add(new FlatBtn(x, y, 13, h, "\u266A", fx.hasAudio(), false, true,
+                () -> openEffectAudio(this, idx, HologramAudioMod.Param.STRENGTH)));
     }
 
     private static String unitOf(HologramEffect.Type type) {
@@ -1329,7 +1348,9 @@ public class HologramScreen extends Screen {
             if (y + cardH > maxCardY)
                 break;
             int trigW = 30;
-            int strW = fx.type() == HologramEffect.Type.TINT ? rw - 23 - trigW : (rw - 27 - trigW) * 60 / 100;
+            int audioW = 15; // the ♪ chip between trigger and remove
+            int strW = fx.type() == HologramEffect.Type.TINT ? rw - 23 - trigW - audioW
+                    : (rw - 27 - trigW - audioW) * 60 / 100;
             this.numControls.add(new NumControl(rx, y, strW, 17, fx.label(), TEXT, true,
                     0.0, 2.0, 0.1, 0.5,
                     () -> {
@@ -1339,7 +1360,7 @@ public class HologramScreen extends Screen {
                     v -> setEffectStrength(idx, (float) v), "", 2));
             if (fx.type() != HologramEffect.Type.TINT) {
                 int spdX = rx + strW + 3;
-                int spdW = rw - strW - 26 - trigW;
+                int spdW = rw - strW - 26 - trigW - audioW;
                 this.numControls.add(new NumControl(spdX, y, spdW, 17, "Hz", MUTED, false,
                         0.1, 20.0, 0.5, 1.0,
                         () -> {
@@ -1348,8 +1369,9 @@ public class HologramScreen extends Screen {
                         },
                         v -> setEffectSpeed(idx, (float) v), "", 1));
             }
-            this.flatBtns.add(new FlatBtn(rx + rw - 20 - trigW, y, trigW, 17, fx.trigger().shortLabel(),
+            this.flatBtns.add(new FlatBtn(rx + rw - 20 - trigW - audioW, y, trigW, 17, fx.trigger().shortLabel(),
                     fx.trigger() != HologramEffect.Trigger.ALWAYS, false, true, () -> cycleEffectTrigger(idx)));
+            addEffectAudioChip(rx + rw - 17 - audioW, y, 17, idx, fx);
             this.flatBtns.add(new FlatBtn(rx + rw - 17, y, 17, 17, "x", false, true, true,
                     () -> removeEffect(idx)));
             y += cardH + 3;
@@ -3247,6 +3269,105 @@ public class HologramScreen extends Screen {
         HologramEditorPrefs.setStartInCreator(true);
         if (this.minecraft != null)
             this.minecraft.setScreen(new HologramCreatorScreen(this));
+    }
+
+    // ---------------------------------------------------------------- audio bridge
+    //
+    // HologramAudioScreen (the ♪ panel) edits audio modulations through these, like the Creator does: undo, the
+    // live preview and saving stay here. Root / group / layer values are links on the timeline, so a hologram
+    // without one gets an audio-only timeline (no tracks) the first time something reacts to music.
+
+    HologramTimeline.TargetKind audioTargetKind() {
+        return switch (this.targetKind) {
+            case ROOT -> HologramTimeline.TargetKind.ROOT;
+            case GROUP -> HologramTimeline.TargetKind.GROUP;
+            case LAYER -> HologramTimeline.TargetKind.LAYER;
+        };
+    }
+
+    String audioTargetId() {
+        if (this.targetKind == TargetKind.GROUP)
+            return this.selectedGroupId == null ? "" : this.selectedGroupId;
+        if (this.targetKind == TargetKind.LAYER) {
+            HologramLayer l = currentLayer();
+            return l == null ? "" : l.uid();
+        }
+        return "";
+    }
+
+    String audioTargetName() {
+        if (this.targetKind == TargetKind.ROOT)
+            return "Whole hologram";
+        if (this.targetKind == TargetKind.GROUP) {
+            HologramGroup g = currentGroup();
+            return g == null ? "Group" : "Group " + g.name();
+        }
+        HologramLayer l = currentLayer();
+        return l == null ? "Layer" : "Layer " + (this.selectedLayer + 1) + " " + l.id();
+    }
+
+    List<HologramAudioMod> audioTargetMods() {
+        return this.timeline == null ? List.of() : this.timeline.audioOf(audioTargetKind(), audioTargetId());
+    }
+
+    void audioSetTargetMods(List<HologramAudioMod> mods) {
+        HologramTimeline base = this.timeline == null ? HologramTimeline.empty(4.0F) : this.timeline;
+        HologramTimeline next = base.withAudioOf(audioTargetKind(), audioTargetId(), mods);
+        // Removing the last modulation of an audio-only timeline removes the timeline it needed.
+        this.timeline = next.tracks().isEmpty() && next.audio().isEmpty() ? null : next;
+        refresh();
+    }
+
+    void audioApplyPreset(HologramAudioMod.Preset preset) {
+        this.timeline = preset.applyTo(this.timeline, audioTargetKind(), audioTargetId());
+        refresh();
+    }
+
+    List<HologramAudioMod> audioEffectMods(int index) {
+        List<HologramEffect> fx = getTargetEffects();
+        return index >= 0 && index < fx.size() ? fx.get(index).audio() : List.of();
+    }
+
+    void audioSetEffectMods(int index, List<HologramAudioMod> mods) {
+        List<HologramEffect> fx = new ArrayList<>(getTargetEffects());
+        if (index < 0 || index >= fx.size())
+            return;
+        fx.set(index, fx.get(index).withAudio(mods));
+        setTargetEffects(List.copyOf(fx));
+        refresh();
+    }
+
+    boolean audioTargetHas(HologramAudioMod.Param... params) {
+        for (HologramAudioMod m : audioTargetMods())
+            for (HologramAudioMod.Param p : params)
+                if (m.param() == p)
+                    return true;
+        return false;
+    }
+
+    /** The ♪ panel for the selected root / group / layer, opened on {@code param}. */
+    void openTargetAudio(Screen returnTo, HologramAudioMod.Param param) {
+        if (this.minecraft == null)
+            return;
+        commitInlineBox();
+        List<HologramAudioMod.Param> params = new ArrayList<>(HologramAudioMod.Param.propParams());
+        if (this.targetKind == TargetKind.ROOT)
+            params.add(HologramAudioMod.Param.RATE);
+        this.minecraft.setScreen(new HologramAudioScreen(returnTo, this, audioTargetName(), this::audioTargetMods,
+                this::audioSetTargetMods, params, param, 0.0F, this::audioApplyPreset));
+    }
+
+    /** The ♪ panel for effect {@code index} of the selected group / layer. */
+    void openEffectAudio(Screen returnTo, int index, HologramAudioMod.Param param) {
+        List<HologramEffect> fx = getTargetEffects();
+        if (this.minecraft == null || index < 0 || index >= fx.size())
+            return;
+        commitInlineBox();
+        HologramEffect e = fx.get(index);
+        float base = param == HologramAudioMod.Param.STRENGTH ? e.strength() : 0.0F;
+        this.minecraft.setScreen(new HologramAudioScreen(returnTo, this, audioTargetName() + " \u00B7 " + e.label(),
+                () -> audioEffectMods(index), mods -> audioSetEffectMods(index, mods),
+                HologramAudioMod.Param.effectParams(), param, base, null));
     }
 
     // ---------------------------------------------------------------- web companion bridge

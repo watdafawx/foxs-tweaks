@@ -51,8 +51,8 @@ import java.util.Objects;
 public final class HologramWebSession {
     private static final Logger LOG = LogUtils.getLogger();
 
-    /** 2: layer uids, the timeline, and the preview-only playhead message. */
-    public static final int PROTOCOL = 2;
+    /** 2: layer uids, the timeline, and the preview-only playhead message. 3: audio modulations and the meter. */
+    public static final int PROTOCOL = 3;
     /** Ticks with no screen at all (and no grab mode) after which the editor is treated as gone. */
     private static final int ORPHAN_TICKS = 100;
     private static final int MAX_DATA_KEYS = 128;
@@ -268,6 +268,53 @@ public final class HologramWebSession {
             this.lastSelection = sel;
             broadcast(selectionMessage(sel));
         }
+        pushMeter(conns);
+    }
+
+    private final float[] meterLevels = new float[5];
+
+    /**
+     * Levels only, once per client tick (20 Hz) and only to tabs that asked: the browser never receives samples,
+     * so system audio stays on this PC even with the editor open in a browser.
+     */
+    private void pushMeter(List<WebSocketConnection> conns) {
+        for (WebSocketConnection c : conns) {
+            if (!c.meter)
+                continue;
+            dev.watdafawx.foxstweaks.client.audio.AudioHub.touchDemand();
+            dev.watdafawx.foxstweaks.client.audio.AudioHub.meter(c.meterSource, this.meterLevels);
+            JsonObject o = new JsonObject();
+            o.addProperty("type", "meter");
+            o.addProperty("source", c.meterSource.name());
+            o.addProperty("level", round3(this.meterLevels[0]));
+            o.addProperty("bass", round3(this.meterLevels[1]));
+            o.addProperty("mid", round3(this.meterLevels[2]));
+            o.addProperty("high", round3(this.meterLevels[3]));
+            o.addProperty("beat", round3(this.meterLevels[4]));
+            o.addProperty("system", dev.watdafawx.foxstweaks.client.audio.SystemAudio.status());
+            c.send(o.toString());
+        }
+    }
+
+    private static float round3(float v) {
+        return Math.round(v * 1000.0F) / 1000.0F;
+    }
+
+    /** {"type":"meter","on":bool,"source":"AUTO|JUKEBOX|MUSIC|SYSTEM"}: start or stop the level stream. */
+    private void meter(WebSocketConnection c, JsonObject msg, long seq) {
+        c.meter = msg.has("on") && msg.get("on").isJsonPrimitive() && msg.get("on").getAsJsonPrimitive().isBoolean()
+                && msg.get("on").getAsBoolean();
+        String src = str(msg, "source");
+        if (!src.isEmpty()) {
+            try {
+                c.meterSource = dev.watdafawx.foxstweaks.hologram.HologramAudioMod.Source.valueOf(src);
+            } catch (IllegalArgumentException e) {
+                error(c, seq, "invalid", "unknown meter source '" + truncate(src) + "'");
+                return;
+            }
+        }
+        if (seq > c.ack)
+            c.ack = seq;
     }
 
     private String specJson() {
@@ -359,6 +406,7 @@ public final class HologramWebSession {
                 end("cancelled");
             }
             case "playhead" -> playhead(c, msg, seq);
+            case "meter" -> meter(c, msg, seq);
             case "ping" -> {
                 JsonObject pong = new JsonObject();
                 pong.addProperty("type", "pong");

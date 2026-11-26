@@ -40,6 +40,7 @@ The game opens `http://127.0.0.1:<port>/<token>/` in the default browser and cop
 | `src/ui.tsx` | number fields (drag to scrub, type, arrow keys), vectors, toggles, colour |
 | `src/outliner.tsx` | layer/group tree: drag reorder, visibility, solo, rename |
 | `src/inspector.tsx` | root, group and layer inspectors, effect stack |
+| `src/audio.tsx` | audio modulation cards, the level meter, timeline badge helpers |
 | `src/browser.tsx` | searchable block/entity/particle picker |
 | `src/main.tsx` | shell, header, keys |
 
@@ -63,3 +64,15 @@ The dock along the bottom animates the hologram, its groups and layers over a cl
   playhead. A property that already has a track is always keyed at the playhead, as in After Effects.
 
 Every change is an ordinary edit, so Ctrl+Z / Ctrl+Shift+Z undo it and the game validates it.
+
+## Audio
+
+Values can react to music. Every effect card has **♪ Add audio** (strength, speed, offset or hue), and the
+root, group and layer inspectors have an **Audio** section (offset, rotation, scale, visible, brightness; the root
+also playback rate). Each modulation picks what to listen to (any music, jukeboxes, game music, this PC), a
+signal (level, bass, mid, high, beat), an amount (negative pulls down), sensitivity, attack/release, a beat step
+and an optional clamp. Several on one value add up.
+
+The game does all the listening. The page only receives levels (`meter`, 20 Hz, while an audio card is open) and
+never any sound. System audio stays off until the player turns it on in game (`/foxstweaks audio`). Targets with
+audio show a **♪N** badge in the timeline.

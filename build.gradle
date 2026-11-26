@@ -177,6 +177,15 @@ neoForge {
             systemProperty 'foxstweaks.hologramCreatorCheck', 'true'
         }
 
+        // Dev-only check of music-reactive holograms (client/dev/HologramAudioCheck): generated tones and a click
+        // track through the analyser and a fake capture device, modulations, presets, the panels, save, caps.
+        // Report + screenshots land in run-hologram-audio/.
+        hologramAudioCheck {
+            client()
+            gameDirectory = file('run-hologram-audio')
+            systemProperty 'foxstweaks.hologramAudioCheck', 'true'
+        }
+
         // Dev-only check of the hologram web companion (client/dev/HologramWebCheck): Web buttons, HTTP token /
         // Host / traversal, a real WebSocket client speaking the protocol, save, shutdown. Report in run-hologram-web/.
         hologramWebCheck {

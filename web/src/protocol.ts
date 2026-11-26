@@ -1,6 +1,6 @@
-// Wire types for docs/hologram-web-protocol.md (protocol 2). Keep in step with client/web/HologramWebJson.java.
+// Wire types for docs/hologram-web-protocol.md (protocol 3). Keep in step with client/web/HologramWebJson.java.
 
-export const PROTOCOL = 2;
+export const PROTOCOL = 3;
 
 export type Vec3 = [number, number, number];
 export type Kind = 'BLOCK' | 'ENTITY' | 'PARTICLE' | 'STRUCTURE';
@@ -14,6 +14,49 @@ export interface Effect {
   axis: number;
   phase: number;
   trigger: string;
+  /** Audio modulations of this effect (STRENGTH, SPEED, PHASE, HUE); absent when none. */
+  audio?: AudioMod[];
+}
+
+export type AudioSource = 'AUTO' | 'JUKEBOX' | 'MUSIC' | 'SYSTEM';
+export type AudioSignal = 'LEVEL' | 'BASS' | 'MID' | 'HIGH' | 'BEAT';
+export type AudioParam =
+  | 'STRENGTH'
+  | 'SPEED'
+  | 'PHASE'
+  | 'HUE'
+  | 'OFFSET_X'
+  | 'OFFSET_Y'
+  | 'OFFSET_Z'
+  | 'ROT_X'
+  | 'ROT_Y'
+  | 'ROT_Z'
+  | 'SCALE'
+  | 'VISIBLE'
+  | 'BRIGHT'
+  | 'RATE';
+
+/** One audio modulation: value += amount x signal, with its own envelope. See HologramAudioMod.java. */
+export interface AudioMod {
+  param: AudioParam;
+  source: AudioSource;
+  signal: AudioSignal;
+  amount: number;
+  sensitivity: number;
+  /** Envelope attack / release, seconds. */
+  attack: number;
+  release: number;
+  /** 0 = smooth; above 0 the signal is a step (on while over the threshold). */
+  threshold: number;
+  /** Clamp of the modulated value; absent = no clamp. */
+  min?: number;
+  max?: number;
+}
+
+/** An audio modulation of a root / group / layer value, kept on the timeline. */
+export interface AudioLink extends AudioMod {
+  target: TargetKind;
+  id: string;
 }
 
 export interface Motion {
@@ -98,6 +141,8 @@ export interface Timeline {
   mode: PlayMode;
   start: string;
   tracks: Track[];
+  /** Audio modulations of root / group / layer values; absent when none. */
+  audio?: AudioLink[];
 }
 
 export interface Spec {

@@ -2,6 +2,7 @@ package dev.watdafawx.foxstweaks.client;
 
 import com.mojang.blaze3d.platform.NativeImage;
 import com.mojang.blaze3d.systems.RenderSystem;
+import dev.watdafawx.foxstweaks.hologram.HologramAudioMod;
 import dev.watdafawx.foxstweaks.hologram.HologramEffect;
 import dev.watdafawx.foxstweaks.hologram.HologramLayer;
 import dev.watdafawx.foxstweaks.hologram.HologramSpec;
@@ -82,7 +83,7 @@ public final class HologramCreatorScreen extends Screen {
     };
     private static final String[] REVEALS = { "Rise", "Pop", "Unfold", "Spin", "Drop", "Glitch" };
 
-    private enum Section { SHAPE, COLOUR, FX, MOTION, STACK, REVEAL }
+    private enum Section { SHAPE, COLOUR, FX, MOTION, STACK, MUSIC, REVEAL }
 
     /** Collapsed sections survive closing the editor, like a designer's panel layout would. */
     private static final Set<Section> collapsed = EnumSet.noneOf(Section.class);
@@ -532,6 +533,9 @@ public final class HologramCreatorScreen extends Screen {
         y = section(g, mx, my, Section.STACK, "STACK  " + stackCount(effects) + "/" + HologramSpec.MAX_EFFECTS, cx, y, cw);
         if (!collapsed.contains(Section.STACK))
             y = renderStack(g, mx, my, effects, cx, y, cw, clipTop, clipBottom);
+        y = section(g, mx, my, Section.MUSIC, "MUSIC  ♪", cx, y, cw);
+        if (!collapsed.contains(Section.MUSIC))
+            y = renderMusic(g, mx, my, cx, y, cw);
         y = section(g, mx, my, Section.REVEAL, "REVEAL", cx, y, cw);
         if (!collapsed.contains(Section.REVEAL))
             y = renderReveal(g, mx, my, cx, y, cw);
@@ -542,6 +546,36 @@ public final class HologramCreatorScreen extends Screen {
         this.rightContentH = y - startY + 4;
         if (maxScroll > 0)
             scrollbar(g, x + w - 5, clipTop, viewH, this.rightScroll, maxScroll);
+    }
+
+    // ---- music ----
+
+    /**
+     * One-click music looks for the selected layer, plus the full ♪ panel. Presets only touch the values they
+     * use, so "Dance" and "Glow" combine; a lit chip means the layer already has that preset's first value.
+     */
+    private int renderMusic(GuiGraphics g, int mx, int my, int x, int y, int w) {
+        List<HologramAudioMod> mods = this.editor.audioTargetMods();
+        HologramAudioMod.Preset[] presets = HologramAudioMod.Preset.values();
+        int cw = (w - 4) / 2;
+        for (int i = 0; i < presets.length; i++) {
+            HologramAudioMod.Preset p = presets[i];
+            HologramAudioMod first = p.mods().get(0);
+            boolean on = mods.stream().anyMatch(m -> m.param() == first.param() && m.signal() == first.signal());
+            int px = x + (i % 2) * (cw + 4);
+            int py = y + (i / 2) * (ROW + 2);
+            chip(g, mx, my, px, py, i % 2 == 0 ? cw : w - cw - 4, p.label(), on, () -> {
+                this.editor.creatorPushUndo();
+                this.editor.audioApplyPreset(p);
+            }).tooltip = p.hint();
+        }
+        y += 2 * (ROW + 2);
+        int n = mods.size() + HologramAudioMod.count(this.editor.creatorEffects());
+        chip(g, mx, my, x, y, w, n == 0 ? "♪ More..." : "♪ " + n + " reacting · edit", n > 0,
+                () -> this.editor.openTargetAudio(this, HologramAudioMod.Param.SCALE))
+                .tooltip = "Every value, sensitivity, smoothing and a live meter. Levels are computed on this PC; "
+                + "nothing is recorded or sent.";
+        return y + ROW + 2;
     }
 
     private int section(GuiGraphics g, int mx, int my, Section s, String title, int x, int y, int w) {
@@ -946,6 +980,15 @@ public final class HologramCreatorScreen extends Screen {
             int rx = x + w - 11;
             int wx = rx - 2 - ww;
             boolean always = e.trigger() == HologramEffect.Trigger.ALWAYS;
+            // ♪: this effect's music modulations (strength, speed, offset, hue)
+            int nx = wx - 13;
+            boolean audio = e.hasAudio();
+            g.fill(nx, ry + 3, nx + 11, ry + 12, audio ? 0x40F5C062 : 0xFF262A34);
+            g.drawString(this.font, "♪", nx + 2, ry + 4, audio ? 0xFFF5C062 : MUTED, false);
+            Hit nh = hit(nx, ry, 11, rowH - 1);
+            nh.click = () -> this.editor.openEffectAudio(this, fIdx, HologramAudioMod.Param.STRENGTH);
+            nh.tooltip = audio ? "Reacts to music (" + e.audio().size() + ") · click to edit"
+                    : "Make it react to music";
             g.fill(wx, ry + 3, wx + ww, ry + 12, always ? 0xFF262A34 : 0x404CC9F0);
             g.drawString(this.font, when, wx + 3, ry + 4, always ? MUTED : ACCENT, false);
             Hit wh = hit(wx, ry, ww, rowH - 1);
@@ -974,7 +1017,7 @@ public final class HologramCreatorScreen extends Screen {
 
             // strength bar
             int bx = px;
-            int bw = wx - 4 - bx;
+            int bw = nx - 4 - bx;
             if (bw > 12 && e.type().usesAmount()) {
                 float min = e.type().isFx() ? 0.0F : e.type().minAmount();
                 float max = e.type().isFx() ? 2.0F : e.type().maxAmount();

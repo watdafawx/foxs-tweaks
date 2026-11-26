@@ -42,6 +42,8 @@
     "SkewerRecipesMixin"
   ],
   "client": [
+    "ChannelAudioTapMixin",
+    "SoundEngineAudioTapMixin",
     "Ae2EmiQuickFillMixin",
     "BackpackRenderInfoMixin",
     "BlockEntityRenderProfilerMixin",

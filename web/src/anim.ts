@@ -280,6 +280,7 @@ export function fixTimeline(spec: Spec): void {
     if (t.prop === 'EFFECT') return t.target !== 'ROOT' && (t.effect ?? 0) < (x.effects?.length ?? 0);
     return true;
   });
+  if (tl.audio) tl.audio = tl.audio.filter((a) => !!targetOf(spec, a.target, a.id));
   for (const t of tl.tracks) for (const k of t.keys) if (k.t > tl.length) k.t = tl.length;
 }
 

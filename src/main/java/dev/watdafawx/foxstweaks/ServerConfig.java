@@ -157,6 +157,18 @@ public final class ServerConfig {
                     "Maximum number of keyframes in one hologram's timeline, over all of its tracks.")
             .defineInRange("hologramTimelineMaxKeys", 2048, 0, 8192);
 
+    public static final ModConfigSpec.IntValue HOLOGRAM_AUDIO_MAX_PER_VALUE = BUILDER
+            .comment(
+                    "Maximum number of audio modulations stacked on one hologram value (one effect parameter, or one",
+                    "property of one layer or group). Specs over the cap are refused when saved. 0 turns music",
+                    "reactive holograms off for new saves.")
+            .defineInRange("hologramAudioMaxPerValue", 4, 0, 8);
+
+    public static final ModConfigSpec.IntValue HOLOGRAM_AUDIO_MAX_PER_HOLOGRAM = BUILDER
+            .comment(
+                    "Maximum number of audio modulations in one hologram, over every effect, layer and group.")
+            .defineInRange("hologramAudioMaxPerHologram", 64, 0, 256);
+
     static {
         BUILDER.pop();
         BUILDER.push("media");
@@ -292,6 +304,14 @@ public final class ServerConfig {
 
     public static int hologramTimelineMaxKeys() {
         return loaded() ? HOLOGRAM_TIMELINE_MAX_KEYS.get() : 2048;
+    }
+
+    public static int hologramAudioMaxPerValue() {
+        return loaded() ? HOLOGRAM_AUDIO_MAX_PER_VALUE.get() : 4;
+    }
+
+    public static int hologramAudioMaxPerHologram() {
+        return loaded() ? HOLOGRAM_AUDIO_MAX_PER_HOLOGRAM.get() : 64;
     }
 
     private ServerConfig() {

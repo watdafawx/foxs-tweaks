@@ -22,6 +22,7 @@ import {
 import { layerName } from './outliner';
 import { PH, REG, S, edit, goLive, newGesture, notify, scrubTo, toast, togglePlay, useApp, usePlayhead } from './store';
 import { ColorField, NumField, SelectField, Toggle } from './ui';
+import { PARAMS, linksOf } from './audio';
 
 // ---------------------------------------------------------------- module state (survives re-renders)
 
@@ -230,7 +231,7 @@ function sections(spec: Spec): Section[] {
   const sel = S.selection;
   const add = (target: TargetKind, id: string, name: string, effects: { type: string }[], forced: boolean) => {
     const own = tracks.filter((t) => t.target === target && t.id === id);
-    if (own.length || forced) out.push({ target, id, name, effects, tracks: own });
+    if (own.length || forced || linksOf(spec, target, id).length) out.push({ target, id, name, effects, tracks: own });
   };
   add('ROOT', '', 'Hologram', [], sel.kind === 'root');
   spec.groups.forEach((g) => add('GROUP', g.id, `▣ ${g.name}`, g.effects, sel.kind === 'group' && sel.group === g.id));
@@ -747,6 +748,26 @@ function LaneSegments({ track, tx }: { track: Track; tx: (t: number) => number }
   return <>{out}</>;
 }
 
+/** "♪ 2": this target's values react to music (edit them in the inspector's Audio section). */
+function AudioBadge({ spec, target, id }: { spec: Spec; target: TargetKind; id: string }) {
+  const links = linksOf(spec, target, id);
+  const fx = target === 'ROOT' ? 0 : (targetEffects(spec, target, id) ?? []).reduce((n, e) => n + (e.audio?.length ?? 0), 0);
+  const n = links.length + fx;
+  if (!n) return null;
+  const what = [...links.map((a) => PARAMS[a.param].label), ...(fx ? [`${fx} on effects`] : [])].join(', ');
+  return (
+    <span class="tl-audio" title={`Reacts to music: ${what}`}>
+      ♪{n}
+    </span>
+  );
+}
+
+function targetEffects(spec: Spec, target: TargetKind, id: string) {
+  if (target === 'GROUP') return spec.groups.find((g) => g.id === id)?.effects;
+  if (target === 'LAYER') return spec.layers.find((l) => l.uid === id)?.effects;
+  return undefined;
+}
+
 function NameRow({
   r,
   spec,
@@ -761,6 +782,7 @@ function NameRow({
     return (
       <div class={`tl-name sec tgt-${r.sec.target.toLowerCase()}`}>
         <span class="tl-sec-name">{r.sec.name}</span>
+        <AudioBadge spec={spec} target={r.sec.target} id={r.sec.id} />
         <AddTrack sec={r.sec} />
       </div>
     );

@@ -5,6 +5,7 @@ import { REG, S, edit, newGesture } from './store';
 import { AxisField, ColorField, NumRow, Row, Section, SelectField, Toggle, Vec3Field } from './ui';
 import { layerName } from './outliner';
 import { effectRemoved, effectsSwapped } from './anim';
+import { EffectAudio, TargetAudio } from './audio';
 
 type Target = { kind: 'group'; g: Group } | { kind: 'layer'; l: Layer; index: number };
 
@@ -119,6 +120,7 @@ function RootInspector({ spec }: { spec: Spec }) {
           onChange={(v, g) => edit((s) => (s.renderDistance = v), g)}
         />
       </Section>
+      <TargetAudio target="ROOT" id="" />
     </div>
   );
 }
@@ -163,6 +165,7 @@ function TargetInspector({ t }: { t: Target }) {
         />
       </Section>
       <MotionSection t={t} x={x} />
+      <TargetAudio target={t.kind === 'group' ? 'GROUP' : 'LAYER'} id={t.kind === 'group' ? t.g.id : (t.l.uid ?? '')} />
       {t.kind === 'layer' && t.l.kind === 'PARTICLE' && (
         <Section title="Particles">
           <NumRow
@@ -504,6 +507,10 @@ function EffectCard({ t, e, i, count }: { t: Target; e: Effect; i: number; count
             onChange={(v) => set((x) => (x.trigger = v), newGesture())}
           />
         </Row>
+        <EffectAudio
+          mods={e.audio ?? []}
+          locate={(s) => (t.kind === 'group' ? s.groups.find((g) => g.id === t.g.id) : s.layers[t.index])?.effects[i]}
+        />
       </div>
     </div>
   );
