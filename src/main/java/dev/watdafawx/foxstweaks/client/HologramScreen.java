@@ -2303,7 +2303,7 @@ public class HologramScreen extends Screen {
             // Read only: keyframes are edited in the web editor, the Studio only carries them to the save.
             int tx = rx + this.font.width("Inspector") + 8;
             int tw = this.rightX + this.rightW - 8 - tx;
-            String line = this.font.plainSubstrByWidth("◆ Timeline (edit in Web): " + this.timeline.summary(), tw);
+            String line = timelineLabel(this.timeline.summary(), tw);
             graphics.drawString(this.font, line, this.rightX + this.rightW - 8 - this.font.width(line), this.top + 6,
                     0xFFE0B860, false);
             if (mouseX >= tx && mouseX < tx + tw && mouseY >= this.top + 4 && mouseY < this.top + 16)
@@ -3017,6 +3017,26 @@ public class HologramScreen extends Screen {
             return;
         var target = BlockPos.containing(player.getEyePosition().add(player.getViewVector(1.0F).scale(3.0)));
         HologramNetwork.sendCreate(target, clip);
+    }
+
+    /**
+     * The read-only timeline note, as much of it as fits in {@code width}: the full hint first, then shorter
+     * wordings, and an ellipsis only as the last resort. A hard cut ("Timeline (edit in Web") read as broken.
+     */
+    private String timelineLabel(String summary, int width) {
+        String[] variants = {
+                "◆ Timeline (edit in Web): " + summary,
+                "◆ Timeline: " + summary,
+                "◆ Timeline (edit in Web)",
+                "◆ Timeline",
+        };
+        for (String variant : variants) {
+            if (this.font.width(variant) <= width)
+                return variant;
+        }
+
+        int dots = this.font.width("…");
+        return this.font.plainSubstrByWidth("◆ Timeline", Math.max(0, width - dots)) + "…";
     }
 
     public void saveAndClose() {

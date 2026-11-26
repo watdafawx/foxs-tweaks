@@ -96,6 +96,12 @@ public final class HologramCreatorCheck {
         });
     }
 
+    private static void scrollRight(int pixels) {
+        var c = creator();
+        if (c != null)
+            c.devScrollRight(pixels);
+    }
+
     private static void guiScale(int scale) {
         Minecraft mc = Minecraft.getInstance();
         mc.options.guiScale().set(scale);
@@ -103,6 +109,17 @@ public final class HologramCreatorCheck {
     }
 
     private static void scenarios() {
+        // GUI scale 3 and 4 need a big window (the scale is capped by width / 320): at the default 854x480 the
+        // options silently stay at 2 and every "scale 4" check would be a scale 2 check.
+        add(2, () -> {
+            Minecraft mc = Minecraft.getInstance();
+            try {
+                mc.getWindow().setWindowed(1920, 1080);
+            } catch (Throwable t) {
+                LOG.warn("could not resize the window", t);
+            }
+            mc.resizeDisplay();
+        });
         add(40, () -> onServer(player -> {
             player.serverLevel().setDayTime(6000);
             player.teleportTo(player.serverLevel(), 0.5, -60.0, 5.5, 180.0F, 0.0F);
@@ -143,7 +160,22 @@ public final class HologramCreatorCheck {
             editor = c.editor();
             check("middle of the screen stays free (scale 2)", c.devFreeWidth() >= 90, "free=" + c.devFreeWidth());
             check("starts with no effects", effects().isEmpty(), effects().toString());
+            c.devRecordFits();
         });
+
+        // ---- text stays inside its panel at the tight GUI scales (empty stack: the "Nothing yet" hint shows) ----
+        add(2, () -> guiScale(3));
+        add(8, () -> assertFits(3, "empty stack", true));
+        add(2, () -> scrollRight(10_000));
+        add(6, () -> shot("creator-s3-empty.png"));
+        add(2, () -> scrollRight(-10_000));
+        add(2, () -> guiScale(4));
+        add(8, () -> assertFits(4, "empty stack", true));
+        add(2, () -> scrollRight(10_000));
+        add(6, () -> shot("creator-s4-empty.png"));
+        add(2, () -> scrollRight(-10_000));
+        add(2, () -> guiScale(2));
+        add(8, () -> assertFits(2, "empty stack", true));
 
         // ---- built-in look ----
         add(4, () -> {
@@ -233,6 +265,7 @@ public final class HologramCreatorCheck {
             check("still the Creator after resize", c != null, String.valueOf(Minecraft.getInstance().screen));
             if (c != null)
                 check("middle stays free (scale 3)", c.devFreeWidth() >= 90, "free=" + c.devFreeWidth());
+            assertFits(3, "with effects", false);
             shot("creator-s3.png");
         });
         add(2, () -> {
@@ -246,6 +279,7 @@ public final class HologramCreatorCheck {
             var c = creator();
             if (c != null)
                 check("middle stays free (scale 4)", c.devFreeWidth() >= 60, "free=" + c.devFreeWidth());
+            assertFits(4, "with effects", false);
             shot("creator-s4.png");
         });
         add(2, () -> guiScale(2));
@@ -336,6 +370,29 @@ public final class HologramCreatorCheck {
     }
 
     // ---------------------------------------------------------------- harness
+
+    /**
+     * Every run of text the Creator reports (layer names, the empty-stack hint, the "+ Save" tile) must end
+     * inside the box it was drawn for. The layer name has to be there, or the check would pass on nothing.
+     */
+    private static void assertFits(int scale, String state, boolean expectHint) {
+        String when = "scale " + scale + ", " + state;
+        var c = creator();
+        if (c == null) {
+            check("text fits (" + when + ")", false, "no Creator open");
+            return;
+        }
+        double actual = Minecraft.getInstance().getWindow().getGuiScale();
+        check("window really is at GUI scale " + scale, actual == scale, "gui scale=" + actual);
+
+        var fits = c.devFits();
+        var bad = fits.stream().filter(f -> !f.fits()).toList();
+        boolean hasName = fits.stream().anyMatch(f -> f.what().startsWith("layer name"));
+        boolean hasHint = fits.stream().anyMatch(f -> f.what().equals("empty stack hint"));
+        check("text stays inside its box (" + when + ")",
+                hasName && bad.isEmpty() && (!expectHint || hasHint),
+                "name=" + hasName + " hint=" + hasHint + " overflowing=" + bad);
+    }
 
     private static void add(int waitTicks, Runnable run) {
         STEPS.add(new Step(waitTicks, run));

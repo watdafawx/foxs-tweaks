@@ -257,6 +257,7 @@ public class HologramPickerScreen extends Screen {
                     new ItemStack(block.asItem()), name.toLowerCase(Locale.ROOT)));
         }
         blocks.sort(Comparator.comparing(Entry::id));
+        blocks = disambiguated(blocks);
         for (Entry e : blocks)
             blockList.add(e.block());
 
@@ -290,6 +291,25 @@ public class HologramPickerScreen extends Screen {
         MOBS = List.copyOf(mobs);
         PARTICLES = List.copyOf(particles);
         BLOCKS = List.copyOf(blocks);
+    }
+
+    /** Gives blocks that share a display name a tag (see {@link HologramBlockNames}). */
+    private static List<Entry> disambiguated(List<Entry> blocks) {
+        Map<String, String> names = new LinkedHashMap<>();
+        for (Entry e : blocks)
+            names.put(e.id(), e.name());
+
+        Map<String, String> changed = HologramBlockNames.disambiguate(names);
+        if (changed.isEmpty())
+            return blocks;
+
+        List<Entry> out = new ArrayList<>(blocks.size());
+        for (Entry e : blocks) {
+            String name = changed.get(e.id());
+            out.add(name == null ? e : new Entry(e.kind(), e.id(), name, e.ns(), e.block(), e.type(), e.icon(),
+                    name.toLowerCase(Locale.ROOT)));
+        }
+        return out;
     }
 
     private static List<Entry> all(HologramLayer.Kind kind) {
@@ -467,6 +487,13 @@ public class HologramPickerScreen extends Screen {
                     && (flags(e.block()) & this.shapeMask) != this.shapeMask)
                 continue;
             preHue.add(e);
+        }
+
+        // A search ranks by how well the name answers it; an empty one keeps the list's own (id) order.
+        // The sort is stable, so equal ranks stay in id order.
+        if (!query.isEmpty()) {
+            preHue.sort(Comparator.<Entry>comparingInt(e -> query.rank(e.lower()))
+                    .thenComparingInt(e -> e.lower().length()));
         }
 
         if (this.kind == HologramLayer.Kind.BLOCK && this.hue != null) {
@@ -1625,6 +1652,34 @@ public class HologramPickerScreen extends Screen {
         for (int i = 0; i < Math.min(max, this.results.size()); i++)
             out.add(this.results.get(i).id());
         return out;
+    }
+
+    /** Display names of the first {@code max} results, in the order the grid shows them. */
+    public List<String> devResultNames(int max) {
+        List<String> out = new ArrayList<>();
+        for (int i = 0; i < Math.min(max, this.results.size()); i++)
+            out.add(this.results.get(i).name());
+        return out;
+    }
+
+    /** Block names that appear more than once inside one mod, as "mod|name" (empty once disambiguated). */
+    public static List<String> devDuplicateBlockNames() {
+        ensureData();
+        Map<String, Integer> seen = new HashMap<>();
+        for (Entry e : BLOCKS)
+            seen.merge(e.ns() + "|" + e.lower(), 1, Integer::sum);
+        List<String> out = new ArrayList<>();
+        seen.forEach((name, count) -> {
+            if (count > 1)
+                out.add(name);
+        });
+        return out;
+    }
+
+    public static String devNameOf(String blockId) {
+        ensureData();
+        Entry e = entryOf(HologramLayer.Kind.BLOCK, blockId);
+        return e == null ? "" : e.name();
     }
 
     public String devSelectedId() {

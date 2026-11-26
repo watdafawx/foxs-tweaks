@@ -179,6 +179,7 @@
   "foxstweaks.configuration.hologramsEnabled": "Holograms Enabled",
   "foxstweaks.configuration.hologramsMaxPerDimension": "Holograms Max Per Dimension",
   "foxstweaks.configuration.hologramsMaxRenderDistance": "Hologram Max Render Distance",
+  "foxstweaks.configuration.hologramsEditRange": "Hologram Editing Range",
   "foxstweaks.configuration.hologramStructureMaxDimension": "Hologram Structure Max Dimension",
   "foxstweaks.configuration.hologramStructureMaxBlocks": "Hologram Structure Max Blocks",
   "foxstweaks.configuration.hologramStructureMaxBytes": "Hologram Structure Max Bytes",

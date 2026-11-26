@@ -14,6 +14,7 @@ import net.minecraft.client.renderer.texture.DynamicTexture;
 import net.minecraft.core.registries.BuiltInRegistries;
 import net.minecraft.network.chat.Component;
 import net.minecraft.resources.ResourceLocation;
+import net.minecraft.util.FormattedCharSequence;
 import net.minecraft.util.Mth;
 import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.item.Items;
@@ -228,6 +229,7 @@ public final class HologramCreatorScreen extends Screen {
     @Override
     public void render(GuiGraphics g, int mx, int my, float pt) {
         this.hits.clear();
+        this.fits.clear();
         HologramCamera.setAnchor(this.editor.creatorTargetCenter());
         HologramCamera.setMovementBlocked(this.hexBox.isFocused() || this.activeDrag != null);
         renderBackground(g, mx, my, pt);
@@ -362,16 +364,22 @@ public final class HologramCreatorScreen extends Screen {
             };
             eyeHit.tooltip = layer.visible() ? "Hide layer" : "Show layer";
             drawLayerIcon(g, layer, x + 18, ry);
-            String name = this.font.plainSubstrByWidth(layer.shortName(), w - 60);
-            g.drawString(this.font, name, x + 36, ry + 4, layer.visible() ? TEXT : MUTED, false);
             int fx = layer.effects().size();
+            String chip = fx + " fx";
+            int cw = this.font.width(chip) + 4;
+            // The name stops short of the fx chip, or of the scrollbar when there is no chip.
+            int nameRight = fx > 0 ? x + w - 8 - cw - 3 : x + w - (maxScroll > 0 ? 9 : 6);
+            String fullName = layer.shortName();
+            String name = ellipsize(fullName, nameRight - (x + 36));
+            g.drawString(this.font, name, x + 36, ry + 4, layer.visible() ? TEXT : MUTED, false);
+            noteFit("layer name " + fullName, x + 36, x + 36 + this.font.width(name), x + 36, nameRight);
             if (fx > 0) {
-                String chip = fx + " fx";
-                int cw = this.font.width(chip) + 4;
                 g.fill(x + w - 8 - cw, ry + 3, x + w - 8, ry + 12, 0xFF262A34);
                 g.drawString(this.font, chip, x + w - 6 - cw, ry + 4, VIOLET, false);
             }
             Hit row = hit(x + 16, ry, w - 18, 15);
+            if (!name.equals(fullName))
+                row.tooltip = fullName;
             row.click = () -> {
                 this.editor.creatorSelectLayer(li);
                 this.expanded = -1;
@@ -433,9 +441,11 @@ public final class HologramCreatorScreen extends Screen {
             } else {
                 g.fill(tx, ty, tx + tile, ty + tileH, hover ? SURFACE_HOT : SURFACE);
                 outline(g, tx, ty, tile, tileH, hover ? ACCENT : 0x30FFFFFF);
-                String plus = "+ Save";
-                g.drawString(this.font, plus, tx + (tile - this.font.width(plus)) / 2, ty + (tileH - 8) / 2,
-                        hover ? ACCENT : MUTED, false);
+                // Three columns in a 128 px panel leave tiles barely wider than the word; keep a few px of air.
+                String plus = this.font.width("+ Save") <= tile - 8 ? "+ Save" : "+";
+                int plusX = tx + (tile - this.font.width(plus)) / 2;
+                g.drawString(this.font, plus, plusX, ty + (tileH - 8) / 2, hover ? ACCENT : MUTED, false);
+                noteFit("save tile", plusX, plusX + this.font.width(plus), tx + 3, tx + tile - 3);
                 label(g, "yours", tx, ty + tileH + 2, tile, FAINT);
                 Hit h = hit(tx, ty, tile, tileH + 11);
                 h.click = () -> {
@@ -871,8 +881,12 @@ public final class HologramCreatorScreen extends Screen {
                 rows.add(i);
         }
         if (rows.isEmpty()) {
-            g.drawString(this.font, "Nothing yet: pick a look, FX or motion.", x, y, FAINT, false);
-            return y + 12;
+            for (FormattedCharSequence line : this.font.split(Component.literal("Nothing yet: pick a look, FX or motion."), w)) {
+                g.drawString(this.font, line, x, y, FAINT, false);
+                noteFit("empty stack hint", x, x + this.font.width(line), x, x + w);
+                y += 10;
+            }
+            return y + 2;
         }
         int rowH = 16;
         int listTop = y;
@@ -1319,6 +1333,40 @@ public final class HologramCreatorScreen extends Screen {
 
     private static float round(float v, float step) {
         return Math.round(v / step) * step;
+    }
+
+    /** {@code text} cut to {@code maxW} pixels, ending in an ellipsis when something was left off. */
+    private String ellipsize(String text, int maxW) {
+        if (this.font.width(text) <= maxW)
+            return text;
+
+        int dots = this.font.width("…");
+        return this.font.plainSubstrByWidth(text, Math.max(0, maxW - dots)) + "…";
+    }
+
+    /** One drawn run of text and the box it has to stay inside; only collected for the dev check. */
+    public record TextFit(String what, int left, int right, int boundLeft, int boundRight) {
+        public boolean fits() {
+            return this.left >= this.boundLeft && this.right <= this.boundRight;
+        }
+    }
+
+    private final List<TextFit> fits = new ArrayList<>();
+    private boolean recordFits;
+
+    private void noteFit(String what, int left, int right, int boundLeft, int boundRight) {
+        if (this.recordFits)
+            this.fits.add(new TextFit(what, left, right, boundLeft, boundRight));
+    }
+
+    /** Dev check: start collecting {@link TextFit}s; they cover the frames drawn since the last call. */
+    public void devRecordFits() {
+        this.recordFits = true;
+        this.fits.clear();
+    }
+
+    public List<TextFit> devFits() {
+        return List.copyOf(this.fits);
     }
 
     private void toast(String text) {

@@ -176,6 +176,51 @@ public final class HologramPickerCheck {
                     "results=" + p.devResultCount() + " first=" + (ids.isEmpty() ? "-" : ids.get(0)));
             check("search keeps a valid selection", !p.devSelectedId().isEmpty(), p.devSelectedId());
         });
+        // ---- ranking: the exact name beats a longer name that merely contains the words ----
+        add(4, () -> picker().devSetSearch("oak stairs"));
+        add(8, () -> {
+            HologramPickerScreen p = picker();
+            List<String> ids = p.devResultIds(500);
+            List<String> names = p.devResultNames(500);
+            int exact = ids.indexOf("minecraft:oak_stairs");
+            int dark = ids.indexOf("minecraft:dark_oak_stairs");
+            check("'oak stairs' ranks Oak Stairs first", !ids.isEmpty() && ids.get(0).equals("minecraft:oak_stairs"),
+                    "first=" + (names.isEmpty() ? "-" : names.get(0)));
+            check("'oak stairs' ranks Oak Stairs above Dark Oak Stairs", exact >= 0 && dark >= 0 && exact < dark,
+                    "oak=" + exact + " dark=" + dark);
+        });
+        add(4, () -> picker().devSetSearch("birch"));
+        add(8, () -> {
+            HologramPickerScreen p = picker();
+            List<String> names = p.devResultNames(8);
+            // Names that start with the word come before ones that only contain it ("Stripped Birch Log").
+            boolean startsFirst = true;
+            boolean seenOther = false;
+            for (String name : p.devResultNames(500)) {
+                boolean starts = name.toLowerCase().startsWith("birch");
+                if (starts && seenOther)
+                    startsFirst = false;
+                if (!starts)
+                    seenOther = true;
+            }
+            check("'birch' lists names starting with it before the rest", startsFirst, names.toString());
+        });
+        // ---- duplicate display names (standing vs wall signs) ----
+        add(4, () -> {
+            check("no block name repeats inside one mod", HologramPickerScreen.devDuplicateBlockNames().isEmpty(),
+                    HologramPickerScreen.devDuplicateBlockNames().toString());
+            check("standing sign keeps its plain name", "Acacia Sign".equals(HologramPickerScreen.devNameOf("minecraft:acacia_sign")),
+                    HologramPickerScreen.devNameOf("minecraft:acacia_sign"));
+            check("wall sign says so", "Acacia Sign (wall)".equals(HologramPickerScreen.devNameOf("minecraft:acacia_wall_sign")),
+                    HologramPickerScreen.devNameOf("minecraft:acacia_wall_sign"));
+            check("hanging sign keeps its plain name",
+                    "Acacia Hanging Sign".equals(HologramPickerScreen.devNameOf("minecraft:acacia_hanging_sign")),
+                    HologramPickerScreen.devNameOf("minecraft:acacia_hanging_sign"));
+            check("wall hanging sign says so",
+                    "Acacia Hanging Sign (wall)".equals(HologramPickerScreen.devNameOf("minecraft:acacia_wall_hanging_sign")),
+                    HologramPickerScreen.devNameOf("minecraft:acacia_wall_hanging_sign"));
+            picker().devSetSearch("");
+        });
         add(4, () -> picker().devSetSearch("diamnod"));
         add(8, () -> {
             HologramPickerScreen p = picker();

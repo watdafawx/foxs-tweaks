@@ -70,6 +70,7 @@ public final class HologramNetwork {
             return;
 
         if (payload.action() == HologramActionPayload.Action.CANCEL) {
+            HologramEditSessions.close(player);
             Holograms.clearLivePreview(level, id);
             return;
         }
@@ -78,18 +79,37 @@ public final class HologramNetwork {
         double distSq = Math.min(
                 player.distanceToSqr(Vec3.atCenterOf(stored.pos())),
                 player.distanceToSqr(stored.box().getCenter()));
-        if (distSq > square(Holograms.REACH + 8.0)) {
+
+        // An open editor widens the gate: the studio camera, Grab mode and big structures all take the player
+        // away from the hologram, and Done must still land. A first preview from within the base limit proves
+        // the player was beside it, which covers editors the server did not open itself.
+        if (payload.action() == HologramActionPayload.Action.PREVIEW
+                && !HologramEditSessions.isOpen(player, id)
+                && distSq <= square(HologramEditSessions.BASE_LIMIT))
+            HologramEditSessions.open(player, id);
+
+        double limit = HologramEditSessions.limit(player, id);
+        boolean ending = payload.action() == HologramActionPayload.Action.SAVE
+                || payload.action() == HologramActionPayload.Action.DELETE;
+        // Done and Delete close the editor on the client whether or not the server accepts them.
+        if (ending)
+            HologramEditSessions.close(player);
+
+        if (distSq > square(limit)) {
             // Live previews stream constantly while editing; only a real save/delete is worth saying out loud.
             if (payload.action() != HologramActionPayload.Action.PREVIEW) {
                 int away = (int) Math.sqrt(distSq);
-                int limit = (int) (Holograms.REACH + 8.0);
                 LOG.warn("Hologram {} from {} refused ({}): player is {} blocks away, limit {}", stored.id(),
-                        player.getGameProfile().getName(), payload.action(), away, limit);
+                        player.getGameProfile().getName(), payload.action(), away, (int) limit);
                 player.displayClientMessage(net.minecraft.network.chat.Component.literal(
-                        "Hologram change not saved: you were " + away + " blocks away (limit " + limit + ")"), false);
+                        "Hologram change not saved: you were " + away + " blocks away (limit " + (int) limit + ")"),
+                        false);
             }
             return;
         }
+
+        if (!ending)
+            HologramEditSessions.touch(player, id);
 
         if (payload.action() == HologramActionPayload.Action.DELETE) {
             Holograms.remove(level, id);
@@ -221,6 +241,7 @@ public final class HologramNetwork {
     }
 
     public static void openEditor(ServerPlayer player, HologramSpec spec) {
+        HologramEditSessions.open(player, spec.id());
         PacketDistributor.sendToPlayer(player,
                 new HologramOpenPayload(spec, ServerConfig.hologramsMaxRenderDistance()));
     }
