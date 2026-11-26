@@ -1,5 +1,9 @@
 # Changelog
 
+## 1.44.2
+
+- **Fixed: WASD (and Space/Shift/Q/E) did not fly the camera in the hologram Creator**, the default editor. It only worked in the Studio.
+
 ## 1.44.1
 
 - **Fixed: dedicated servers would not start with 1.44.0** ("Attempted to load class com/mojang/blaze3d/vertex/VertexConsumer for invalid dist DEDICATED_SERVER"). A client-only reload listener for hologram structure meshes was registered on servers too.

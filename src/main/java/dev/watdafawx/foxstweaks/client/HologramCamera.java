@@ -157,8 +157,9 @@ public final class HologramCamera {
 
         Minecraft mc = Minecraft.getInstance();
         Window window = mc.getWindow();
-        // Typing in the chat that opens over the editor must not fly the camera.
-        if (window == null || !(mc.screen instanceof HologramScreen))
+        // Only the two editors fly the camera: typing in the chat that opens over them must not, nor the picker
+        // or audio screens. The Creator is the default editor, so leaving it out took WASD away from most users.
+        if (window == null || !(mc.screen instanceof HologramScreen || mc.screen instanceof HologramCreatorScreen))
             return;
         long handle = window.getWindow();
 
