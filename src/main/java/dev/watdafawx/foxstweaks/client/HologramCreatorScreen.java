@@ -4,6 +4,7 @@ import com.mojang.blaze3d.platform.NativeImage;
 import com.mojang.blaze3d.systems.RenderSystem;
 import dev.watdafawx.foxstweaks.hologram.HologramAudioMod;
 import dev.watdafawx.foxstweaks.hologram.HologramEffect;
+import dev.watdafawx.foxstweaks.hologram.HologramImage;
 import dev.watdafawx.foxstweaks.hologram.HologramLayer;
 import dev.watdafawx.foxstweaks.hologram.HologramSpec;
 import dev.watdafawx.foxstweaks.hologram.HologramStructure;
@@ -700,7 +701,28 @@ public final class HologramCreatorScreen extends Screen {
             this.editor.creatorPushUndo();
             this.editor.creatorUpdateLayer(sel, l -> l.withVisible(!l.visible()));
         });
-        return y + ROW + 2;
+        y += ROW + 2;
+        if (layer.kind() == HologramLayer.Kind.IMAGE) {
+            var mode = layer.image().billboard();
+            String label = switch (mode) {
+                case FIXED -> "Faces: as placed";
+                case FACE -> "Faces: you (always)";
+                case FACE_Y -> "Faces: you (upright)";
+            };
+            chip(g, mx, my, x, y, w, label, mode != HologramImage.Billboard.FIXED, () -> {
+                this.editor.creatorPushUndo();
+                this.editor.creatorUpdateLayer(sel, l -> {
+                    var next = switch (l.image().billboard()) {
+                        case FIXED -> HologramImage.Billboard.FACE_Y;
+                        case FACE_Y -> HologramImage.Billboard.FACE;
+                        case FACE -> HologramImage.Billboard.FIXED;
+                    };
+                    return l.withImage(l.image().withBillboard(next));
+                });
+            }).tooltip = "Click to cycle: as placed, always faces you upright, always faces you fully";
+            y += ROW + 2;
+        }
+        return y;
     }
 
     // ---- place: position and rotation as numbers (the same values the gizmo drags) ----
