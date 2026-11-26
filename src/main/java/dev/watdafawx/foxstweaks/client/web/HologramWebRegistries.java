@@ -2,6 +2,7 @@ package dev.watdafawx.foxstweaks.client.web;
 
 import com.google.gson.JsonArray;
 import com.google.gson.JsonObject;
+import dev.watdafawx.foxstweaks.client.HologramBlockNames;
 import dev.watdafawx.foxstweaks.hologram.HologramEffect;
 import dev.watdafawx.foxstweaks.hologram.HologramGroup;
 import dev.watdafawx.foxstweaks.hologram.HologramLayer;
@@ -17,6 +18,7 @@ import net.minecraft.world.level.block.state.properties.Property;
 import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.HashMap;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 
@@ -53,10 +55,15 @@ final class HologramWebRegistries {
                 sorted.add(block);
         }
         sorted.sort(Comparator.comparing(b -> BuiltInRegistries.BLOCK.getKey(b).toString()));
+        Map<String, String> plainNames = new LinkedHashMap<>();
+        for (Block block : sorted)
+            plainNames.put(BuiltInRegistries.BLOCK.getKey(block).toString(), block.getName().getString());
+        Map<String, String> distinctNames = HologramBlockNames.disambiguate(plainNames);
         for (Block block : sorted) {
             JsonObject b = new JsonObject();
-            b.addProperty("id", BuiltInRegistries.BLOCK.getKey(block).toString());
-            b.addProperty("name", block.getName().getString());
+            String blockId = BuiltInRegistries.BLOCK.getKey(block).toString();
+            b.addProperty("id", blockId);
+            b.addProperty("name", distinctNames.getOrDefault(blockId, plainNames.get(blockId)));
             JsonArray props = new JsonArray();
             JsonObject defaults = new JsonObject();
             for (Property<?> p : block.defaultBlockState().getProperties()) {

@@ -65,6 +65,63 @@ final class HologramSearch {
         return this.branches.isEmpty();
     }
 
+    /** Worse than any real match rank; what an entry gets when the plain words only matched its id or mod. */
+    static final int NO_NAME_MATCH = 5;
+
+    /**
+     * How well {@code nameLower} (a lower-case display name) answers the plain words of the query, 0 best:
+     * 0 the whole name, 1 a name that starts with the words, 2 starts with the first word and has the rest
+     * somewhere, 3 the words as whole words inside the name ("Dark Oak Stairs" for "oak stairs"), 4 the words
+     * as a substring, {@link #NO_NAME_MATCH} otherwise. Prefixed and negated tokens do not take part. With
+     * several {@code |} branches the best one counts.
+     *
+     * <p>Without this the grid stays in registry order, which put "Dark Oak Stairs" above "Oak Stairs".
+     */
+    int rank(String nameLower) {
+        int best = NO_NAME_MATCH;
+        for (List<Token> branch : this.branches) {
+            List<String> words = new ArrayList<>();
+            for (Token tok : branch) {
+                if (tok.prefix == Prefix.ANY && !tok.negated)
+                    words.add(tok.value);
+            }
+            if (!words.isEmpty())
+                best = Math.min(best, rankWords(nameLower, words));
+        }
+        return best;
+    }
+
+    private static int rankWords(String name, List<String> words) {
+        String phrase = String.join(" ", words);
+        if (name.equals(phrase))
+            return 0;
+        if (name.startsWith(phrase))
+            return 1;
+        if (name.startsWith(words.get(0)) && words.stream().allMatch(name::contains))
+            return 2;
+        if (wholeWords(name, phrase))
+            return 3;
+        if (name.contains(phrase))
+            return 4;
+        return NO_NAME_MATCH;
+    }
+
+    /** True when {@code phrase} appears in {@code name} starting and ending at a word boundary. */
+    private static boolean wholeWords(String name, String phrase) {
+        int from = 0;
+        while (true) {
+            int at = name.indexOf(phrase, from);
+            if (at < 0)
+                return false;
+            boolean startOk = at == 0 || name.charAt(at - 1) == ' ';
+            int end = at + phrase.length();
+            boolean endOk = end == name.length() || name.charAt(end) == ' ';
+            if (startOk && endOk)
+                return true;
+            from = at + 1;
+        }
+    }
+
     private static List<Token> parseTokens(String input) {
         List<Token> out = new ArrayList<>();
         int i = 0;
