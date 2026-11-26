@@ -860,6 +860,7 @@ public final class HologramGrab {
                 String tag = switch (e.layer().kind()) {
                     case ENTITY -> "[E] ";
                     case STRUCTURE -> "[S] ";
+                    case IMAGE -> "[I] ";
                     case PARTICLE -> "[P] ";
                     case BLOCK -> "[B] ";
                 };

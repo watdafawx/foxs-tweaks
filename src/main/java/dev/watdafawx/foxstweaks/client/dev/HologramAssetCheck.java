@@ -116,7 +116,8 @@ public final class HologramAssetCheck {
                 ImageIO.write(rgb,"JPEG",jpeg);
                 byte[] sequence=new AssetFrames(List.of(jpeg.toByteArray(),jpeg.toByteArray()),List.of(1,1),64,64).encode();
                 var canonical=AssetFrames.sanitize(sequence,normal);
-                check("JPEG frame sequence canonicalized to PNG and FPS capped", canonical.frames().size()==2 && canonical.frames().getFirst()[0]==(byte)137 && canonical.delays().getFirst()==67);
+                // Video frames arrive as JPEG and stay JPEG (re-encoded, so still canonical): as PNG a clip is ~5x larger.
+                check("JPEG frame sequence re-encoded as JPEG and FPS capped", canonical.frames().size()==2 && canonical.frames().getFirst()[0]==(byte)0xFF && canonical.frames().getFirst()[1]==(byte)0xD8 && canonical.delays().getFirst()==67);
                 byte[] longAnimation=new AssetFrames(List.of(jpeg.toByteArray(),jpeg.toByteArray()),List.of(6000,6000),64,64).encode();
                 try {AssetFrames.sanitize(longAnimation,normal);check("duration limit refused",false);}catch(IOException e){check("duration limit refused",e.getMessage().contains("duration"));}
                 server(p->{try {var store=AssetNetwork.store(p.server);store.retain(gif);store.release(gif);check("retain/release preserves unreferenced asset",store.info(gif)!=null&&store.info(gif).references()==0);}catch(IOException e){check("retain/release",false);}return null;});

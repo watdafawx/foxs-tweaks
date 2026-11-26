@@ -265,6 +265,23 @@ public record HologramSpec(
                 halfZ = dims[2] * 0.5F + 0.05F;
                 minY = -0.05F;
                 maxY = dims[1] + 0.05F;
+            } else if (layer.kind() == HologramLayer.Kind.IMAGE) {
+                // Bottom-centred quad. A billboard can face any way, so its box is the sphere around its centre.
+                HologramImage img = layer.image();
+                float w = img.width();
+                float h = img.heightFor(layer.id());
+                if (img.billboard() == HologramImage.Billboard.FIXED) {
+                    halfX = w * 0.5F + 0.05F;
+                    halfZ = 0.05F;
+                    minY = -0.05F;
+                    maxY = h + 0.05F;
+                } else {
+                    float r = (float) Math.sqrt(w * w + h * h) * 0.5F + 0.05F;
+                    halfX = r;
+                    halfZ = r;
+                    minY = h * 0.5F - r;
+                    maxY = h * 0.5F + r;
+                }
             } else if (layer.kind() == HologramLayer.Kind.PARTICLE) {
                 halfX = Math.max(0.35F, layer.scale());
                 halfZ = halfX;

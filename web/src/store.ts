@@ -2,7 +2,19 @@
 // in flight and takes the game's `state` back once it has acknowledged everything sent (state.ack >= last seq).
 
 import { useEffect, useState } from 'preact/hooks';
-import type { BlockDef, EffectDef, Prop, Registries, Selection, SelectionKind, Spec, TargetKind, Track } from './protocol';
+import type {
+  AssetCaps,
+  AssetEntry,
+  BlockDef,
+  EffectDef,
+  Prop,
+  Registries,
+  Selection,
+  SelectionKind,
+  Spec,
+  TargetKind,
+  Track,
+} from './protocol';
 import { PROTOCOL } from './protocol';
 import { emptyTimeline, fixTimeline, localTime, normaliseKeys, readProp, roundTime, trackKey } from './anim';
 
@@ -28,6 +40,29 @@ export interface AppState {
   timelineCaps: { maxTracks: number; maxKeys: number };
   /** Auto-key: a changed property with no track yet gets one, keyed at the playhead. */
   autoKey: boolean;
+  /** Null until the hello (or from a game older than protocol 3). */
+  assetCaps: AssetCaps | null;
+  library: Library;
+  /** Asset id -> PNG data URL, filled in as the game sends them. */
+  thumbs: Record<string, string>;
+  upload: UploadState | null;
+}
+
+export interface Library {
+  loaded: boolean;
+  loading: boolean;
+  error: string;
+  canUpload: boolean;
+  /** True when the server converts video with ffmpeg; false or unknown means the browser has to. */
+  serverVideo: boolean;
+  count: number;
+  entries: AssetEntry[];
+}
+
+export interface UploadState {
+  name: string;
+  percent: number;
+  stage: string;
 }
 
 export const S: AppState = {
@@ -43,7 +78,14 @@ export const S: AppState = {
   toasts: [],
   timelineCaps: { maxTracks: 64, maxKeys: 2048 },
   autoKey: false,
+  assetCaps: null,
+  library: { loaded: false, loading: false, error: '', canUpload: false, serverVideo: false, count: 0, entries: [] },
+  thumbs: {},
+  upload: null,
 };
+
+/** The library by id, for layer names and image sizes. */
+export const ASSETS = new Map<string, AssetEntry>();
 
 export const REG = {
   blocks: new Map<string, BlockDef>(),
@@ -159,8 +201,27 @@ function handle(msg: any): void {
       reg.blocks.forEach((b) => REG.blocks.set(b.id, b));
       reg.entities.forEach((e) => REG.entities.set(e.id, e.name));
       reg.effects.forEach((e) => REG.effects.set(e.type, e));
+      S.assetCaps = msg.assetCaps ? (msg.assetCaps as AssetCaps) : null;
+      // A reconnect may land in another world: its library is not this one.
+      S.library = { ...S.library, loaded: false, loading: false, entries: [], count: 0, error: '' };
+      ASSETS.clear();
+      S.thumbs = {};
+      thumbsAsked.clear();
+      if (S.assetCaps?.available) refreshAssets();
       break;
     }
+    case 'assets':
+      libraryPage(msg);
+      break;
+    case 'assetThumb':
+      if (typeof msg.id === 'string' && typeof msg.data === 'string') S.thumbs = { ...S.thumbs, [msg.id]: msg.data };
+      break;
+    case 'uploadStarted':
+    case 'uploadAck':
+    case 'uploadProgress':
+    case 'uploadDone':
+      uploadListener?.(msg);
+      break;
     case 'state': {
       if (typeof msg.ack === 'number') lastAck = Math.max(lastAck, msg.ack);
       S.canUndo = !!msg.canUndo;
@@ -182,7 +243,10 @@ function handle(msg: any): void {
     case 'playhead':
       return; // the game confirms; the browser already shows its own playhead
     case 'error':
-      toast(String(msg.message ?? 'The game refused that.'), 'error');
+      // Upload errors are shown by the upload itself, next to its progress bar.
+      if (msg.code === 'upload' && uploadListener) uploadListener(msg);
+      else if (msg.code === 'assetThumb') break;
+      else toast(String(msg.message ?? 'The game refused that.'), 'error');
       break;
     case 'closed':
       closedByServer = true;
@@ -198,9 +262,79 @@ function handle(msg: any): void {
 function send(obj: Record<string, unknown>): boolean {
   if (!ws || ws.readyState !== WebSocket.OPEN) return false;
   obj.seq = ++seq;
-  lastSent = seq;
+  // Only edits are acknowledged by a state message; anything else would hold back the game's next state.
+  if (obj.type !== 'assets' && obj.type !== 'assetThumb' && !String(obj.type).startsWith('upload')) lastSent = seq;
   ws.send(JSON.stringify(obj));
   return true;
+}
+
+// ---------------------------------------------------------------- asset library
+
+const thumbsAsked = new Set<string>();
+
+/** Reloads the whole library, one page after another (pages are cut by size in the game). */
+export function refreshAssets(): void {
+  if (S.library.loading) {
+    refreshQueued = true;
+    return;
+  }
+  S.library = { ...S.library, loading: true, error: '' };
+  notify();
+  if (!send({ type: 'assets', offset: 0 })) S.library = { ...S.library, loading: false };
+}
+
+let refreshQueued = false;
+
+function libraryPage(msg: any): void {
+  if (typeof msg.error === 'string') {
+    S.library = { ...S.library, loading: false, error: msg.error };
+    return;
+  }
+  const offset = Number(msg.offset ?? 0);
+  const page = (Array.isArray(msg.entries) ? msg.entries : []) as AssetEntry[];
+  const entries = offset === 0 ? page : [...S.library.entries.slice(0, offset), ...page];
+  const count = Number(msg.count ?? entries.length);
+  const more = page.length > 0 && entries.length < count;
+  S.library = {
+    loaded: !more,
+    loading: more,
+    error: '',
+    canUpload: !!msg.canUpload,
+    serverVideo: msg.video === true,
+    count,
+    entries,
+  };
+  if (offset === 0) ASSETS.clear();
+  page.forEach((e) => ASSETS.set(e.id, e));
+  if (more) send({ type: 'assets', offset: entries.length });
+  else if (refreshQueued) {
+    refreshQueued = false;
+    refreshAssets();
+  }
+}
+
+/** Asks for a thumbnail once; it arrives as an assetThumb message whenever the game has the asset. */
+export function requestThumb(id: string): void {
+  if (thumbsAsked.has(id)) return;
+  thumbsAsked.add(id);
+  send({ type: 'assetThumb', id });
+}
+
+// ---------------------------------------------------------------- upload transport (see upload.ts)
+
+let uploadListener: ((msg: any) => void) | null = null;
+
+export function setUploadListener(l: ((msg: any) => void) | null): void {
+  uploadListener = l;
+}
+
+export function sendAsset(obj: Record<string, unknown>): boolean {
+  return send(obj);
+}
+
+export function setUpload(state: UploadState | null): void {
+  S.upload = state;
+  notify();
 }
 
 // ---------------------------------------------------------------- edits

@@ -70,7 +70,16 @@ public record AssetFrames(List<byte[]> frames, List<Integer> delays, int width, 
         if (w < 1 || h < 1 || w > 4096 || h > 4096 || (long)w*h > 4194304) throw new IOException("Decoded dimensions exceed bomb guard");
     }
     public static AssetFrames sanitize(byte[] input, AssetLimits limits) throws IOException {
-        if (input.length < 8 || input.length > limits.fileBytes()) throw new IOException("File byte limit exceeded or truncated file");
+        return sanitize(input, limits, limits.fileBytes());
+    }
+
+    /**
+     * {@code inputCap} bounds the bytes coming in; the canonical result is still held to {@code limits.fileBytes()}.
+     * A converted video arrives as an FTAS of ffmpeg's JPEGs, which re-encoding usually makes smaller, so it may
+     * start out above the asset limit.
+     */
+    public static AssetFrames sanitize(byte[] input, AssetLimits limits, int inputCap) throws IOException {
+        if (input.length < 8 || input.length > Math.min(inputCap, AssetLimits.MAX_BYTES)) throw new IOException("File byte limit exceeded or truncated file");
         if (new DataInputStream(new ByteArrayInputStream(input)).readInt() == MAGIC) {
             AssetFrames src = bundle(input);
             var result = new ArrayList<byte[]>(); var delays = new ArrayList<Integer>(); int elapsed = 0, stored = 8;
@@ -128,9 +137,12 @@ public record AssetFrames(List<byte[]> frames, List<Integer> delays, int width, 
                     if (disposal.equals("restoreToPrevious")) { previous = new BufferedImage(w,h,BufferedImage.TYPE_INT_ARGB); var g=previous.createGraphics(); g.drawImage(canvas,0,0,null);g.dispose(); }
                     BufferedImage decoded = reader.read(i);
                     var g=canvas.createGraphics(); g.drawImage(decoded,x,y,null);g.dispose();
-                    var resized = new BufferedImage(dw,dh,BufferedImage.TYPE_INT_ARGB);
+                    // A JPEG source (a video frame) has no alpha and stays JPEG: as PNG a 10 s clip is ~5x larger
+                    // and would not fit the default asset size. Everything else is canonical PNG.
+                    boolean jpeg = reader.getFormatName().equalsIgnoreCase("jpeg");
+                    var resized = new BufferedImage(dw,dh,jpeg ? BufferedImage.TYPE_INT_RGB : BufferedImage.TYPE_INT_ARGB);
                     g=resized.createGraphics();g.setRenderingHint(RenderingHints.KEY_INTERPOLATION,RenderingHints.VALUE_INTERPOLATION_BILINEAR);g.drawImage(canvas,0,0,dw,dh,null);g.dispose();
-                    var out=new ByteArrayOutputStream(); ImageIO.write(resized,"PNG",out); byte[] png=out.toByteArray(); stored+=png.length+8;
+                    byte[] png = jpeg ? jpeg(resized) : png(resized); stored+=png.length+8;
                     if (stored+8 > limits.fileBytes()) throw new IOException("Canonical asset byte limit exceeded");
                     frames.add(png); delays.add(delay);
                     if (disposal.equals("restoreToBackgroundColor")) { g=canvas.createGraphics();g.setComposite(AlphaComposite.Clear);g.fillRect(x,y,decoded.getWidth(),decoded.getHeight());g.dispose(); }
@@ -140,6 +152,40 @@ public record AssetFrames(List<byte[]> frames, List<Integer> delays, int width, 
             } finally { reader.dispose(); }
         } catch (RuntimeException e) { throw new IOException("Malformed image: " + e.getMessage(),e); }
     }
+    private static byte[] png(BufferedImage image) throws IOException {
+        var out = new ByteArrayOutputStream();
+        ImageIO.write(image, "PNG", out);
+        return out.toByteArray();
+    }
+
+    private static byte[] jpeg(BufferedImage image) throws IOException {
+        var writer = ImageIO.getImageWritersByFormatName("jpeg").next();
+        var out = new ByteArrayOutputStream();
+        try (var stream = ImageIO.createImageOutputStream(out)) {
+            writer.setOutput(stream);
+            var param = writer.getDefaultWriteParam();
+            param.setCompressionMode(javax.imageio.ImageWriteParam.MODE_EXPLICIT);
+            param.setCompressionQuality(0.85F);
+            writer.write(null, new javax.imageio.IIOImage(image, null, null), param);
+        } finally {
+            writer.dispose();
+        }
+        return out.toByteArray();
+    }
+
+    /** True for JPEG bytes; the client decodes those itself, since Minecraft's NativeImage only reads PNG. */
+    public static boolean isJpeg(byte[] bytes) {
+        return bytes.length >= 3 && bytes[0] == (byte) 255 && bytes[1] == (byte) 216 && bytes[2] == (byte) 255;
+    }
+
+    /** Total animation length in seconds (one frame's delay for a still image). */
+    public double durationSeconds() {
+        long total = 0;
+        for (int d : delays)
+            total += d;
+        return total / 1000.0;
+    }
+
     private static AssetFrames checked(AssetFrames f, AssetLimits l) throws IOException {
         if ((long)f.width*f.height*f.frames.size() > AssetLimits.PIXEL_BUDGET || f.encode().length > l.fileBytes()) throw new IOException("Canonical asset budget exceeded");
         return f;

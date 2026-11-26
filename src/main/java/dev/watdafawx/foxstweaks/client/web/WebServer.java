@@ -279,8 +279,9 @@ final class WebServer {
     }
 
     private String csp() {
-        return "default-src 'none'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; "
-                + "font-src 'self'; connect-src ws://127.0.0.1:" + this.port + "; base-uri 'none'; "
+        return "default-src 'none'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; "
+                // blob: media: a video the page converts itself is played from an object URL, never fetched.
+                + "media-src blob:; font-src 'self'; connect-src ws://127.0.0.1:" + this.port + "; base-uri 'none'; "
                 + "form-action 'none'; frame-ancestors 'none'";
     }
 

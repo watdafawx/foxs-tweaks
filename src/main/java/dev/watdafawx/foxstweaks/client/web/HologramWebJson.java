@@ -8,6 +8,7 @@ import dev.watdafawx.foxstweaks.ServerConfig;
 import dev.watdafawx.foxstweaks.hologram.HologramEffect;
 import dev.watdafawx.foxstweaks.hologram.HologramGroup;
 import dev.watdafawx.foxstweaks.hologram.HologramLayer;
+import dev.watdafawx.foxstweaks.hologram.asset.AssetFrames;
 import dev.watdafawx.foxstweaks.hologram.HologramSpec;
 import dev.watdafawx.foxstweaks.hologram.HologramStates;
 import dev.watdafawx.foxstweaks.hologram.HologramTimeline;
@@ -270,11 +271,15 @@ final class HologramWebJson {
                 throw new Invalid("unknown layer kind");
             }
             String id = str(l, "id", 256);
-            // A structure layer's id is its display name ("Structure 5x4x6"), not a registry id.
+            // A structure layer's id is its display name ("Structure 5x4x6"), not a registry id; an image layer's
+            // is an asset hash. Neither is looked up in a registry.
             boolean structure = kind == HologramLayer.Kind.STRUCTURE;
-            ResourceLocation key = structure ? null : ResourceLocation.tryParse(id);
-            if (key == null && !structure)
+            boolean image = kind == HologramLayer.Kind.IMAGE;
+            ResourceLocation key = structure || image ? null : ResourceLocation.tryParse(id);
+            if (key == null && !structure && !image)
                 throw new Invalid("bad id '" + id + "'");
+            if (image && !AssetFrames.validId(id))
+                throw new Invalid("bad asset id '" + id + "'");
             Map<String, String> props = new LinkedHashMap<>();
             switch (kind) {
                 case BLOCK -> {
@@ -302,6 +307,17 @@ final class HologramWebJson {
                     if (!(BuiltInRegistries.PARTICLE_TYPE.getOptional(key).orElse(null) instanceof SimpleParticleType))
                         throw new Invalid("unknown or unsupported particle '" + id + "'");
                 }
+                case IMAGE -> {
+                    // Image settings are plain strings; the layer clamps them (HologramImage#normalize), and the
+                    // server checks that the asset exists when the hologram is saved.
+                    JsonObject p = l.has("props") ? asObj(l.get("props"), "props") : new JsonObject();
+                    if (p.size() > MAX_PROPS)
+                        throw new Invalid("too many properties");
+                    for (var e : p.entrySet())
+                        props.put(e.getKey(), asStr(e.getValue(), "image setting", 32));
+                }
+                case STRUCTURE -> {
+                }
             }
             String group = l.has("group") && !l.get("group").isJsonNull() ? str(l, "group", 24) : "";
             if (!group.isEmpty() && !groupIds.contains(group))
@@ -322,7 +338,7 @@ final class HologramWebJson {
 
             float[] lo = vec3(l, "offset", -16, 16);
             float[] lr = vec3(l, "rotation", -360, 360);
-            layers.add(new HologramLayer(kind, structure ? id : key.toString(), props, data, group, bool(l, "visible", true),
+            layers.add(new HologramLayer(kind, structure || image ? id : key.toString(), props, data, group, bool(l, "visible", true),
                     lo[0], lo[1], lo[2], lr[0], lr[1], lr[2],
                     num(l, "scale", kind == HologramLayer.Kind.PARTICLE ? 0.35F : 1.0F, 0.05F, 8),
                     num(l, "spin", 0, -360, 360), axis(l, "spinAxis"),

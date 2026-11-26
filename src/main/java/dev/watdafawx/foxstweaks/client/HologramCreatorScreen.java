@@ -562,6 +562,15 @@ public final class HologramCreatorScreen extends Screen {
             g.drawString(this.font, d[0] + "x" + d[1] + "x" + d[2] + " \u00B7 " + count + " blocks", x, y + 1, ACCENT, false);
             y += 12;
         }
+        if (layer.kind() == HologramLayer.Kind.IMAGE) {
+            var image = layer.image();
+            g.drawString(this.font, String.format(Locale.ROOT, "Image %.2f x %.2f", image.width(), image.heightFor(layer.id())),
+                    x, y + 1, ACCENT, false);
+            y += 12;
+            // Uploads need a file picker and the asset library, which only the web editor has.
+            g.drawString(this.font, this.font.plainSubstrByWidth("Add new images in the Web editor", w), x, y + 1, FAINT, false);
+            y += 12;
+        }
         float scale = this.editor.creatorScale();
         y = slider(g, mx, my, x, y, w, "Size", String.format(Locale.ROOT, "%.2f×", scale),
                 (scale - 0.1F) / 3.9F, ACCENT, false, v -> this.editor.creatorSetScale(round(0.1F + (float) v * 3.9F, 0.05F)),
@@ -1522,6 +1531,10 @@ public final class HologramCreatorScreen extends Screen {
             }
             case STRUCTURE -> {
                 g.drawString(this.font, "⊞", x + 4, y + 4, ACCENT, false);
+                return;
+            }
+            case IMAGE -> {
+                g.drawString(this.font, "I", x + 6, y + 4, ACCENT, false);
                 return;
             }
         }

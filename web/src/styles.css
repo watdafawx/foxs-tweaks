@@ -23,6 +23,7 @@
   --block: #c9a46b;
   --entity: #d08cff;
   --particle: #ffcc66;
+  --image: #7ad7b5;
   --radius: 4px;
   --font: 'Inter', 'Segoe UI', system-ui, -apple-system, sans-serif;
   --mono: 'JetBrains Mono', 'Cascadia Code', Consolas, ui-monospace, monospace;
@@ -458,6 +459,10 @@ select {
   background: var(--particle);
 }
 
+.kind-image {
+  background: var(--image);
+}
+
 .kind-root,
 .kind-group {
   background: var(--accent);
@@ -627,6 +632,128 @@ select {
 
 .item:hover .add {
   opacity: 1;
+}
+
+/* ---------------------------------------------------------------- asset library (Images tab) */
+
+.library {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  min-height: 0;
+  outline: 2px dashed transparent;
+  outline-offset: -6px;
+  transition: outline-color 120ms ease-out;
+}
+
+.library.drop {
+  outline-color: var(--accent);
+  background: var(--accent-bg);
+}
+
+.library-bar {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 10px 4px;
+}
+
+.upload-progress {
+  padding: 2px 10px 8px;
+}
+
+.upload-text {
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  margin-bottom: 4px;
+}
+
+.bar {
+  height: 4px;
+  border-radius: 2px;
+  background: var(--panel-3);
+  overflow: hidden;
+}
+
+.bar-fill {
+  height: 100%;
+  background: var(--accent);
+  transition: width 150ms ease-out;
+}
+
+.library-grid {
+  flex: 1;
+  overflow-y: auto;
+  padding: 0 8px 8px;
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
+  gap: 8px;
+  align-content: start;
+}
+
+.asset {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 6px;
+  border-radius: var(--radius);
+  border: 1px solid var(--line-soft);
+  background: var(--panel);
+  cursor: pointer;
+  min-width: 0;
+}
+
+.asset:hover {
+  border-color: var(--line);
+  background: var(--panel-2);
+}
+
+.asset.current {
+  background: var(--accent-bg);
+  border-color: rgba(92, 207, 230, 0.5);
+}
+
+.asset-thumb {
+  position: relative;
+  aspect-ratio: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 3px;
+  margin-bottom: 4px;
+  /* A checkerboard, so transparent pixels read as transparent. */
+  background: repeating-conic-gradient(var(--panel-3) 0 25%, var(--panel-2) 0 50%) 50% / 16px 16px;
+  overflow: hidden;
+}
+
+.asset-thumb img {
+  max-width: 100%;
+  max-height: 100%;
+  image-rendering: pixelated;
+}
+
+.asset-anim {
+  position: absolute;
+  top: 4px;
+  right: 4px;
+}
+
+.asset-name {
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.asset-foot {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-top: 2px;
+}
+
+.empty.error {
+  color: var(--danger);
 }
 
 /* ---------------------------------------------------------------- inspector */

@@ -2,7 +2,7 @@
 
 import { useState } from 'preact/hooks';
 import type { Group, Layer, Spec } from './protocol';
-import { REG, S, edit, select, solo } from './store';
+import { ASSETS, REG, S, edit, select, solo } from './store';
 
 export function layerName(l: Layer): string {
   switch (l.kind) {
@@ -10,12 +10,15 @@ export function layerName(l: Layer): string {
       return REG.blocks.get(l.id)?.name ?? l.id;
     case 'ENTITY':
       return REG.entities.get(l.id) ?? l.id;
+    case 'IMAGE':
+      // The id is a hash; the library knows the file name it was uploaded as.
+      return ASSETS.get(l.id)?.name ?? `image ${l.id.slice(0, 8)}`;
     default:
       return l.id.replace(/^minecraft:/, '').replace(/_/g, ' ');
   }
 }
 
-export const KIND_BADGE: Record<Layer['kind'], string> = { BLOCK: 'B', ENTITY: 'E', PARTICLE: 'P', STRUCTURE: 'S' };
+export const KIND_BADGE: Record<Layer['kind'], string> = { BLOCK: 'B', ENTITY: 'E', PARTICLE: 'P', STRUCTURE: 'S', IMAGE: 'I' };
 
 type Drag = { type: 'layer'; index: number } | { type: 'group'; id: string };
 let dragging: Drag | null = null;

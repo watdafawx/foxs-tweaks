@@ -2,6 +2,7 @@ package dev.watdafawx.foxstweaks.client;
 
 import dev.watdafawx.foxstweaks.hologram.HologramEffect;
 import dev.watdafawx.foxstweaks.hologram.HologramGroup;
+import dev.watdafawx.foxstweaks.hologram.HologramImage;
 import dev.watdafawx.foxstweaks.hologram.HologramLayer;
 import dev.watdafawx.foxstweaks.hologram.HologramNetwork;
 import dev.watdafawx.foxstweaks.hologram.HologramOpenPayload;
@@ -982,6 +983,10 @@ public class HologramScreen extends Screen {
             }));
             y += 22;
 
+            if (layer.kind() == HologramLayer.Kind.IMAGE) {
+                y = buildImageRows(rx, rw, y);
+            }
+
             // Block layer BE capture controls
             if (layer.kind() == HologramLayer.Kind.BLOCK) {
                 String dataLabel = layer.data().isEmpty() ? "Capture BE" : ("Re-cap (" + layer.data().sizeInBytes() + "B)");
@@ -1370,6 +1375,50 @@ public class HologramScreen extends Screen {
         return null;
     }
 
+    /**
+     * Width and billboard of an image layer. Height follows the picture's aspect ratio unless the web editor set
+     * one; everything else about images (upload, playback) lives in the web editor.
+     */
+    private int buildImageRows(int rx, int rw, int y) {
+        int halfW = (rw - 4) / 2;
+        this.numControls.add(new NumControl(rx, y, halfW, 16, "W", TEXT, true,
+                HologramImage.MIN_SIZE, HologramImage.MAX_SIZE, 0.25, 1.0,
+                () -> {
+                    HologramLayer l = currentLayer();
+                    return l == null || l.kind() != HologramLayer.Kind.IMAGE ? 1.0 : l.image().width();
+                },
+                v -> updateCurrentLayer(l -> resizeImage(l, (float) v)), "m", 2));
+        HologramLayer layer = currentLayer();
+        HologramImage.Billboard billboard = layer == null ? HologramImage.Billboard.FIXED : layer.image().billboard();
+        String label = switch (billboard) {
+            case FIXED -> "Fixed";
+            case FACE -> "Face me";
+            case FACE_Y -> "Face me (Y)";
+        };
+        this.flatBtns.add(new FlatBtn(rx + halfW + 4, y, rw - halfW - 4, 16, label,
+                billboard != HologramImage.Billboard.FIXED, false, true, () -> {
+            pushUndo();
+            updateCurrentLayer(l -> {
+                if (l.kind() != HologramLayer.Kind.IMAGE)
+                    return l;
+                HologramImage.Billboard[] all = HologramImage.Billboard.values();
+                return l.withImage(l.image().withBillboard(all[(l.image().billboard().ordinal() + 1) % all.length]));
+            });
+            rebuildInspector();
+            refresh();
+        }));
+        return y + 20;
+    }
+
+    /** A set height scales with the width, so the picture keeps the proportions it had. */
+    private static HologramLayer resizeImage(HologramLayer layer, float width) {
+        if (layer.kind() != HologramLayer.Kind.IMAGE)
+            return layer;
+        HologramImage image = layer.image();
+        float height = image.keepAspect() ? 0.0F : image.height() * width / image.width();
+        return layer.withImage(image.withSize(width, height));
+    }
+
     private void updateCurrentLayer(java.util.function.UnaryOperator<HologramLayer> fn) {
         if (this.targetKind != TargetKind.LAYER || this.selectedLayer < 0 || this.selectedLayer >= this.layers.size())
             return;
@@ -1755,6 +1804,8 @@ public class HologramScreen extends Screen {
             return 0.5F;
         if (l.kind() == HologramLayer.Kind.STRUCTURE)
             return HologramStructure.dimensions(l.data())[1] * l.scale();
+        if (l.kind() == HologramLayer.Kind.IMAGE)
+            return l.image().heightFor(l.id()) * l.scale();
         return l.scale();
     }
 
@@ -2267,6 +2318,16 @@ public class HologramScreen extends Screen {
                     this.leftX + 8, infoY + 12, TEXT, false);
             graphics.drawString(this.font, "Replace disabled", this.leftX + 8, infoY + 25, MUTED, false);
             graphics.drawString(this.font, "+ Add below: new layer", this.leftX + 8, infoY + 37, MUTED, false);
+        } else if (selLayer != null && selLayer.kind() == HologramLayer.Kind.IMAGE) {
+            HologramImage image = selLayer.image();
+            String size = String.format(Locale.ROOT, "%.2f x %.2f blocks", image.width(), image.heightFor(selLayer.id()));
+            graphics.drawString(this.font, this.font.plainSubstrByWidth(selLayer.shortName(), this.leftW - 16),
+                    this.leftX + 8, infoY, ACCENT, false);
+            graphics.drawString(this.font, size, this.leftX + 8, infoY + 12, TEXT, false);
+            graphics.drawString(this.font, "Replace disabled", this.leftX + 8, infoY + 25, MUTED, false);
+            // Uploading needs a file picker and the asset library; only the web editor has those.
+            graphics.drawString(this.font, this.font.plainSubstrByWidth("New images: Web editor", this.leftW - 16),
+                    this.leftX + 8, infoY + 37, MUTED, false);
         } else if (this.pickMode == PICK_BLOCKS) {
             BlockState state = currentBlockState();
             Block currentBlock = state == null ? HologramStates.blockOf(this.pickedBlockId) : state.getBlock();
@@ -2823,6 +2884,10 @@ public class HologramScreen extends Screen {
             int max = Math.max(d[0], Math.max(d[1], d[2]));
             return Math.max(s, max * 0.5F * s);
         }
+        if (l != null && l.kind() == HologramLayer.Kind.IMAGE) {
+            HologramImage image = l.image();
+            return Math.max(s, Math.max(image.width(), image.heightFor(l.id())) * 0.5F * s);
+        }
         return s;
     }
 
@@ -2862,10 +2927,10 @@ public class HologramScreen extends Screen {
      * is selected) appends a new layer on top of the stack, like the in-panel "+ Add layer".
      */
     public void applyPickerChoice(HologramLayer.Kind kind, String id, Map<String, String> props, boolean asNewLayer) {
-        if (kind == HologramLayer.Kind.STRUCTURE)
+        if (kind == HologramLayer.Kind.STRUCTURE || kind == HologramLayer.Kind.IMAGE)
             return;
         HologramLayer cur = this.targetKind == TargetKind.LAYER ? currentLayer() : null;
-        if (!asNewLayer && cur != null && cur.kind() == HologramLayer.Kind.STRUCTURE)
+        if (!asNewLayer && cur != null && cur.fixedContent())
             return;
         if (!asNewLayer && cur != null) {
             pushUndo();
@@ -2898,7 +2963,7 @@ public class HologramScreen extends Screen {
         this.pickedBlockId = next;
         ensureLayerTarget();
         HologramLayer cur = currentLayer();
-        if (cur == null || cur.kind() == HologramLayer.Kind.STRUCTURE)
+        if (cur == null || cur.fixedContent())
             return;
         if (cur.kind() != HologramLayer.Kind.BLOCK || !next.equals(cur.id())) {
             pushUndo();
@@ -2912,7 +2977,7 @@ public class HologramScreen extends Screen {
         this.pickedEntityId = entityId;
         ensureLayerTarget();
         HologramLayer cur = currentLayer();
-        if (cur == null || cur.kind() == HologramLayer.Kind.STRUCTURE)
+        if (cur == null || cur.fixedContent())
             return;
         if (cur.kind() != HologramLayer.Kind.ENTITY || !entityId.equals(cur.id())) {
             pushUndo();
@@ -2926,7 +2991,7 @@ public class HologramScreen extends Screen {
         this.pickedParticleId = particleId;
         ensureLayerTarget();
         HologramLayer cur = currentLayer();
-        if (cur == null || cur.kind() == HologramLayer.Kind.STRUCTURE)
+        if (cur == null || cur.fixedContent())
             return;
         if (cur.kind() != HologramLayer.Kind.PARTICLE || !particleId.equals(cur.id())) {
             pushUndo();
@@ -2972,6 +3037,8 @@ public class HologramScreen extends Screen {
                     v.set(0.0F, 0.0F, 0.0F);
                 else if (l.kind() == HologramLayer.Kind.STRUCTURE)
                     v.set(0.0F, HologramStructure.dimensions(l.data())[1] * 0.5F, 0.0F);
+                else if (l.kind() == HologramLayer.Kind.IMAGE && l.image().billboard() == HologramImage.Billboard.FIXED)
+                    v.set(0.0F, l.image().heightFor(l.id()) * 0.5F, 0.0F);
             }
         }
         m.transformPosition(v);
@@ -3522,6 +3589,7 @@ public class HologramScreen extends Screen {
         HologramLayer layer = switch (kind) {
             case ENTITY -> HologramLayer.entity(id, 1.0F);
             case PARTICLE -> HologramLayer.particle(id, 1.5F);
+            case IMAGE -> HologramLayer.image(id, 1.0F);
             case BLOCK, STRUCTURE -> HologramLayer.block(id, Map.of(), 1.0F);
         };
         this.layers.add(layer);

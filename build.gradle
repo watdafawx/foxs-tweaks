@@ -191,6 +191,14 @@ neoForge {
             systemProperty 'foxstweaks.hologramWebCheck', 'true'
         }
 
+        // Dev-only check of IMAGE hologram layers (client/dev/HologramImageCheck): uploads over the web protocol,
+        // layers, save, clock, billboard, timeline scale, caps, benchmark. Report in run-hologram-image/.
+        hologramImageCheck {
+            client()
+            gameDirectory = file('run-hologram-image')
+            systemProperty 'foxstweaks.hologramImageCheck', 'true'
+        }
+
         // Dev-only interactive QA driver (client/dev/HologramQaDev): flat world, then runs one-line commands from
         // run-hologram-qa/qa-cmd.txt until told to quit. Put iris/sodium in run-hologram-qa/mods for shader QA.
         hologramQa {

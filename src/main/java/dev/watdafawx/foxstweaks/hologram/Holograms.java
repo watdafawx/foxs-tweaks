@@ -190,7 +190,9 @@ public final class Holograms {
             if (dimPreviews.isEmpty())
                 LIVE_PREVIEWS.remove(level.dimension().location());
         }
-        HologramData.get(level).put(spec);
+        HologramSpec previous = HologramData.get(level).put(spec);
+        // Reference counts follow saved holograms only, so an asset in use cannot be deleted by accident.
+        dev.watdafawx.foxstweaks.hologram.asset.AssetNetwork.track(level.getServer(), previous, spec);
         sync(level);
     }
 
@@ -203,8 +205,10 @@ public final class Holograms {
                 LIVE_PREVIEWS.remove(level.dimension().location());
         }
         HologramSpec removed = HologramData.get(level).remove(id);
-        if (removed != null)
+        if (removed != null) {
+            dev.watdafawx.foxstweaks.hologram.asset.AssetNetwork.track(level.getServer(), removed, null);
             sync(level);
+        }
         return removed;
     }
 

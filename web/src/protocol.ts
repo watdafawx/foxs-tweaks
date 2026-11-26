@@ -1,9 +1,9 @@
-// Wire types for docs/hologram-web-protocol.md (protocol 2). Keep in step with client/web/HologramWebJson.java.
+// Wire types for docs/hologram-web-protocol.md (protocol 3). Keep in step with client/web/HologramWebJson.java.
 
-export const PROTOCOL = 2;
+export const PROTOCOL = 3;
 
 export type Vec3 = [number, number, number];
-export type Kind = 'BLOCK' | 'ENTITY' | 'PARTICLE' | 'STRUCTURE';
+export type Kind = 'BLOCK' | 'ENTITY' | 'PARTICLE' | 'STRUCTURE' | 'IMAGE';
 
 export interface Effect {
   type: string;
@@ -198,3 +198,43 @@ export interface Selection {
 export const AXIS_Y = 0;
 export const AXIS_X = 1;
 export const AXIS_Z = 2;
+
+// ---------------------------------------------------------------- assets (protocol 3)
+
+/** What the game said about uploads in its hello. */
+export interface AssetCaps {
+  /** False when the server has no asset store (Fox's Tweaks missing there, or too old). */
+  available: boolean;
+  chunkBytes: number;
+  maxUploadBytes: number;
+  maxImageLayers: number;
+  maxFileBytes: number;
+  maxDimension: number;
+  maxFps: number;
+  maxSeconds: number;
+}
+
+/** One row of the world's asset library. */
+export interface AssetEntry {
+  /** SHA-256, 64 hex characters; an IMAGE layer's id. */
+  id: string;
+  name: string;
+  type: string;
+  width: number;
+  height: number;
+  frames: number;
+  durationMs: number;
+  bytes: number;
+  /** How many saved image layers use it; the server refuses to delete one that is in use. */
+  used: number;
+  mine: boolean;
+  owner: string;
+  created: number;
+}
+
+/**
+ * IMAGE layer settings, kept in the layer's props as strings (HologramImage.java). Missing keys are the defaults:
+ * w 1, h 0 (= keep the picture's aspect), billboard FIXED, sides double, play LOOP, speed 1, start 0.
+ */
+export type Billboard = 'FIXED' | 'FACE' | 'FACE_Y';
+export type ImagePlayback = 'LOOP' | 'ONCE' | 'PINGPONG';
