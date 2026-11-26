@@ -61,6 +61,8 @@ public final class HologramCreatorCheck {
     private static int looksBefore;
     private static int layersBefore;
     private static Path droppedFile;
+    private static Path bigFile;
+    private static int bigBefore;
 
     public static void install() {
         NeoForge.EVENT_BUS.addListener(HologramCreatorCheck::onTick);
@@ -365,6 +367,35 @@ public final class HologramCreatorCheck {
             var s = (dev.watdafawx.foxstweaks.client.HologramAssetScreen) Minecraft.getInstance().screen;
             check("dropped picture uploads", s != null && s.devAssetCount() >= 1,
                     s == null ? "no screen" : "count=" + s.devAssetCount() + " status=" + s.devStatus());
+        });
+        // Oversized still (5000x3000 = 15 MP, over the server's 4 MP decode guard): client fit must shrink it.
+        add(2, () -> {
+            try {
+                Path big = Minecraft.getInstance().gameDirectory.toPath().resolve("foxstweaks-creator-check-big.png");
+                var img = new java.awt.image.BufferedImage(5000, 3000, java.awt.image.BufferedImage.TYPE_INT_ARGB);
+                var g = img.createGraphics();
+                g.setPaint(new java.awt.GradientPaint(0, 0, java.awt.Color.RED, 5000, 3000, java.awt.Color.BLUE));
+                g.fillRect(0, 0, 5000, 3000);
+                g.dispose();
+                javax.imageio.ImageIO.write(img, "PNG", big.toFile());
+                bigFile = big;
+                var s = (dev.watdafawx.foxstweaks.client.HologramAssetScreen) Minecraft.getInstance().screen;
+                bigBefore = s == null ? 0 : s.devAssetCount();
+                if (s != null)
+                    s.devImport(big.toString());
+            } catch (IOException e) {
+                check("big test picture written", false, e.toString());
+            }
+        });
+        add(140, () -> {
+            var s = (dev.watdafawx.foxstweaks.client.HologramAssetScreen) Minecraft.getInstance().screen;
+            check("oversized picture fitted and uploaded", s != null && s.devAssetCount() > bigBefore,
+                    s == null ? "no screen" : "before=" + bigBefore + " count=" + s.devAssetCount() + " status=" + s.devStatus());
+            try {
+                if (bigFile != null)
+                    Files.deleteIfExists(bigFile);
+            } catch (IOException ignored) {
+            }
         });
         add(20, () -> shot("creator-s2-pictures.png"));
         add(2, () -> guiScale(3));

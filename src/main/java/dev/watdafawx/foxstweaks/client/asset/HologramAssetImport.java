@@ -62,10 +62,29 @@ public final class HologramAssetImport {
                 });
                 return;
             }
+            byte[] data = loaded.bytes;
+            String note = "";
+            if (!loaded.video) {
+                try {
+                    HologramAssetFit.Result fitted = HologramAssetFit.fit(data, AssetLimits.current());
+                    data = fitted.bytes();
+                    note = fitted.note();
+                } catch (IOException | RuntimeException | OutOfMemoryError e) {
+                    // Unreadable here (WebP, odd formats): let the server decide on the original bytes.
+                    data = loaded.bytes;
+                }
+            }
+            byte[] sendBytes = data;
+            String fitNote = note;
+            boolean bundle = sendBytes.length >= 4 && sendBytes[0] == 'F' && sendBytes[1] == 'T' && sendBytes[2] == 'A'
+                    && sendBytes[3] == '1';
             Minecraft.getInstance().execute(() -> {
                 BUSY.set(false);
                 try {
-                    HologramAssets.uploadBytes(loaded.name, loaded.bytes, loaded.video ? AssetPayload.MODE_VIDEO : AssetPayload.MODE_IMAGE,
+                    if (!fitNote.isEmpty())
+                        listener.progress(0, fitNote);
+                    HologramAssets.uploadBytes(loaded.name, sendBytes,
+                            loaded.video ? AssetPayload.MODE_VIDEO : bundle ? AssetPayload.MODE_BUNDLE : AssetPayload.MODE_IMAGE,
                             listener);
                 } catch (IOException e) {
                     listener.done(false, e.getMessage());
