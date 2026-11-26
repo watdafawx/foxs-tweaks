@@ -139,6 +139,32 @@ public final class ServerConfig {
 
     static {
         BUILDER.pop();
+        BUILDER.push("media");
+    }
+
+    public static final ModConfigSpec.BooleanValue MEDIA_FFMPEG_ENABLED = BUILDER
+            .comment(
+                    "Allow turning an uploaded video into a frame sequence (JPEG frames) for hologram images.",
+                    "The work is done by a separate ffmpeg process, never in the game's own threads.",
+                    "Turn this off to remove the feature without removing the mod.")
+            .define("mediaFfmpegEnabled", true);
+
+    public static final ModConfigSpec.ConfigValue<String> MEDIA_FFMPEG_PATH = BUILDER
+            .comment(
+                    "Where ffmpeg lives: the executable itself, or the folder holding it.",
+                    "Empty = look for ffmpeg on the server's PATH, then in the usual places",
+                    "(C:\\ffmpeg\\bin, %ProgramFiles%\\ffmpeg\\bin, the WinGet / Chocolatey / Scoop shims,",
+                    "/usr/bin, /usr/local/bin, /snap/bin). The binary is checked with 'ffmpeg -version' on first use.")
+            .define("mediaFfmpegPath", "");
+
+    public static final ModConfigSpec.IntValue MEDIA_CONVERT_TIMEOUT_SECONDS = BUILDER
+            .comment(
+                    "How long one conversion may run before ffmpeg is killed, in seconds. The whole process tree",
+                    "is killed, so a stuck video cannot hold the server's single conversion slot forever.")
+            .defineInRange("mediaConvertTimeoutSeconds", 60, 5, 600);
+
+    static {
+        BUILDER.pop();
     }
 
     public static final ModConfigSpec SPEC = BUILDER.build();
@@ -206,6 +232,18 @@ public final class ServerConfig {
 
     public static int hologramStructureMaxBytes() {
         return loaded() ? HOLOGRAM_STRUCTURE_MAX_BYTES.get() : 262144;
+    }
+
+    public static boolean mediaFfmpegEnabled() {
+        return !loaded() || MEDIA_FFMPEG_ENABLED.get();
+    }
+
+    public static String mediaFfmpegPath() {
+        return loaded() ? MEDIA_FFMPEG_PATH.get() : "";
+    }
+
+    public static int mediaConvertTimeoutSeconds() {
+        return loaded() ? MEDIA_CONVERT_TIMEOUT_SECONDS.get() : 60;
     }
 
     private ServerConfig() {
