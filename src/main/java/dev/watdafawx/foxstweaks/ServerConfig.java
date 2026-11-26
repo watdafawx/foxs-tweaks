@@ -122,6 +122,15 @@ public final class ServerConfig {
                     "the area has to draw from the far side of the map.")
             .defineInRange("hologramsMaxRenderDistance", 256, 16, 512);
 
+    public static final ModConfigSpec.IntValue HOLOGRAMS_EDIT_RANGE = BUILDER
+            .comment(
+                    "How far from a hologram a player may be while its editor is open and still save, delete or",
+                    "preview it, in blocks. The studio camera and Grab mode move the player away from what they",
+                    "are editing, and Done has to land anyway. Without an open editor the limit is 14 blocks",
+                    "(wand reach plus 8), whatever this says. The session ends on Done, Delete, closing the",
+                    "editor, logging out, changing dimension or ten idle minutes.")
+            .defineInRange("hologramsEditRange", 64, 14, 512);
+
     public static final ModConfigSpec.IntValue HOLOGRAM_STRUCTURE_MAX_DIMENSION = BUILDER
             .comment(
                     "Maximum width, height or depth (in blocks) of a structure grabbed into a hologram layer.")
@@ -247,6 +256,10 @@ public final class ServerConfig {
 
     public static int hologramsMaxRenderDistance() {
         return loaded() ? HOLOGRAMS_MAX_RENDER_DISTANCE.get() : 256;
+    }
+
+    public static int hologramsEditRange() {
+        return loaded() ? HOLOGRAMS_EDIT_RANGE.get() : 64;
     }
 
     public static int hologramStructureMaxDimension() {

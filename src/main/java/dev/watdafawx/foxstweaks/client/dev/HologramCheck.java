@@ -8,9 +8,11 @@ import dev.watdafawx.foxstweaks.client.HologramRenderer;
 import dev.watdafawx.foxstweaks.client.HologramScreen;
 import dev.watdafawx.foxstweaks.client.HologramTriggers;
 import dev.watdafawx.foxstweaks.hologram.HologramAnim;
+import dev.watdafawx.foxstweaks.hologram.HologramEditSessions;
 import dev.watdafawx.foxstweaks.hologram.HologramEffect;
 import dev.watdafawx.foxstweaks.hologram.HologramGroup;
 import dev.watdafawx.foxstweaks.hologram.HologramLayer;
+import dev.watdafawx.foxstweaks.hologram.HologramNetwork;
 import dev.watdafawx.foxstweaks.hologram.HologramSpec;
 import dev.watdafawx.foxstweaks.hologram.HologramStates;
 import dev.watdafawx.foxstweaks.hologram.Holograms;
@@ -1267,6 +1269,8 @@ public final class HologramCheck {
                     .getSoundSourceOptionInstance(net.minecraft.sounds.SoundSource.MASTER).set(0.0);
         });
 
+        editSessionScenarios();
+
         add(6, () -> {
             log("done: " + (failures == 0 ? "ALL PASS" : failures + " FAILURE(S)"));
             try {
@@ -1275,6 +1279,142 @@ public final class HologramCheck {
                 LOG.error("report", e);
             }
             Minecraft.getInstance().stop();
+        });
+    }
+
+    // ---------------------------------------------------------------- edit sessions
+
+    private static String sessionId = "";
+    private static BlockPos sessionPos = BlockPos.ZERO;
+
+    private static HologramSpec sessionSpec() {
+        return onServer(player -> Holograms.get(player.serverLevel(), sessionId));
+    }
+
+    private static boolean sessionOpen() {
+        return onServer(player -> HologramEditSessions.isOpen(player, sessionId));
+    }
+
+    /** Stands the player {@code dx} blocks east of the session hologram, at its height. */
+    private static void standAway(double dx) {
+        onServer(player -> {
+            var at = net.minecraft.world.phys.Vec3.atCenterOf(sessionPos);
+            player.teleportTo(player.serverLevel(), at.x + dx, at.y, at.z, 180.0F, 0.0F);
+            return null;
+        });
+    }
+
+    private static void openSessionEditor() {
+        onServer(player -> {
+            player.server.getCommands().performPrefixedCommand(
+                    player.createCommandSourceStack().withPermission(4), "foxstweaks hologram edit " + sessionId);
+            return null;
+        });
+    }
+
+    /**
+     * The save gate: 14 blocks without an editor, {@code hologramsEditRange} (64) while the server knows the
+     * editor is open. The studio camera and Grab mode both walk the player off, and Done used to be lost.
+     */
+    private static void editSessionScenarios() {
+        add(10, () -> {
+            java.util.Set<String> before = new java.util.HashSet<>();
+            onServer(player -> {
+                Holograms.list(player.serverLevel()).forEach(h -> before.add(h.id()));
+                return null;
+            });
+            onServer(player -> {
+                try {
+                    player.server.getCommands().getDispatcher().execute("foxstweaks hologram add minecraft:stone",
+                            player.createCommandSourceStack().withPermission(4));
+                } catch (Exception e) {
+                    LOG.error("session hologram", e);
+                }
+                return null;
+            });
+            sessionId = onServer(player -> Holograms.list(player.serverLevel()).stream()
+                    .map(HologramSpec::id).filter(id -> !before.contains(id)).findFirst().orElse(""));
+            check("session: hologram created", !sessionId.isEmpty(), "none new");
+            if (!sessionId.isEmpty())
+                sessionPos = sessionSpec().pos();
+        });
+
+        // 1. Editor opened by the server, player 30 blocks off, Done saves.
+        add(6, HologramCheck::openSessionEditor);
+        add(10, () -> {
+            check("session: editor opened", Minecraft.getInstance().screen instanceof HologramScreen,
+                    String.valueOf(Minecraft.getInstance().screen));
+            check("session: the server has a session", sessionOpen(), "none");
+            standAway(30.0);
+        });
+        add(20, () -> {
+            if (!(Minecraft.getInstance().screen instanceof HologramScreen screen))
+                return;
+            screen.devSetScale(1.7F);
+            screen.saveAndClose();
+        });
+        add(10, () -> {
+            float scale = sessionSpec().layers().get(0).scale();
+            check("session: Done saves from 30 blocks away", Math.abs(scale - 1.7F) < 0.01F, "scale=" + scale);
+            check("session: Done ends the session", !sessionOpen(), "still open");
+        });
+
+        // 2. Editor closed, still 30 blocks away: the plain 14-block gate applies, the save is refused.
+        add(6, () -> HologramNetwork.sendSave(sessionSpec().withRenderDistance(31)));
+        add(10, () -> {
+            int distance = sessionSpec().renderDistance();
+            check("session: no editor, 30 blocks away: save refused", distance != 31, "renderDistance=" + distance);
+        });
+
+        // 3. Editor open but 70 blocks away: past hologramsEditRange, refused.
+        add(6, () -> standAway(0.0));
+        add(20, HologramCheck::openSessionEditor);
+        add(10, () -> {
+            check("session: reopened beside the hologram", Minecraft.getInstance().screen instanceof HologramScreen
+                    && sessionOpen(), String.valueOf(Minecraft.getInstance().screen));
+            standAway(70.0);
+        });
+        add(20, () -> {
+            if (!(Minecraft.getInstance().screen instanceof HologramScreen screen))
+                return;
+            screen.devSetScale(2.9F);
+            screen.saveAndClose();
+        });
+        add(10, () -> {
+            float scale = sessionSpec().layers().get(0).scale();
+            check("session: editor open, 70 blocks away: Done refused", Math.abs(scale - 1.7F) < 0.01F,
+                    "scale=" + scale);
+        });
+
+        // 4. A session the server never opened starts with the first preview from within reach.
+        add(6, () -> {
+            standAway(2.0);
+            onServer(player -> {
+                HologramEditSessions.close(player);
+                return null;
+            });
+        });
+        add(20, () -> {
+            check("session: no session to start with", !sessionOpen(), "open");
+            HologramNetwork.sendPreview(sessionSpec().withRenderDistance(33));
+        });
+        add(10, () -> {
+            check("session: a first preview from beside it starts one", sessionOpen(), "none");
+            standAway(30.0);
+        });
+        add(20, () -> HologramNetwork.sendSave(sessionSpec().withRenderDistance(33)));
+        add(10, () -> {
+            int distance = sessionSpec().renderDistance();
+            check("session: that session lets Done through from 30 blocks", distance == 33,
+                    "renderDistance=" + distance);
+        });
+
+        // 5. ...but a preview from far away with no session does not start one.
+        add(6, () -> HologramNetwork.sendPreview(sessionSpec().withRenderDistance(35)));
+        add(10, () -> {
+            check("session: a first preview from 30 blocks away starts nothing", !sessionOpen(), "open");
+            standAway(0.0);
+            HologramNetwork.sendCancel(sessionId);
         });
     }
 
