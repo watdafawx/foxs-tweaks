@@ -8,6 +8,7 @@ import dev.watdafawx.foxstweaks.hologram.HologramOpenPayload;
 import dev.watdafawx.foxstweaks.hologram.HologramSpec;
 import dev.watdafawx.foxstweaks.hologram.HologramStates;
 import dev.watdafawx.foxstweaks.hologram.HologramStructure;
+import dev.watdafawx.foxstweaks.hologram.HologramTimeline;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.GuiGraphics;
 import net.minecraft.client.gui.components.EditBox;
@@ -118,6 +119,7 @@ public class HologramScreen extends Screen {
             int renderDistance, float appearRadius, float appearSeconds, int appearStyle,
             List<HologramGroup> groups,
             List<HologramLayer> layers,
+            @Nullable HologramTimeline timeline,
             TargetKind targetKind,
             int selectedLayer,
             @Nullable String selectedGroupId
@@ -176,6 +178,9 @@ public class HologramScreen extends Screen {
     private int appearStyle;
     private List<HologramGroup> groups;
     private List<HologramLayer> layers;
+    /** Edited only in the web editor; the Studio and Creator just carry it through to the save. */
+    @Nullable
+    private HologramTimeline timeline;
 
     // ---- Selection & Solo ----
     private TargetKind targetKind = TargetKind.LAYER;
@@ -273,6 +278,7 @@ public class HologramScreen extends Screen {
         this.appearStyle = spec.appearStyle();
         this.groups = new ArrayList<>(spec.groups());
         this.layers = new ArrayList<>(spec.layers());
+        this.timeline = spec.timeline();
         if (this.layers.isEmpty())
             this.layers.add(HologramLayer.block("minecraft:stone", Map.of(), new CompoundTag()));
 
@@ -549,7 +555,7 @@ public class HologramScreen extends Screen {
                 this.rootOffsetX, this.rootOffsetY, this.rootOffsetZ,
                 this.rootYaw, this.rootPitch, this.rootRoll, this.rootScale,
                 this.renderDistance, this.appearRadius, this.appearSeconds, this.appearStyle,
-                List.copyOf(this.groups), List.copyOf(this.layers),
+                List.copyOf(this.groups), List.copyOf(this.layers), this.timeline,
                 this.targetKind, this.selectedLayer, this.selectedGroupId);
     }
 
@@ -567,6 +573,7 @@ public class HologramScreen extends Screen {
         this.appearStyle = snap.appearStyle();
         this.groups = new ArrayList<>(snap.groups());
         this.layers = new ArrayList<>(snap.layers());
+        this.timeline = snap.timeline();
         this.targetKind = snap.targetKind();
         this.selectedLayer = Mth.clamp(snap.selectedLayer(), 0, Math.max(0, this.layers.size() - 1));
         this.selectedGroupId = snap.selectedGroupId();
@@ -2292,6 +2299,19 @@ public class HologramScreen extends Screen {
         drawPanel(graphics, this.rightX, this.top, this.rightW, PANEL_H, "Inspector");
         int rx = this.rightX + 8;
         int rw = this.rightW - 16;
+        if (this.timeline != null) {
+            // Read only: keyframes are edited in the web editor, the Studio only carries them to the save.
+            int tx = rx + this.font.width("Inspector") + 8;
+            int tw = this.rightX + this.rightW - 8 - tx;
+            String line = this.font.plainSubstrByWidth("◆ Timeline (edit in Web): " + this.timeline.summary(), tw);
+            graphics.drawString(this.font, line, this.rightX + this.rightW - 8 - this.font.width(line), this.top + 6,
+                    0xFFE0B860, false);
+            if (mouseX >= tx && mouseX < tx + tw && mouseY >= this.top + 4 && mouseY < this.top + 16)
+                graphics.renderComponentTooltip(this.font, List.of(
+                        net.minecraft.network.chat.Component.literal("Timeline: " + this.timeline.summary()),
+                        net.minecraft.network.chat.Component.literal("Read only here: keyframes are edited in the Web editor.")
+                                .withStyle(net.minecraft.ChatFormatting.GRAY)), mouseX, mouseY);
+        }
 
         if (this.tab == TAB_MAIN) {
             HologramLayer layer = currentLayer();
@@ -2969,7 +2989,7 @@ public class HologramScreen extends Screen {
                 this.rootYaw, this.rootPitch, this.rootRoll, this.rootScale,
                 true, this.renderDistance, this.owner, this.ownerName,
                 this.appearRadius, this.appearSeconds, this.appearStyle,
-                this.groups, this.layers);
+                this.groups, this.layers, this.timeline);
     }
 
     @Nullable
@@ -3139,6 +3159,12 @@ public class HologramScreen extends Screen {
         refresh();
     }
 
+    /** Read-only summary for the Creator's footer; null without a timeline. */
+    @Nullable
+    String creatorTimelineSummary() {
+        return this.timeline == null ? null : this.timeline.summary();
+    }
+
     float creatorAppearRadius() {
         return this.appearRadius;
     }
@@ -3244,6 +3270,7 @@ public class HologramScreen extends Screen {
         this.appearStyle = spec.appearStyle();
         this.groups = new ArrayList<>(spec.groups());
         this.layers = new ArrayList<>(spec.layers());
+        this.timeline = spec.timeline();
         if (this.layers.isEmpty())
             this.layers.add(HologramLayer.block("minecraft:stone", Map.of(), new CompoundTag()));
         this.selectedLayer = Mth.clamp(this.selectedLayer, 0, this.layers.size() - 1);

@@ -8,12 +8,21 @@ import com.mojang.logging.LogUtils;
 import dev.watdafawx.foxstweaks.client.HologramClient;
 import dev.watdafawx.foxstweaks.client.HologramCreatorScreen;
 import dev.watdafawx.foxstweaks.client.HologramEditorPrefs;
+import dev.watdafawx.foxstweaks.client.HologramRenderer;
 import dev.watdafawx.foxstweaks.client.HologramScreen;
+import dev.watdafawx.foxstweaks.client.HologramTimelinePlayer;
 import dev.watdafawx.foxstweaks.client.HologramWebBridge;
 import dev.watdafawx.foxstweaks.client.web.HologramWebSession;
 import dev.watdafawx.foxstweaks.hologram.HologramEffect;
 import dev.watdafawx.foxstweaks.hologram.HologramLayer;
 import dev.watdafawx.foxstweaks.hologram.HologramSpec;
+import dev.watdafawx.foxstweaks.hologram.HologramTimeline;
+import dev.watdafawx.foxstweaks.hologram.HologramTimelineEval;
+import dev.watdafawx.foxstweaks.ServerConfig;
+import com.mojang.blaze3d.platform.NativeImage;
+import net.minecraft.core.BlockPos;
+import net.minecraft.world.level.block.Blocks;
+import net.neoforged.neoforge.client.event.RenderLevelStageEvent;
 import dev.watdafawx.foxstweaks.hologram.Holograms;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.Screenshot;
@@ -99,16 +108,26 @@ public final class HologramWebCheck {
     private static Client extra;
     private static long seq;
     private static int statesBeforeIngameEdit;
+    private static HologramTimeline sentTimeline;
+    private static double heldTime;
+    private static long errBase;
+    private static boolean recording;
+    private static final List<Long> PASSES = new ArrayList<>();
+    private static final Map<String, Double> ROUNDS = new LinkedHashMap<>();
+    private static final int BENCH_COUNT = 48;
+    private static final int BENCH_TICKS = 100;
 
     public static void install() {
         HologramWebSession.devNoBrowser = true;
         NeoForge.EVENT_BUS.addListener(HologramWebCheck::onTick);
+        NeoForge.EVENT_BUS.addListener(HologramWebCheck::onFrame);
         scenarios();
     }
 
     // ---------------------------------------------------------------- the scenario
 
     private static void scenarios() {
+        add(2, HologramWebCheck::evalChecks);
         add(40, () -> onServer(player -> {
             player.serverLevel().setDayTime(6000);
             player.teleportTo(player.serverLevel(), 0.5, -60.0, 5.5, 180.0F, 0.0F);
@@ -234,7 +253,7 @@ public final class HologramWebCheck {
             JsonObject hello = ws.last("hello");
             check("hello received", hello != null, ws.types());
             if (hello != null) {
-                check("hello protocol 1", hello.get("protocol").getAsInt() == HologramWebSession.PROTOCOL, hello.get("protocol").toString());
+                check("hello protocol 2", hello.get("protocol").getAsInt() == HologramWebSession.PROTOCOL, hello.get("protocol").toString());
                 check("hello names the hologram", hologramId.equals(hello.get("hologram").getAsString()), hello.get("hologram").toString());
                 JsonObject reg = hello.getAsJsonObject("registries");
                 JsonArray blocks = reg.getAsJsonArray("blocks");
@@ -254,6 +273,15 @@ public final class HologramWebCheck {
                 JsonObject limits = reg.getAsJsonObject("limits");
                 check("hello limits match the mod", limits.get("maxLayers").getAsInt() == HologramLayer.MAX_LAYERS
                         && limits.get("maxEffects").getAsInt() == HologramSpec.MAX_EFFECTS, limits.toString());
+                JsonObject caps = hello.getAsJsonObject("timelineCaps");
+                check("hello sends the server's timeline caps", caps != null
+                        && caps.get("maxTracks").getAsInt() == ServerConfig.hologramTimelineMaxTracks()
+                        && caps.get("maxKeys").getAsInt() == ServerConfig.hologramTimelineMaxKeys(), String.valueOf(caps));
+                JsonObject tlReg = reg.getAsJsonObject("timeline");
+                check("hello registries describe the timeline", tlReg != null
+                        && tlReg.getAsJsonArray("props").size() == HologramTimeline.Prop.values().length
+                        && tlReg.getAsJsonArray("eases").size() == HologramTimeline.Ease.values().length
+                        && tlReg.getAsJsonArray("modes").size() == HologramTimeline.Mode.values().length, String.valueOf(tlReg));
                 log("info hello size " + hello.toString().length() + " chars, " + blocks.size() + " blocks");
             }
             JsonObject state = ws.last("state");
@@ -431,6 +459,134 @@ public final class HologramWebCheck {
             check("first client unaffected", ws.closeCode < 0, "close " + ws.closeCode);
         });
 
+        // ---- timeline: tracks and keys over the protocol, the preview playhead, caps ----
+        add(2, () -> {
+            JsonObject spec = spec(ws.last("state")).deepCopy();
+            JsonArray ls = spec.getAsJsonArray("layers");
+            check("every layer has a uid in the state", ls.size() == 2 && ls.get(0).getAsJsonObject().has("uid")
+                    && ls.get(1).getAsJsonObject().has("uid"), ls.toString());
+            check("a layer copied with its uid gets a fresh one", ls.size() == 2 && !ls.get(0).getAsJsonObject().get("uid")
+                    .getAsString().equals(ls.get(1).getAsJsonObject().get("uid").getAsString()), ls.toString());
+            spec.add("timeline", demoTimeline(spec));
+            HologramRenderer.devTraceId = hologramId;
+            sendEdit("gTl", spec);
+        });
+        add(6, () -> {
+            HologramTimeline tl = editor.current().timeline();
+            check("timeline edit reaches the editor", tl != null && tl.tracks().size() == 6 && tl.keyCount() == 15,
+                    String.valueOf(tl));
+            check("timeline keeps length, mode and start", tl != null && Math.abs(tl.length() - 4.0F) < 1e-4
+                    && tl.mode() == HologramTimeline.Mode.LOOP && tl.start() == HologramEffect.Trigger.ALWAYS, String.valueOf(tl));
+            HologramTimeline.Track cubic = tl == null ? null : tl.tracks().stream()
+                    .filter(t -> t.prop() == HologramTimeline.Prop.ROT_Y).findFirst().orElse(null);
+            check("cubic key keeps its handles", cubic != null && cubic.keys().get(0).ease() == HologramTimeline.Ease.CUBIC
+                    && Math.abs(cubic.keys().get(0).x1() - 0.2F) < 1e-4 && Math.abs(cubic.keys().get(0).y2() - 1.0F) < 1e-4,
+                    String.valueOf(cubic));
+            HologramSpec preview = HologramClient.previewSpec();
+            check("live preview carries the timeline", preview != null && tl != null && tl.equals(preview.timeline()),
+                    String.valueOf(preview == null ? null : preview.timeline()));
+            JsonObject state = ws.last("state");
+            JsonObject echoed = spec(state).getAsJsonObject("timeline");
+            check("state echoes the timeline", echoed != null && echoed.getAsJsonArray("tracks").size() == 6,
+                    String.valueOf(echoed));
+            HologramSpec round = tl == null ? null : HologramSpec.fromTag(editor.current().toTag());
+            check("timeline NBT round trip", round != null && tl.equals(round.timeline()),
+                    String.valueOf(round == null ? null : round.timeline()));
+            sentTimeline = tl;
+            send("{\"type\":\"playhead\",\"mode\":\"pause\",\"time\":1.0,\"seq\":" + (++seq) + "}");
+        });
+        add(8, () -> {
+            JsonObject ph = ws.last("playhead");
+            check("playhead acknowledged", ph != null && "pause".equals(ph.get("mode").getAsString())
+                    && Math.abs(ph.get("time").getAsDouble() - 1.0) < 1e-6, String.valueOf(ph));
+            check("playhead mode is PAUSE in game",
+                    HologramTimelinePlayer.playheadMode(hologramId) == HologramTimelinePlayer.PlayheadMode.PAUSE,
+                    String.valueOf(HologramTimelinePlayer.playheadMode(hologramId)));
+            heldTime = HologramTimelinePlayer.lastTime(hologramId);
+            check("scrub sets the preview time", Math.abs(heldTime - 1.0) < 1e-6, "t=" + heldTime);
+            // Composition: the keyed yaw is the base, SPIN still adds on top of it.
+            float[] tr = HologramRenderer.DEV_TRACE;
+            float keyed = sample(HologramTimeline.Prop.ROT_Y, 1.0);
+            check("keyed rotation is the layer's base yaw", Math.abs(tr[0] - keyed) < 1e-3,
+                    "base " + tr[0] + " keyed " + keyed);
+            check("SPIN composes on top of the keyed yaw", Math.abs(tr[1]) > 1e-3
+                    && Math.abs(tr[2] - (tr[0] + tr[1] + tr[3])) < 1e-3,
+                    "base " + tr[0] + " motion " + tr[1] + " legacy " + tr[3] + " final " + tr[2]);
+            shot("web-timeline-t1.png");
+        });
+        add(20, () -> {
+            double t = HologramTimelinePlayer.lastTime(hologramId);
+            check("pause holds the playhead", Math.abs(t - heldTime) < 1e-9, "t=" + t + " held " + heldTime);
+            send("{\"type\":\"playhead\",\"mode\":\"pause\",\"time\":3.5,\"seq\":" + (++seq) + "}");
+        });
+        add(8, () -> {
+            double t = HologramTimelinePlayer.lastTime(hologramId);
+            check("second scrub moves the preview time", Math.abs(t - 3.5) < 1e-6, "t=" + t);
+            shot("web-timeline-t35.png");
+        });
+        add(14, () -> {
+            int diff = pixelDiff("web-timeline-t1.png", "web-timeline-t35.png");
+            check("screenshots at two scrub times differ", diff > 500, diff + " pixels differ");
+            log("info scrub screenshots differ in " + diff + " pixels");
+            send("{\"type\":\"playhead\",\"mode\":\"play\",\"time\":0.0,\"seq\":" + (++seq) + "}");
+        });
+        add(20, () -> {
+            double t = HologramTimelinePlayer.lastTime(hologramId);
+            check("play advances the preview from the playhead", t > 0.4 && t < 2.5, "t=" + t);
+            errBase = ws.msgs.stream().filter(m -> "error".equals(type(m))).count();
+            send("{\"type\":\"playhead\",\"mode\":\"warp\",\"time\":1.0,\"seq\":" + (++seq) + "}");
+            send("{\"type\":\"playhead\",\"mode\":\"pause\",\"time\":9999,\"seq\":" + (++seq) + "}");
+        });
+        add(6, () -> {
+            long errs = ws.msgs.stream().filter(m -> "error".equals(type(m))).count() - errBase;
+            check("bad playhead messages refused", HologramTimelinePlayer.playheadMode(hologramId)
+                    == HologramTimelinePlayer.PlayheadMode.PLAY && errs >= 2, errs + " errors");
+            send("{\"type\":\"playhead\",\"mode\":\"live\",\"time\":0,\"seq\":" + (++seq) + "}");
+        });
+        add(6, () -> {
+            check("live hands the clock back to the game",
+                    HologramTimelinePlayer.playheadMode(hologramId) == HologramTimelinePlayer.PlayheadMode.LIVE,
+                    String.valueOf(HologramTimelinePlayer.playheadMode(hologramId)));
+            errBase = ws.msgs.stream().filter(m -> "error".equals(type(m))).count();
+            // Too many keys for the server's cap.
+            JsonObject tooMany = spec(ws.last("state")).deepCopy();
+            JsonArray keys = new JsonArray();
+            for (int i = 0; i <= ServerConfig.hologramTimelineMaxKeys(); i++)
+                keys.add(key(i * 0.05, 0.0, "LINEAR"));
+            JsonObject tl = tooMany.getAsJsonObject("timeline");
+            tl.addProperty("length", 120.0);
+            tl.getAsJsonArray("tracks").add(track("ROOT", "", "OFFSET_X", -1, keys));
+            sendEdit("gCapKeys", tooMany);
+            // A track pointing at no layer.
+            JsonObject orphan = spec(ws.last("state")).deepCopy();
+            orphan.getAsJsonObject("timeline").getAsJsonArray("tracks")
+                    .add(track("LAYER", "nope", "SCALE", -1, keysOf(0, 1, 1, 2)));
+            sendEdit("gOrphan", orphan);
+            // An effect track on the root, which has no effects.
+            JsonObject rootFx = spec(ws.last("state")).deepCopy();
+            rootFx.getAsJsonObject("timeline").getAsJsonArray("tracks")
+                    .add(track("ROOT", "", "EFFECT", 0, keysOf(0, 1, 1, 2)));
+            sendEdit("gRootFx", rootFx);
+            // The same property twice.
+            JsonObject dup = spec(ws.last("state")).deepCopy();
+            JsonArray tracks = dup.getAsJsonObject("timeline").getAsJsonArray("tracks");
+            tracks.add(tracks.get(0).deepCopy());
+            sendEdit("gDup", dup);
+            // A track cap of 3, then restored.
+            ServerConfig.HOLOGRAM_TIMELINE_MAX_TRACKS.set(3);
+            sendEdit("gCapTracks", spec(ws.last("state")).deepCopy());
+        });
+        add(8, () -> {
+            String serverSays = onServer(p -> dev.watdafawx.foxstweaks.hologram.HologramNetwork.timelineProblem(editor.current()));
+            ServerConfig.HOLOGRAM_TIMELINE_MAX_TRACKS.set(64);
+            long errs = ws.msgs.stream().filter(m -> "error".equals(type(m))).count();
+            check("over-cap, orphan, root-effect and duplicate tracks refused", errs - errBase >= 5, (errs - errBase) + " new errors");
+            check("server save path refuses a timeline over the cap", serverSays != null, "accepted");
+            HologramTimeline tl = editor.current().timeline();
+            check("refused timelines change nothing", sentTimeline != null && sentTimeline.equals(tl), String.valueOf(tl));
+            check("server accepts it again once the cap is restored", capRestoredOk(), "still refused");
+        });
+
         // ---- save from the browser ----
         add(2, () -> send("{\"type\":\"save\",\"seq\":" + (++seq) + "}"));
         add(10, () -> {
@@ -440,6 +596,8 @@ public final class HologramWebCheck {
             check("save closes the in-game editor", Minecraft.getInstance().screen == null,
                     String.valueOf(Minecraft.getInstance().screen));
             check("no session after save", HologramWebSession.current() == null, "still running");
+            check("session end drops the preview playhead",
+                    HologramTimelinePlayer.playheadMode(hologramId) == HologramTimelinePlayer.PlayheadMode.LIVE, "still overridden");
             HologramSpec saved = onServer(p -> Holograms.get(p.serverLevel(), hologramId));
             check("server stored the hologram", saved != null, "null");
             if (saved != null) {
@@ -449,6 +607,11 @@ public final class HologramWebCheck {
                         "scale " + saved.layers().get(0).scale());
                 check("server has the browser's SPIN", saved.layers().get(0).effects().stream()
                         .anyMatch(e -> e.type() == HologramEffect.Type.SPIN), saved.layers().get(0).effects().toString());
+                check("server has the timeline", sentTimeline != null && sentTimeline.equals(saved.timeline()),
+                        String.valueOf(saved.timeline()));
+                HologramSpec reloaded = HologramSpec.fromTag(saved.toTag());
+                check("server timeline survives NBT", reloaded != null && sentTimeline != null
+                        && sentTimeline.equals(reloaded.timeline()), String.valueOf(reloaded == null ? null : reloaded.timeline()));
             }
         });
         add(4, () -> {
@@ -523,6 +686,45 @@ public final class HologramWebCheck {
             check("cancel keeps the saved hologram", saved != null && saved.layers().size() == 2, String.valueOf(saved));
         });
 
+        // ---- perf: 48 holograms without, then with, a 10-track timeline (hologram pass CPU per frame) ----
+        add(10, () -> {
+            HologramRenderer.devTraceId = null;
+            onServer(player -> {
+                player.teleportTo(player.serverLevel(), 0.5, -60.0, 13.5, 180.0F, 0.0F);
+                for (int i = 0; i < BENCH_COUNT; i++) {
+                    var pos = new BlockPos(-14 + (i % 8) * 4, -59, 6 - (i / 8) * 3);
+                    Holograms.create(player.serverLevel(), pos, Blocks.SEA_LANTERN.defaultBlockState(), player);
+                }
+                return null;
+            });
+        });
+        add(60, HologramWebCheck::recordStart);
+        add(BENCH_TICKS, () -> {
+            reportRound("48 without timeline");
+            onServer(player -> {
+                for (HologramSpec spec : Holograms.list(player.serverLevel())) {
+                    if (spec.id().equals(hologramId) || spec.layers().isEmpty())
+                        continue;
+                    Holograms.save(player.serverLevel(), spec.withTimeline(benchTimeline(spec.layers().get(0).uid())));
+                }
+                return null;
+            });
+        });
+        add(20, () -> {
+            long withTl = HologramClient.specs().stream().filter(s -> s.timeline() != null
+                    && s.timeline().tracks().size() == 10).count();
+            check("48 holograms got a 10-track timeline", withTl >= BENCH_COUNT, withTl + " with a timeline");
+            recordStart();
+        });
+        add(BENCH_TICKS, () -> {
+            reportRound("48 with 10-track timeline");
+            double delta = ROUNDS.get("48 with 10-track timeline") - ROUNDS.get("48 without timeline");
+            log(String.format(Locale.ROOT, "info timeline cost: %+.0f us/frame over 48 holograms (%+.2f us each)",
+                    delta, delta / BENCH_COUNT));
+            check("a 10-track timeline adds under 1 ms per frame for 48 holograms", delta < 1000.0,
+                    String.format(Locale.ROOT, "%+.0f us", delta));
+        });
+
         add(6, () -> {
             log("done: " + (failures == 0 ? "ALL PASS" : failures + " FAILURE(S)"));
             try {
@@ -533,6 +735,242 @@ public final class HologramWebCheck {
             }
             Minecraft.getInstance().stop();
         });
+    }
+
+    // ---------------------------------------------------------------- timeline helpers
+
+    private static JsonObject key(double t, double v, String ease) {
+        JsonObject k = new JsonObject();
+        k.addProperty("t", t);
+        k.addProperty("v", v);
+        k.addProperty("ease", ease);
+        return k;
+    }
+
+    private static JsonArray keysOf(double... tv) {
+        JsonArray a = new JsonArray();
+        for (int i = 0; i + 1 < tv.length; i += 2)
+            a.add(key(tv[i], tv[i + 1], "LINEAR"));
+        return a;
+    }
+
+    private static JsonObject track(String target, String id, String prop, int effect, JsonArray keys) {
+        JsonObject t = new JsonObject();
+        t.addProperty("target", target);
+        t.addProperty("id", id);
+        t.addProperty("prop", prop);
+        if (effect >= 0)
+            t.addProperty("effect", effect);
+        t.add("keys", keys);
+        return t;
+    }
+
+    /** Six tracks / 15 keys over both layers and the root, touching every easing and kind of value. */
+    private static JsonObject demoTimeline(JsonObject spec) {
+        JsonArray ls = spec.getAsJsonArray("layers");
+        String l0 = ls.get(0).getAsJsonObject().get("uid").getAsString();
+        String l1 = ls.get(1).getAsJsonObject().get("uid").getAsString();
+        JsonArray tracks = new JsonArray();
+        JsonArray bob = new JsonArray();
+        bob.add(key(0, 0, "EASE_IN_OUT"));
+        bob.add(key(2, 1.5, "EASE_IN_OUT"));
+        bob.add(key(4, 0, "LINEAR"));
+        tracks.add(track("ROOT", "", "OFFSET_Y", -1, bob));
+        JsonArray yaw = new JsonArray();
+        JsonObject k0 = key(0, 0, "CUBIC");
+        JsonArray bz = new JsonArray();
+        bz.add(0.2);
+        bz.add(0.0);
+        bz.add(0.2);
+        bz.add(1.0);
+        k0.add("bezier", bz);
+        yaw.add(k0);
+        yaw.add(key(2, 90, "EASE_OUT"));
+        yaw.add(key(4, 180, "LINEAR"));
+        tracks.add(track("LAYER", l0, "ROT_Y", -1, yaw));
+        JsonArray spin = new JsonArray();
+        float strength = HologramEffect.of(HologramEffect.Type.SPIN).strength();
+        spin.add(key(0, strength, "LINEAR"));
+        spin.add(key(4, strength * 2, "LINEAR"));
+        tracks.add(track("LAYER", l0, "EFFECT", 0, spin));
+        JsonArray tint = new JsonArray();
+        tint.add(key(0, 0xFF3030, "LINEAR"));
+        tint.add(key(4, 0x3060FF, "LINEAR"));
+        tracks.add(track("LAYER", l1, "TINT", -1, tint));
+        JsonArray scale = new JsonArray();
+        scale.add(key(0, 1.0, "HOLD"));
+        scale.add(key(1.5, 2.0, "EASE_IN"));
+        scale.add(key(4, 1.0, "LINEAR"));
+        tracks.add(track("LAYER", l1, "SCALE", -1, scale));
+        JsonArray vis = new JsonArray();
+        vis.add(key(0, 1, "LINEAR"));
+        vis.add(key(3, 0, "LINEAR"));
+        tracks.add(track("LAYER", l1, "VISIBLE", -1, vis));
+        JsonObject tl = new JsonObject();
+        tl.addProperty("length", 4.0);
+        tl.addProperty("mode", "LOOP");
+        tl.addProperty("start", "ALWAYS");
+        tl.add("tracks", tracks);
+        return tl;
+    }
+
+    private static float sample(HologramTimeline.Prop prop, double t) {
+        for (HologramTimeline.Track tr : sentTimeline.tracks())
+            if (tr.prop() == prop)
+                return HologramTimelineEval.sample(tr, t);
+        return Float.NaN;
+    }
+
+    private static boolean capRestoredOk() {
+        return onServer(p -> dev.watdafawx.foxstweaks.hologram.HologramNetwork.timelineProblem(editor.current())) == null;
+    }
+
+    /** Ten tracks with three keys each: four on the root, six on the hologram's only layer. */
+    private static HologramTimeline benchTimeline(String uid) {
+        List<HologramTimeline.Track> tracks = new ArrayList<>();
+        HologramTimeline.Prop[] rootProps = { HologramTimeline.Prop.OFFSET_Y, HologramTimeline.Prop.ROT_Y,
+                HologramTimeline.Prop.SCALE, HologramTimeline.Prop.TINT };
+        HologramTimeline.Prop[] layerProps = { HologramTimeline.Prop.OFFSET_X, HologramTimeline.Prop.OFFSET_Z,
+                HologramTimeline.Prop.ROT_X, HologramTimeline.Prop.ROT_Z, HologramTimeline.Prop.SCALE,
+                HologramTimeline.Prop.TINT };
+        for (HologramTimeline.Prop p : rootProps)
+            tracks.add(new HologramTimeline.Track(HologramTimeline.TargetKind.ROOT, "", p, 0, benchKeys(p)));
+        for (HologramTimeline.Prop p : layerProps)
+            tracks.add(new HologramTimeline.Track(HologramTimeline.TargetKind.LAYER, uid, p, 0, benchKeys(p)));
+        return new HologramTimeline(3.0F, HologramTimeline.Mode.PINGPONG, HologramEffect.Trigger.ALWAYS, tracks);
+    }
+
+    private static List<HologramTimeline.Key> benchKeys(HologramTimeline.Prop p) {
+        float a, b;
+        switch (p) {
+            case SCALE -> {
+                a = 0.8F;
+                b = 1.3F;
+            }
+            case TINT -> {
+                a = 0xFFFFFF;
+                b = 0x60C0FF;
+            }
+            case ROT_X, ROT_Y, ROT_Z -> {
+                a = 0.0F;
+                b = 45.0F;
+            }
+            default -> {
+                a = 0.0F;
+                b = 0.4F;
+            }
+        }
+        return List.of(HologramTimeline.Key.of(0.0F, a, HologramTimeline.Ease.EASE_IN_OUT),
+                HologramTimeline.Key.cubic(1.5F, b, 0.3F, 0.0F, 0.2F, 1.0F),
+                HologramTimeline.Key.linear(3.0F, a));
+    }
+
+    /** Pure maths of {@link HologramTimelineEval}: easings, play modes, bezier, tint, stepped values. */
+    private static void evalChecks() {
+        check("eval LINEAR is linear", near(HologramTimelineEval.ease(HologramTimeline.Ease.LINEAR, 0, 0, 0, 0, 0.25F), 0.25F),
+                "" + HologramTimelineEval.ease(HologramTimeline.Ease.LINEAR, 0, 0, 0, 0, 0.25F));
+        check("eval HOLD stays at the first key", near(HologramTimelineEval.ease(HologramTimeline.Ease.HOLD, 0, 0, 0, 0, 0.9F), 0.0F),
+                "" + HologramTimelineEval.ease(HologramTimeline.Ease.HOLD, 0, 0, 0, 0, 0.9F));
+        float in = HologramTimelineEval.ease(HologramTimeline.Ease.EASE_IN, 0, 0, 0, 0, 0.5F);
+        float out = HologramTimelineEval.ease(HologramTimeline.Ease.EASE_OUT, 0, 0, 0, 0, 0.5F);
+        float io = HologramTimelineEval.ease(HologramTimeline.Ease.EASE_IN_OUT, 0, 0, 0, 0, 0.5F);
+        float io25 = HologramTimelineEval.ease(HologramTimeline.Ease.EASE_IN_OUT, 0, 0, 0, 0, 0.25F);
+        check("eval EASE_IN starts slow", in < 0.45F, "" + in);
+        check("eval EASE_OUT starts fast", out > 0.55F, "" + out);
+        check("eval EASE_IN_OUT is symmetric", Math.abs(io - 0.5F) < 0.01F && io25 < 0.25F, io + " / " + io25);
+        float css = HologramTimelineEval.cubicBezier(0.25F, 0.1F, 0.25F, 1.0F, 0.5F);
+        check("eval CUBIC matches CSS ease at 0.5 (0.8024)", Math.abs(css - 0.8024F) < 0.002F, "" + css);
+        boolean mono = true;
+        float prev = -1;
+        for (int i = 0; i <= 400; i++) {
+            float y = HologramTimelineEval.cubicBezier(0.9F, 0.0F, 0.1F, 1.0F, i / 400.0F);
+            mono &= y >= prev - 1e-5F;
+            prev = y;
+        }
+        check("eval bezier with steep handles is monotonic", mono, "not monotonic");
+        check("eval LOOP wraps", Math.abs(HologramTimelineEval.localTime(HologramTimeline.Mode.LOOP, 4, 5) - 1) < 1e-9,
+                "" + HologramTimelineEval.localTime(HologramTimeline.Mode.LOOP, 4, 5));
+        check("eval PINGPONG comes back", Math.abs(HologramTimelineEval.localTime(HologramTimeline.Mode.PINGPONG, 4, 5) - 3) < 1e-9
+                && Math.abs(HologramTimelineEval.localTime(HologramTimeline.Mode.PINGPONG, 4, 9) - 1) < 1e-9,
+                HologramTimelineEval.localTime(HologramTimeline.Mode.PINGPONG, 4, 5) + " / "
+                        + HologramTimelineEval.localTime(HologramTimeline.Mode.PINGPONG, 4, 9));
+        HologramTimeline.Track tr = new HologramTimeline.Track(HologramTimeline.TargetKind.ROOT, "", HologramTimeline.Prop.OFFSET_Y, 0,
+                List.of(HologramTimeline.Key.linear(0, 0), HologramTimeline.Key.of(1, 2, HologramTimeline.Ease.HOLD),
+                        HologramTimeline.Key.linear(3, 6)));
+        double once = HologramTimelineEval.localTime(HologramTimeline.Mode.ONCE, 4, 10);
+        check("eval ONCE holds the last frame", Math.abs(once - 4) < 1e-9 && near(HologramTimelineEval.sample(tr, once), 6),
+                once + " -> " + HologramTimelineEval.sample(tr, once));
+        check("eval samples between keys", near(HologramTimelineEval.sample(tr, 0.5), 1) && near(HologramTimelineEval.sample(tr, 2.5), 2)
+                && near(HologramTimelineEval.sample(tr, -1), 0), HologramTimelineEval.sample(tr, 0.5) + " / "
+                + HologramTimelineEval.sample(tr, 2.5));
+        HologramTimeline.Track vis = new HologramTimeline.Track(HologramTimeline.TargetKind.ROOT, "", HologramTimeline.Prop.VISIBLE, 0,
+                List.of(HologramTimeline.Key.linear(0, 1), HologramTimeline.Key.linear(2, 0)));
+        check("eval VISIBLE steps instead of fading", near(HologramTimelineEval.sample(vis, 1.9), 1)
+                && near(HologramTimelineEval.sample(vis, 2.0), 0), HologramTimelineEval.sample(vis, 1.9) + " / "
+                + HologramTimelineEval.sample(vis, 2.0));
+        int red = 0xFF0000, blue = 0x0000FF;
+        int mid = HologramTimelineEval.lerpColor(red, blue, 0.5F);
+        check("eval tint endpoints exact, midpoint through OKLab", HologramTimelineEval.lerpColor(red, blue, 0) == red
+                && HologramTimelineEval.lerpColor(red, blue, 1) == blue && mid != 0x800080 && ((mid >> 16) & 0xFF) > 0x80,
+                Integer.toHexString(mid));
+        HologramTimeline.Track tintTr = new HologramTimeline.Track(HologramTimeline.TargetKind.ROOT, "", HologramTimeline.Prop.TINT, 0,
+                List.of(HologramTimeline.Key.linear(0, red), HologramTimeline.Key.linear(1, blue)));
+        check("eval tint track samples to OKLab", (int) HologramTimelineEval.sample(tintTr, 0.5) == mid,
+                Integer.toHexString((int) HologramTimelineEval.sample(tintTr, 0.5)));
+        HologramTimeline empty = HologramTimeline.empty(4);
+        check("eval empty timeline animates nothing", !HologramTimelineEval.animates(empty, HologramTimeline.TargetKind.ROOT, 0)
+                && empty.keyCount() == 0, "animates");
+        HologramTimeline big = benchTimeline("l0");
+        check("caps reject over the limit", big.checkCaps(9, 2048) != null && big.checkCaps(10, 29) != null
+                && big.checkCaps(10, 30) == null, big.checkCaps(10, 30));
+    }
+
+    private static boolean near(double a, double b) {
+        return Math.abs(a - b) < 1e-4;
+    }
+
+    private static int pixelDiff(String a, String b) {
+        Path dir = Minecraft.getInstance().gameDirectory.toPath().resolve("screenshots");
+        try (InputStream ia = Files.newInputStream(dir.resolve(a)); InputStream ib = Files.newInputStream(dir.resolve(b));
+                NativeImage x = NativeImage.read(ia); NativeImage y = NativeImage.read(ib)) {
+            if (x.getWidth() != y.getWidth() || x.getHeight() != y.getHeight())
+                return -1;
+            int n = 0;
+            for (int j = 0; j < x.getHeight(); j++) {
+                for (int i = 0; i < x.getWidth(); i++) {
+                    int p = x.getPixelRGBA(i, j), q = y.getPixelRGBA(i, j);
+                    int d = Math.max(Math.abs((p & 0xFF) - (q & 0xFF)),
+                            Math.max(Math.abs(((p >> 8) & 0xFF) - ((q >> 8) & 0xFF)), Math.abs(((p >> 16) & 0xFF) - ((q >> 16) & 0xFF))));
+                    if (d > 24)
+                        n++;
+                }
+            }
+            return n;
+        } catch (IOException e) {
+            log("info screenshot compare failed: " + e);
+            return -1;
+        }
+    }
+
+    private static void onFrame(RenderLevelStageEvent event) {
+        if (recording && event.getStage() == RenderLevelStageEvent.Stage.AFTER_LEVEL)
+            PASSES.add(HologramRenderer.lastPassNanos());
+    }
+
+    private static void recordStart() {
+        PASSES.clear();
+        recording = true;
+    }
+
+    private static void reportRound(String label) {
+        recording = false;
+        List<Long> sorted = new ArrayList<>(PASSES);
+        sorted.sort(null);
+        double avg = sorted.stream().mapToLong(Long::longValue).average().orElse(0) / 1000.0;
+        double median = sorted.isEmpty() ? 0 : sorted.get(sorted.size() / 2) / 1000.0;
+        ROUNDS.put(label, avg);
+        log(String.format(Locale.ROOT, "perf %s: hologram pass %.0f us/frame avg, %.0f us median, %d frames",
+                label, avg, median, sorted.size()));
     }
 
     // ---------------------------------------------------------------- protocol helpers

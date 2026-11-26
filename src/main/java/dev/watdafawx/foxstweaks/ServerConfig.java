@@ -137,6 +137,17 @@ public final class ServerConfig {
                     "Maximum NBT size (in bytes) of a single grabbed structure hologram layer, including block entity data.")
             .defineInRange("hologramStructureMaxBytes", 262144, 16384, 1048576);
 
+    public static final ModConfigSpec.IntValue HOLOGRAM_TIMELINE_MAX_TRACKS = BUILDER
+            .comment(
+                    "Maximum number of keyframe tracks in one hologram's timeline (one track = one animated property",
+                    "of one layer or group). Specs over the cap are refused when saved, from the editor or the web editor.")
+            .defineInRange("hologramTimelineMaxTracks", 64, 0, 256);
+
+    public static final ModConfigSpec.IntValue HOLOGRAM_TIMELINE_MAX_KEYS = BUILDER
+            .comment(
+                    "Maximum number of keyframes in one hologram's timeline, over all of its tracks.")
+            .defineInRange("hologramTimelineMaxKeys", 2048, 0, 8192);
+
     static {
         BUILDER.pop();
         BUILDER.push("media");
@@ -260,6 +271,14 @@ public final class ServerConfig {
 
     public static int mediaConvertTimeoutSeconds() {
         return loaded() ? MEDIA_CONVERT_TIMEOUT_SECONDS.get() : 60;
+    }
+
+    public static int hologramTimelineMaxTracks() {
+        return loaded() ? HOLOGRAM_TIMELINE_MAX_TRACKS.get() : 64;
+    }
+
+    public static int hologramTimelineMaxKeys() {
+        return loaded() ? HOLOGRAM_TIMELINE_MAX_KEYS.get() : 2048;
     }
 
     private ServerConfig() {

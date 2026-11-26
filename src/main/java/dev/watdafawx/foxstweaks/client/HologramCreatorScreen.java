@@ -474,6 +474,14 @@ public final class HologramCreatorScreen extends Screen {
 
         int clipTop = top + 18;
         int clipBottom = footY - 4;
+        String timeline = this.editor.creatorTimelineSummary();
+        if (timeline != null) {
+            // Read only: the timeline is edited in the web editor and saved untouched from here.
+            clipBottom -= 11;
+            g.drawString(this.font, this.font.plainSubstrByWidth("◆ Timeline " + timeline + " · Web", w - 16),
+                    x + 8, footY - 12, 0xFFE0B860, false);
+            hit(x + 8, footY - 13, w - 16, 10).tooltip = "Keyframes are edited in the Web editor (read only here).";
+        }
         int viewH = clipBottom - clipTop;
         int maxScroll = Math.max(0, this.rightContentH - viewH);
         this.rightScroll = Mth.clamp(this.rightScroll, 0, maxScroll);

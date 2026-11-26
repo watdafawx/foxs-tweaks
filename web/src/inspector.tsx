@@ -4,6 +4,7 @@ import type { Effect, Group, Layer, Motion, Spec } from './protocol';
 import { REG, S, edit, newGesture } from './store';
 import { AxisField, ColorField, NumRow, Row, Section, SelectField, Toggle, Vec3Field } from './ui';
 import { layerName } from './outliner';
+import { effectRemoved, effectsSwapped } from './anim';
 
 type Target = { kind: 'group'; g: Group } | { kind: 'layer'; l: Layer; index: number };
 
@@ -412,10 +413,11 @@ function EffectCard({ t, e, i, count }: { t: Target; e: Effect; i: number; count
   const def = REG.effects.get(e.type);
   const set = (fn: (x: Effect) => void, gesture?: string) => editTarget(t, (y) => y.effects[i] && fn(y.effects[i]), gesture);
   const move = (d: number) =>
-    editTarget(t, (y) => {
+    editTarget(t, (y, s) => {
       const j = i + d;
       if (j < 0 || j >= y.effects.length) return;
       [y.effects[i], y.effects[j]] = [y.effects[j], y.effects[i]];
+      effectsSwapped(s, t.kind === 'group' ? 'GROUP' : 'LAYER', t.kind === 'group' ? t.g.id : (t.l.uid ?? ''), i, j);
     });
   return (
     <div class={`fx-card fam-${def?.family ?? 'fx'}`}>
@@ -432,7 +434,12 @@ function EffectCard({ t, e, i, count }: { t: Target; e: Effect; i: number; count
           <button
             class="icon-btn danger"
             title="Remove effect"
-            onClick={() => editTarget(t, (y) => y.effects.splice(i, 1))}
+            onClick={() =>
+              editTarget(t, (y, s) => {
+                y.effects.splice(i, 1);
+                effectRemoved(s, t.kind === 'group' ? 'GROUP' : 'LAYER', t.kind === 'group' ? t.g.id : (t.l.uid ?? ''), i);
+              })
+            }
           >
             ×
           </button>

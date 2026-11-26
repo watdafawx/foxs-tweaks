@@ -39,7 +39,8 @@ public record HologramSpec(
         float appearSeconds,
         int appearStyle,
         List<HologramGroup> groups,
-        List<HologramLayer> layers
+        List<HologramLayer> layers,
+        @Nullable HologramTimeline timeline
 ) {
     public static final int AXIS_Y = 0;
     public static final int AXIS_X = 1;
@@ -70,9 +71,73 @@ public record HologramSpec(
         groups = groups.size() > HologramGroup.MAX_GROUPS
                 ? List.copyOf(groups.subList(0, HologramGroup.MAX_GROUPS))
                 : List.copyOf(groups);
-        layers = layers.size() > HologramLayer.MAX_LAYERS
-                ? List.copyOf(layers.subList(0, HologramLayer.MAX_LAYERS))
-                : List.copyOf(layers);
+        layers = withUids(layers.size() > HologramLayer.MAX_LAYERS
+                ? layers.subList(0, HologramLayer.MAX_LAYERS)
+                : layers);
+        if (timeline != null)
+            timeline = timeline.boundTo(groups, layers);
+    }
+
+    /** The pre-timeline shape. */
+    public HologramSpec(String id, BlockPos pos, float offsetX, float offsetY, float offsetZ, float yaw, float pitch,
+                        float roll, float scale, boolean enabled, int renderDistance, @Nullable UUID owner,
+                        String ownerName, float appearRadius, float appearSeconds, int appearStyle,
+                        List<HologramGroup> groups, List<HologramLayer> layers) {
+        this(id, pos, offsetX, offsetY, offsetZ, yaw, pitch, roll, scale, enabled, renderDistance, owner, ownerName,
+                appearRadius, appearSeconds, appearStyle, groups, layers, null);
+    }
+
+    /**
+     * Gives every layer a unique {@link HologramLayer#uid()}: missing ones (old saves, fresh layers) and the second
+     * of two equal ones (a duplicated layer) get the smallest free {@code lN}. Deterministic, so the same list always
+     * gets the same ids.
+     */
+    private static List<HologramLayer> withUids(List<HologramLayer> layers) {
+        java.util.Set<String> used = new java.util.HashSet<>();
+        boolean ok = true;
+        for (HologramLayer l : layers) {
+            if (l.uid().isEmpty() || !used.add(l.uid())) {
+                ok = false;
+                break;
+            }
+        }
+        if (ok)
+            return List.copyOf(layers);
+        used.clear();
+        for (HologramLayer l : layers)
+            if (!l.uid().isEmpty())
+                used.add(l.uid());
+        java.util.Set<String> taken = new java.util.HashSet<>();
+        List<HologramLayer> out = new ArrayList<>(layers.size());
+        int next = 1;
+        for (HologramLayer l : layers) {
+            if (!l.uid().isEmpty() && taken.add(l.uid())) {
+                out.add(l);
+                continue;
+            }
+            while (used.contains("l" + next))
+                next++;
+            String uid = "l" + next;
+            used.add(uid);
+            taken.add(uid);
+            out.add(l.withUid(uid));
+        }
+        return List.copyOf(out);
+    }
+
+    public HologramSpec withTimeline(@Nullable HologramTimeline timeline) {
+        return new HologramSpec(this.id, this.pos, this.offsetX, this.offsetY, this.offsetZ,
+                this.yaw, this.pitch, this.roll, this.scale,
+                this.enabled, this.renderDistance, this.owner, this.ownerName,
+                this.appearRadius, this.appearSeconds, this.appearStyle, this.groups, this.layers, timeline);
+    }
+
+    @Nullable
+    public HologramLayer layerByUid(String uid) {
+        for (HologramLayer l : this.layers)
+            if (l.uid().equals(uid))
+                return l;
+        return null;
     }
 
     public static HologramSpec create(String id, BlockPos pos, String block, @Nullable UUID owner, String ownerName) {
@@ -86,28 +151,28 @@ public record HologramSpec(
         return new HologramSpec(newId, newPos, this.offsetX, this.offsetY, this.offsetZ,
                 this.yaw, this.pitch, this.roll, this.scale,
                 this.enabled, this.renderDistance, newOwner, newOwnerName,
-                this.appearRadius, this.appearSeconds, this.appearStyle, this.groups, this.layers);
+                this.appearRadius, this.appearSeconds, this.appearStyle, this.groups, this.layers, this.timeline);
     }
 
     public HologramSpec withRenderDistance(int distance) {
         return new HologramSpec(this.id, this.pos, this.offsetX, this.offsetY, this.offsetZ,
                 this.yaw, this.pitch, this.roll, this.scale,
                 this.enabled, distance, this.owner, this.ownerName,
-                this.appearRadius, this.appearSeconds, this.appearStyle, this.groups, this.layers);
+                this.appearRadius, this.appearSeconds, this.appearStyle, this.groups, this.layers, this.timeline);
     }
 
     public HologramSpec withGroups(List<HologramGroup> groups) {
         return new HologramSpec(this.id, this.pos, this.offsetX, this.offsetY, this.offsetZ,
                 this.yaw, this.pitch, this.roll, this.scale,
                 this.enabled, this.renderDistance, this.owner, this.ownerName,
-                this.appearRadius, this.appearSeconds, this.appearStyle, groups, this.layers);
+                this.appearRadius, this.appearSeconds, this.appearStyle, groups, this.layers, this.timeline);
     }
 
     public HologramSpec withLayers(List<HologramLayer> layers) {
         return new HologramSpec(this.id, this.pos, this.offsetX, this.offsetY, this.offsetZ,
                 this.yaw, this.pitch, this.roll, this.scale,
                 this.enabled, this.renderDistance, this.owner, this.ownerName,
-                this.appearRadius, this.appearSeconds, this.appearStyle, this.groups, layers);
+                this.appearRadius, this.appearSeconds, this.appearStyle, this.groups, layers, this.timeline);
     }
 
     /** Replaces layer 0's props/data/effects helpers for single-layer call sites. */
@@ -274,6 +339,8 @@ public record HologramSpec(
         if (!this.groups.isEmpty())
             tag.put("groups", HologramGroup.listToTag(this.groups));
         tag.put("layers", HologramLayer.listToTag(this.layers));
+        if (this.timeline != null)
+            tag.put("timeline", this.timeline.toTag());
         return tag;
     }
 
@@ -304,10 +371,13 @@ public record HologramSpec(
             if (layers.isEmpty())
                 return null;
             float scale = tag.contains("scale") ? tag.getFloat("scale") : 1.0F;
+            HologramTimeline timeline = tag.contains("timeline", Tag.TAG_COMPOUND)
+                    ? HologramTimeline.fromTag(tag.getCompound("timeline"))
+                    : null;
             return new HologramSpec(id, pos, ox, oy, oz,
                     tag.getFloat("yaw"), tag.getFloat("pitch"), tag.getFloat("roll"), scale,
                     enabled, renderDist, owner, ownerName, appearRadius, appearSeconds, appearStyle,
-                    groups, layers);
+                    groups, layers, timeline);
         }
 
         // Legacy v1 migration: base block + parts[] -> unified layers (+ group if multi-part)

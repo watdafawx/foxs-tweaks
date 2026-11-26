@@ -174,6 +174,30 @@ final class HologramWebRegistries {
         limits.add("particleRate", range(1, 40));
         limits.add("particleSpeed", range(-0.5F, 0.5F));
         o.add("limits", limits);
+
+        // Timeline vocabulary; the per-server caps on tracks and keys come with hello as timelineCaps.
+        JsonObject timeline = new JsonObject();
+        timeline.add("length", range(dev.watdafawx.foxstweaks.hologram.HologramTimeline.MIN_LENGTH,
+                dev.watdafawx.foxstweaks.hologram.HologramTimeline.MAX_LENGTH));
+        JsonArray modes = new JsonArray();
+        for (var m : dev.watdafawx.foxstweaks.hologram.HologramTimeline.Mode.values())
+            modes.add(m.name());
+        timeline.add("modes", modes);
+        JsonArray eases = new JsonArray();
+        for (var e : dev.watdafawx.foxstweaks.hologram.HologramTimeline.Ease.values())
+            eases.add(e.name());
+        timeline.add("eases", eases);
+        JsonArray props = new JsonArray();
+        for (var p : dev.watdafawx.foxstweaks.hologram.HologramTimeline.Prop.values()) {
+            JsonObject j = new JsonObject();
+            j.addProperty("name", p.name());
+            j.addProperty("min", p.min());
+            j.addProperty("max", p.max());
+            j.addProperty("stepped", p.stepped());
+            props.add(j);
+        }
+        timeline.add("props", props);
+        o.add("timeline", timeline);
         return o;
     }
 

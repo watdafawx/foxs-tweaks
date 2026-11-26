@@ -182,6 +182,8 @@
   "foxstweaks.configuration.hologramStructureMaxDimension": "Hologram Structure Max Dimension",
   "foxstweaks.configuration.hologramStructureMaxBlocks": "Hologram Structure Max Blocks",
   "foxstweaks.configuration.hologramStructureMaxBytes": "Hologram Structure Max Bytes",
+  "foxstweaks.configuration.hologramTimelineMaxTracks": "Hologram Timeline Max Tracks",
+  "foxstweaks.configuration.hologramTimelineMaxKeys": "Hologram Timeline Max Keyframes",
   "foxstweaks.configuration.hologramRenderCap": "Hologram Render Cap",
   "foxstweaks.configuration.media": "Video Import",
   "foxstweaks.configuration.mediaFfmpegEnabled": "Video Import Enabled",

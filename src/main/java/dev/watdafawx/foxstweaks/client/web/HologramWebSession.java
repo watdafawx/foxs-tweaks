@@ -10,6 +10,8 @@ import dev.watdafawx.foxstweaks.client.HologramClient;
 import dev.watdafawx.foxstweaks.client.HologramCreatorScreen;
 import dev.watdafawx.foxstweaks.client.HologramGrab;
 import dev.watdafawx.foxstweaks.client.HologramScreen;
+import dev.watdafawx.foxstweaks.client.HologramTimelinePlayer;
+import dev.watdafawx.foxstweaks.ServerConfig;
 import dev.watdafawx.foxstweaks.client.HologramWebBridge;
 import dev.watdafawx.foxstweaks.hologram.HologramSpec;
 import net.minecraft.Util;
@@ -49,7 +51,8 @@ import java.util.Objects;
 public final class HologramWebSession {
     private static final Logger LOG = LogUtils.getLogger();
 
-    public static final int PROTOCOL = 1;
+    /** 2: layer uids, the timeline, and the preview-only playhead message. */
+    public static final int PROTOCOL = 2;
     /** Ticks with no screen at all (and no grab mode) after which the editor is treated as gone. */
     private static final int ORPHAN_TICKS = 100;
     private static final int MAX_DATA_KEYS = 128;
@@ -156,6 +159,7 @@ public final class HologramWebSession {
             return;
         this.ended = true;
         this.endReason = reason;
+        HologramTimelinePlayer.clearPlayhead();
         JsonObject closed = new JsonObject();
         closed.addProperty("type", "closed");
         closed.addProperty("reason", reason);
@@ -309,6 +313,11 @@ public final class HologramWebSession {
         hello.addProperty("minecraft", net.minecraft.SharedConstants.getCurrentVersion().getName());
         hello.addProperty("hologram", this.editor.spec().id());
         hello.add("registries", HologramWebRegistries.get());
+        // Per server, so not part of the cached registries.
+        JsonObject caps = new JsonObject();
+        caps.addProperty("maxTracks", ServerConfig.hologramTimelineMaxTracks());
+        caps.addProperty("maxKeys", ServerConfig.hologramTimelineMaxKeys());
+        hello.add("timelineCaps", caps);
         c.send(hello.toString());
 
         String spec = specJson();
@@ -349,6 +358,7 @@ public final class HologramWebSession {
                 this.editor.cancel();
                 end("cancelled");
             }
+            case "playhead" -> playhead(c, msg, seq);
             case "ping" -> {
                 JsonObject pong = new JsonObject();
                 pong.addProperty("type", "pong");
@@ -383,6 +393,41 @@ public final class HologramWebSession {
         this.editor.apply(next, newStep);
         this.editsApplied++;
         ack(c, seq);
+    }
+
+    /**
+     * Preview-only playhead: the game draws this hologram's timeline paused at {@code time} or playing from it.
+     * Nothing is saved; "live" (or the session ending) hands the timeline back to the normal game-time clock.
+     */
+    private void playhead(WebSocketConnection c, JsonObject msg, long seq) {
+        String mode = str(msg, "mode");
+        HologramTimelinePlayer.PlayheadMode m = switch (mode) {
+            case "play" -> HologramTimelinePlayer.PlayheadMode.PLAY;
+            case "pause" -> HologramTimelinePlayer.PlayheadMode.PAUSE;
+            case "live" -> HologramTimelinePlayer.PlayheadMode.LIVE;
+            default -> null;
+        };
+        if (m == null) {
+            error(c, seq, "invalid", "playhead mode must be play, pause or live");
+            return;
+        }
+        JsonElement el = msg.get("time");
+        double time = el != null && el.isJsonPrimitive() && el.getAsJsonPrimitive().isNumber() ? el.getAsDouble() : 0.0;
+        if (!Double.isFinite(time) || time < 0.0 || time > 600.0) {
+            error(c, seq, "invalid", "playhead time must be 0..600 seconds");
+            return;
+        }
+        String id = this.editor.spec().id();
+        HologramTimelinePlayer.setPlayhead(id, m, time);
+        JsonObject o = new JsonObject();
+        o.addProperty("type", "playhead");
+        o.addProperty("seq", seq);
+        o.addProperty("mode", mode);
+        o.addProperty("time", time);
+        c.send(o.toString());
+        // No ack: a scrub sends a stream of these and none of them changes the spec, so no state echo is due.
+        if (seq > c.ack)
+            c.ack = seq;
     }
 
     private void ack(WebSocketConnection c, long seq) {

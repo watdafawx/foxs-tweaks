@@ -3,7 +3,8 @@ import { useEffect, useState } from 'preact/hooks';
 import './styles.css';
 import { ContentBrowser, deleteSelection, duplicateSelection } from './browser';
 import { Inspector } from './inspector';
-import { Outliner, layerName } from './outliner';
+import { Outliner } from './outliner';
+import { Timeline, timelineKey } from './timeline';
 import { S, cancel, connect, redo, save, undo, useApp } from './store';
 
 function isTyping(e: KeyboardEvent): boolean {
@@ -22,6 +23,11 @@ function onKey(e: KeyboardEvent): void {
     return;
   }
   if (isTyping(e)) return;
+  // Timeline shortcuts first: Space/K/Home always, Delete/copy/paste/arrows while keys are selected.
+  if (!(mod && (key === 'z' || key === 'y' || key === 'd')) && timelineKey(e)) {
+    e.preventDefault();
+    return;
+  }
   if (mod && key === 'z') {
     e.preventDefault();
     if (e.shiftKey) redo();
@@ -89,35 +95,6 @@ function Header() {
         </button>
       </div>
     </header>
-  );
-}
-
-function Timeline() {
-  const [open, setOpen] = useState(true);
-  const spec = S.spec!;
-  return (
-    <div class={`timeline ${open ? 'open' : ''}`}>
-      <div class="panel-head" onClick={() => setOpen(!open)}>
-        <span>
-          <span class="caret">{open ? '▾' : '▸'}</span> Timeline
-        </span>
-        <span class="chip">coming in phase 2</span>
-      </div>
-      {open && (
-        <div class="timeline-body">
-          <div class="ruler" />
-          {spec.layers.slice(0, 4).map((l, i) => (
-            <div key={i} class="track">
-              <span class="track-name">{layerName(l)}</span>
-              <span class="track-lane" />
-            </div>
-          ))}
-          <div class="timeline-note muted small">
-            Keyframes, clips and audio sync land here in phase 2. Effects in the inspector already animate in game.
-          </div>
-        </div>
-      )}
-    </div>
   );
 }
 
@@ -196,7 +173,7 @@ function App() {
         <span>Fox's Tweaks {S.modVersion}</span>
         <span>Minecraft {S.minecraft}</span>
         <span class="grow" />
-        <span>Drag a label to scrub · Shift fine · Ctrl coarse · Ctrl+Z / Ctrl+Shift+Z · Ctrl+S save · Del delete · Ctrl+D duplicate</span>
+        <span>Drag a label to scrub · Shift fine · Ctrl coarse · Ctrl+Z / Ctrl+Shift+Z · Ctrl+S save · Del delete · Ctrl+D duplicate · Space play · K key</span>
       </footer>
     </div>
   );

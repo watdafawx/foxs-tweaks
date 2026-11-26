@@ -1,6 +1,6 @@
-// Wire types for docs/hologram-web-protocol.md (protocol 1). Keep in step with client/web/HologramWebJson.java.
+// Wire types for docs/hologram-web-protocol.md (protocol 2). Keep in step with client/web/HologramWebJson.java.
 
-export const PROTOCOL = 1;
+export const PROTOCOL = 2;
 
 export type Vec3 = [number, number, number];
 export type Kind = 'BLOCK' | 'ENTITY' | 'PARTICLE' | 'STRUCTURE';
@@ -41,6 +41,8 @@ export interface LayerData {
 }
 
 export interface Layer extends Motion {
+  /** Stable id timeline tracks point at; the game fills in missing ones. */
+  uid?: string;
   kind: Kind;
   id: string;
   props: Record<string, string>;
@@ -55,6 +57,49 @@ export interface Layer extends Motion {
   data?: LayerData;
 }
 
+export type TargetKind = 'ROOT' | 'GROUP' | 'LAYER';
+export type Prop =
+  | 'OFFSET_X'
+  | 'OFFSET_Y'
+  | 'OFFSET_Z'
+  | 'ROT_X'
+  | 'ROT_Y'
+  | 'ROT_Z'
+  | 'SCALE'
+  | 'VISIBLE'
+  | 'TINT'
+  | 'EFFECT';
+export type Ease = 'LINEAR' | 'HOLD' | 'EASE_IN' | 'EASE_OUT' | 'EASE_IN_OUT' | 'CUBIC';
+export type PlayMode = 'LOOP' | 'PINGPONG' | 'ONCE';
+
+export interface Key {
+  /** Seconds into the clip. */
+  t: number;
+  /** Value; packed 0xRRGGBB for TINT, 0/1 for VISIBLE. */
+  v: number;
+  /** Easing of the segment that leaves this key. */
+  ease: Ease;
+  /** CSS cubic-bezier handles, only for CUBIC. */
+  bezier?: [number, number, number, number];
+}
+
+export interface Track {
+  target: TargetKind;
+  /** Group id or layer uid; empty for ROOT. */
+  id: string;
+  prop: Prop;
+  /** Effect index for EFFECT tracks. */
+  effect?: number;
+  keys: Key[];
+}
+
+export interface Timeline {
+  length: number;
+  mode: PlayMode;
+  start: string;
+  tracks: Track[];
+}
+
 export interface Spec {
   id: string;
   pos: Vec3;
@@ -65,6 +110,7 @@ export interface Spec {
   reveal: { radius: number; seconds: number; style: number };
   groups: Group[];
   layers: Layer[];
+  timeline?: Timeline | null;
 }
 
 export interface EffectDef {
@@ -95,6 +141,13 @@ export interface BlockDef {
 
 export type Range = [number, number];
 
+export interface PropDef {
+  name: Prop;
+  min: number;
+  max: number;
+  stepped: boolean;
+}
+
 export interface Registries {
   properties: { name: string; values: string[] }[];
   blocks: BlockDef[];
@@ -122,6 +175,12 @@ export interface Registries {
     renderDistance: Range;
     particleRate: Range;
     particleSpeed: Range;
+  };
+  timeline?: {
+    length: Range;
+    modes: PlayMode[];
+    eases: Ease[];
+    props: PropDef[];
   };
 }
 

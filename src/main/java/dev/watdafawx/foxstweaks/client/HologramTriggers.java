@@ -200,6 +200,18 @@ public final class HologramTriggers {
      * trigger.
      */
     public static List<HologramEffect> resolve(List<HologramEffect> effects, HologramSpec spec, double seconds) {
+        return resolve(effects, spec, seconds, null);
+    }
+
+    /**
+     * As {@link #resolve(List, HologramSpec, double)}, with per-index strengths keyed by the hologram's timeline
+     * ({@code NaN} = not keyed; {@code null} = none at all). Trigger state stays keyed on the original effect
+     * instance, so a keyed strength does not reset a trigger's gate or a spin's angle.
+     */
+    public static List<HologramEffect> resolve(List<HologramEffect> effects, HologramSpec spec, double seconds,
+                                               @org.jetbrains.annotations.Nullable float[] strengths) {
+        if (strengths != null)
+            return resolveKeyed(effects, spec, seconds, strengths);
         boolean any = false;
         for (int i = 0; i < effects.size(); i++) {
             if (effects.get(i).trigger() != HologramEffect.Trigger.ALWAYS) {
@@ -249,6 +261,85 @@ public final class HologramTriggers {
             out.add(gate >= 0.999F ? shown : shown.withStrength(effect.strength() * gate));
         }
         return out;
+    }
+
+    private static List<HologramEffect> resolveKeyed(List<HologramEffect> effects, HologramSpec spec, double seconds,
+                                                     float[] strengths) {
+        boolean triggers = false;
+        for (int i = 0; i < effects.size(); i++)
+            triggers |= effects.get(i).trigger() != HologramEffect.Trigger.ALWAYS;
+        List<HologramEffect> keyed = new ArrayList<>(effects.size());
+        for (int i = 0; i < effects.size(); i++) {
+            HologramEffect e = effects.get(i);
+            float v = i < strengths.length ? strengths[i] : Float.NaN;
+            if (Float.isNaN(v)) {
+                keyed.add(e);
+                continue;
+            }
+            float min = e.type().isFx() ? 0.0F : e.type().minAmount();
+            float max = e.type().isFx() ? 2.0F : e.type().maxAmount();
+            keyed.add(e.withStrength(Mth.clamp(v, min, max)));
+        }
+        if (!triggers)
+            return keyed;
+        // Resolve against the originals (their identity holds the trigger state), then swap in keyed strengths.
+        Minecraft mc = Minecraft.getInstance();
+        Level level = mc.level;
+        if (level == null)
+            return keyed;
+        Vec3 center = spec.box().getCenter();
+        List<HologramEffect> out = new ArrayList<>(effects.size());
+        for (int i = 0; i < effects.size(); i++) {
+            HologramEffect original = effects.get(i);
+            HologramEffect effect = keyed.get(i);
+            if (original.trigger() == HologramEffect.Trigger.ALWAYS) {
+                out.add(effect);
+                continue;
+            }
+            State st = STATES.computeIfAbsent(original, k -> new State());
+            st.used = System.nanoTime();
+            update(st, original, level, center, seconds);
+            if (effect.type() == HologramEffect.Type.SPIN) {
+                double ph = ((st.accum - seconds) * effect.strength() + effect.phase() * 360.0) / 360.0;
+                out.add(effect.withPhase((float) (ph - Math.floor(ph))));
+                continue;
+            }
+            if (st.gate <= 0.002F)
+                continue;
+            HologramEffect shown = effect;
+            if (effect.trigger().isPulse() && effect.type().usesPhase()) {
+                double ph = effect.phase() - st.pulseStart * effect.speed();
+                shown = shown.withPhase((float) (ph - Math.floor(ph)));
+            }
+            out.add(st.gate >= 0.999F ? shown : shown.withStrength(effect.strength() * st.gate));
+        }
+        return out;
+    }
+
+    /** 0..1 level of a hold trigger (day, rain, jukebox, ...) around {@code center}; for the timeline's start trigger. */
+    public static float conditionLevel(HologramEffect.Trigger trigger, Level level, Vec3 center) {
+        return holdTarget(null, trigger, level, center);
+    }
+
+    /**
+     * Hologram-clock age in seconds of the latest death within {@link #RANGE} of {@code center}, or -1. Keeps the
+     * death scan running while asked.
+     */
+    public static double latestDeathAge(Vec3 center) {
+        deathScanUntil = tick + 40;
+        double now = HologramRenderer.animSeconds();
+        double best = -1.0;
+        for (Death d : DEATHS) {
+            double dx = d.x - center.x;
+            double dy = d.y - center.y;
+            double dz = d.z - center.z;
+            if (dx * dx + dy * dy + dz * dz > RANGE * RANGE)
+                continue;
+            double age = now - d.seconds;
+            if (age >= 0.0 && (best < 0.0 || age < best))
+                best = age;
+        }
+        return best;
     }
 
     private static void update(State st, HologramEffect effect, Level level, Vec3 center, double seconds) {
