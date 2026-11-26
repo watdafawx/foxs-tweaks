@@ -160,6 +160,7 @@ export function connect(): void {
   sock.onopen = () => {
     retries = 0;
     S.status = 'open';
+    resubscribeMeter();
     notify();
   };
   sock.onmessage = (e) => {
@@ -242,6 +243,15 @@ function handle(msg: any): void {
       break;
     case 'playhead':
       return; // the game confirms; the browser already shows its own playhead
+    case 'meter':
+      METER.level = Number(msg.level) || 0;
+      METER.bass = Number(msg.bass) || 0;
+      METER.mid = Number(msg.mid) || 0;
+      METER.high = Number(msg.high) || 0;
+      METER.beat = Number(msg.beat) || 0;
+      METER.system = String(msg.system ?? '');
+      meterListeners.forEach((l) => l());
+      return;
     case 'error':
       // Upload errors are shown by the upload itself, next to its progress bar.
       if (msg.code === 'upload' && uploadListener) uploadListener(msg);
@@ -257,6 +267,42 @@ function handle(msg: any): void {
       break;
   }
   notify();
+}
+
+/** Messages that change nothing the game echoes back carry no seq, so they never hold back a state update. */
+function sendQuiet(obj: Record<string, unknown>): void {
+  if (ws && ws.readyState === WebSocket.OPEN) ws.send(JSON.stringify(obj));
+}
+
+// ---------------------------------------------------------------- audio meter (levels only, ~20 Hz)
+
+export const METER = { level: 0, bass: 0, mid: 0, high: 0, beat: 0, system: '' };
+const meterListeners = new Set<() => void>();
+let meterUsers = 0;
+let meterSource = 'AUTO';
+
+/** Subscribes while mounted; the game streams levels only while at least one panel shows them. */
+export function useMeter(source = 'AUTO'): typeof METER {
+  const [, setTick] = useState(0);
+  useEffect(() => {
+    const l = () => setTick((t) => t + 1);
+    meterListeners.add(l);
+    meterUsers++;
+    if (meterUsers === 1 || source !== meterSource) {
+      meterSource = source;
+      sendQuiet({ type: 'meter', on: true, source });
+    }
+    return () => {
+      meterListeners.delete(l);
+      if (--meterUsers === 0) sendQuiet({ type: 'meter', on: false });
+    };
+  }, [source]);
+  return METER;
+}
+
+/** Re-sends the subscription after a reconnect. */
+function resubscribeMeter(): void {
+  if (meterUsers > 0) sendQuiet({ type: 'meter', on: true, source: meterSource });
 }
 
 function send(obj: Record<string, unknown>): boolean {

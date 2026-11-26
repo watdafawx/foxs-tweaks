@@ -16,6 +16,8 @@ import dev.watdafawx.foxstweaks.hologram.HologramStructure;
 import dev.watdafawx.foxstweaks.hologram.HologramTimeline;
 import dev.watdafawx.foxstweaks.hologram.HologramTimeline.Prop;
 import dev.watdafawx.foxstweaks.hologram.HologramTimeline.TargetKind;
+import dev.watdafawx.foxstweaks.client.audio.HologramAudioEval;
+import dev.watdafawx.foxstweaks.hologram.HologramAudioMod.Param;
 import dev.watdafawx.foxstweaks.hologram.HologramTimelineEval;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.renderer.LevelRenderer;
@@ -252,6 +254,7 @@ public final class HologramRenderer {
             return;
 
         HologramTriggers.beginFrame();
+        HologramAudioEval.begin(origin.add(0.5, 0.5, 0.5));
         HologramAnim.RevealPose reveal = HologramAnim.revealPose(spec.appearStyle(), appear, seconds);
 
         List<HologramLayer> layers = spec.layers();
@@ -282,6 +285,20 @@ public final class HologramRenderer {
                 float tint = HologramTimelineEval.root(tl, Prop.TINT);
                 if (!Float.isNaN(tint))
                     rootTint = (int) tint;
+            }
+            // Music: audio modulations add on top of the keyed/static values.
+            HologramAudioEval.Props ap = HologramAudioEval.props(tl, TargetKind.ROOT, "");
+            if (ap != null) {
+                if (ap.hidden())
+                    return;
+                rdx += ap.apply(Param.OFFSET_X, 0.0F);
+                rdy += ap.apply(Param.OFFSET_Y, 0.0F);
+                rdz += ap.apply(Param.OFFSET_Z, 0.0F);
+                rYaw = ap.apply(Param.ROT_Y, rYaw);
+                rPitch = ap.apply(Param.ROT_X, rPitch);
+                rRoll = ap.apply(Param.ROT_Z, rRoll);
+                rScale = Math.max(0.01F, ap.apply(Param.SCALE, rScale));
+                rootTint = ap.tint(rootTint);
             }
         }
         buffer = TintedBuffer.tint(buffer, rootTint);
@@ -334,7 +351,21 @@ public final class HologramRenderer {
                 if (HologramTimelineEval.effects(tl, TargetKind.GROUP, g, GROUP_FX))
                     gKeyed = GROUP_FX;
             }
+            HologramAudioEval.Props gp = tl == null ? null : HologramAudioEval.props(tl, TargetKind.GROUP, group.id());
+            if (gp != null) {
+                if (gp.hidden())
+                    continue;
+                gOffXBase = gp.apply(Param.OFFSET_X, gOffXBase);
+                gOffYBase = gp.apply(Param.OFFSET_Y, gOffYBase);
+                gOffZBase = gp.apply(Param.OFFSET_Z, gOffZBase);
+                gYaw = gp.apply(Param.ROT_Y, gYaw);
+                gPitch = gp.apply(Param.ROT_X, gPitch);
+                gRoll = gp.apply(Param.ROT_Z, gRoll);
+                gScale = Math.max(0.01F, gp.apply(Param.SCALE, gScale));
+                gTint = gp.tint(gTint);
+            }
             List<HologramEffect> gEffects = HologramTriggers.resolve(group.effects(), spec, seconds, gKeyed);
+            gEffects = HologramAudioEval.effects(gEffects, seconds);
             if (HologramAnim.flickerHidden(gEffects, seconds))
                 continue;
 
@@ -423,8 +454,22 @@ public final class HologramRenderer {
             if (HologramTimelineEval.effects(tl, TargetKind.LAYER, layerIndex, LAYER_FX))
                 lKeyed = LAYER_FX;
         }
+        HologramAudioEval.Props lp = tl == null ? null : HologramAudioEval.props(tl, TargetKind.LAYER, layer.uid());
+        if (lp != null) {
+            if (lp.hidden())
+                return;
+            baseX = lp.apply(Param.OFFSET_X, baseX);
+            baseY = lp.apply(Param.OFFSET_Y, baseY);
+            baseZ = lp.apply(Param.OFFSET_Z, baseZ);
+            baseYaw = lp.apply(Param.ROT_Y, baseYaw);
+            basePitch = lp.apply(Param.ROT_X, basePitch);
+            baseRoll = lp.apply(Param.ROT_Z, baseRoll);
+            baseScale = Math.max(0.01F, lp.apply(Param.SCALE, baseScale));
+            lTint = lp.tint(lTint);
+        }
 
         List<HologramEffect> effects = HologramTriggers.resolve(layer.effects(), spec, seconds, lKeyed);
+        effects = HologramAudioEval.effects(effects, seconds);
         if (HologramAnim.flickerHidden(effects, seconds))
             return;
 

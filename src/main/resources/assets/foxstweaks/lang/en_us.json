@@ -186,6 +186,8 @@
   "foxstweaks.configuration.hologramTimelineMaxTracks": "Hologram Timeline Max Tracks",
   "foxstweaks.configuration.hologramTimelineMaxKeys": "Hologram Timeline Max Keyframes",
   "foxstweaks.configuration.hologramImageMaxLayers": "Hologram Image Max Layers",
+  "foxstweaks.configuration.hologramAudioMaxPerValue": "Hologram Audio Modulations per Value",
+  "foxstweaks.configuration.hologramAudioMaxPerHologram": "Hologram Audio Modulations per Hologram",
   "foxstweaks.configuration.hologramRenderCap": "Hologram Render Cap",
   "foxstweaks.configuration.media": "Video Import",
   "foxstweaks.configuration.mediaFfmpegEnabled": "Video Import Enabled",

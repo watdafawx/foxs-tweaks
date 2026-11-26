@@ -53,6 +53,11 @@ final class WebSocketConnection {
 
     /** Last edit sequence number applied for this client; written and read on the game thread only. */
     long ack;
+    /** Asked for the audio meter (a "meter" message with on=true); game thread only. */
+    boolean meter;
+    /** Source the meter reads; game thread only. */
+    dev.watdafawx.foxstweaks.hologram.HologramAudioMod.Source meterSource =
+            dev.watdafawx.foxstweaks.hologram.HologramAudioMod.Source.AUTO;
 
     WebSocketConnection(Socket socket, InputStream in, OutputStream out) {
         this.socket = socket;

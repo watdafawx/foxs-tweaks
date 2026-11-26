@@ -249,8 +249,10 @@ public final class HologramNetwork {
     @javax.annotation.Nullable
     public static String timelineProblem(HologramSpec spec) {
         HologramTimeline tl = spec.timeline();
-        return tl == null ? null
+        String problem = tl == null ? null
                 : tl.checkCaps(ServerConfig.hologramTimelineMaxTracks(), ServerConfig.hologramTimelineMaxKeys());
+        return problem != null ? problem : HologramAudioMod.checkCaps(spec, ServerConfig.hologramAudioMaxPerValue(),
+                ServerConfig.hologramAudioMaxPerHologram());
     }
 
     @javax.annotation.Nullable

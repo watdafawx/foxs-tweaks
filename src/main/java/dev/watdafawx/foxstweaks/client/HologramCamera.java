@@ -93,7 +93,8 @@ public final class HologramCamera {
             return false;
         Minecraft mc = Minecraft.getInstance();
         if (mc.level == null || !(mc.screen instanceof HologramScreen || mc.screen instanceof HologramChatScreen
-                || mc.screen instanceof HologramPickerScreen || mc.screen instanceof HologramCreatorScreen)) {
+                || mc.screen instanceof HologramPickerScreen || mc.screen instanceof HologramCreatorScreen
+                || mc.screen instanceof HologramAudioScreen || mc.screen instanceof HologramAudioSettingsScreen)) {
             active = false;
             return false;
         }

@@ -119,6 +119,9 @@ public final class HologramTimelinePlayer {
         if (level == null)
             return 0.0;
         double elapsed = elapsed(level, partialTick);
+        // Music can drive the playback rate; the warped clock is integrated per hologram so it never jumps.
+        if (dev.watdafawx.foxstweaks.client.audio.HologramAudioEval.hasRate(tl))
+            elapsed = dev.watdafawx.foxstweaks.client.audio.HologramAudioEval.warp(spec, tl, elapsed, spec.box().getCenter());
         HologramEffect.Trigger start = tl.start();
         if (start == HologramEffect.Trigger.ALWAYS)
             return HologramTimelineEval.localTime(tl.mode(), len, elapsed);

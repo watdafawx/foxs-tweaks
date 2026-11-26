@@ -5,6 +5,7 @@ import com.google.gson.JsonElement;
 import com.google.gson.JsonObject;
 import com.google.gson.JsonPrimitive;
 import dev.watdafawx.foxstweaks.ServerConfig;
+import dev.watdafawx.foxstweaks.hologram.HologramAudioMod;
 import dev.watdafawx.foxstweaks.hologram.HologramEffect;
 import dev.watdafawx.foxstweaks.hologram.HologramGroup;
 import dev.watdafawx.foxstweaks.hologram.HologramLayer;
@@ -164,7 +165,35 @@ final class HologramWebJson {
             tracks.add(j);
         }
         t.add("tracks", tracks);
+        if (!tl.audio().isEmpty()) {
+            JsonArray audio = new JsonArray();
+            for (HologramTimeline.AudioLink link : tl.audio()) {
+                JsonObject a = audioMod(link.mod());
+                a.addProperty("target", link.target().name());
+                a.addProperty("id", link.id());
+                audio.add(a);
+            }
+            t.add("audio", audio);
+        }
         return t;
+    }
+
+    /** One audio modulation; {@code min}/{@code max} only when the range is clamped. */
+    static JsonObject audioMod(HologramAudioMod m) {
+        JsonObject j = new JsonObject();
+        j.addProperty("param", m.param().name());
+        j.addProperty("source", m.source().name());
+        j.addProperty("signal", m.signal().name());
+        j.addProperty("amount", m.amount());
+        j.addProperty("sensitivity", m.sensitivity());
+        j.addProperty("attack", m.attack());
+        j.addProperty("release", m.release());
+        j.addProperty("threshold", m.threshold());
+        if (!Float.isNaN(m.min()))
+            j.addProperty("min", m.min());
+        if (!Float.isNaN(m.max()))
+            j.addProperty("max", m.max());
+        return j;
     }
 
     private static void transform(JsonObject j, float x, float y, float z, float yaw, float pitch, float roll, float scale) {
@@ -206,6 +235,12 @@ final class HologramWebJson {
         j.addProperty("axis", e.axis());
         j.addProperty("phase", e.phase());
         j.addProperty("trigger", e.trigger().name());
+        if (e.hasAudio()) {
+            JsonArray audio = new JsonArray();
+            for (HologramAudioMod m : e.audio())
+                audio.add(audioMod(m));
+            j.add("audio", audio);
+        }
         return j;
     }
 
@@ -351,9 +386,14 @@ final class HologramWebJson {
                 ? readTimeline(asObj(o.get("timeline"), "timeline"), groups, layers)
                 : null;
 
-        return new HologramSpec(base.id(), base.pos(), off[0], off[1], off[2], rot[0], rot[1], rot[2], scale,
-                base.enabled(), renderDistance, base.owner(), base.ownerName(), radius, seconds, style, groups, layers,
-                timeline);
+        HologramSpec spec = new HologramSpec(base.id(), base.pos(), off[0], off[1], off[2], rot[0], rot[1], rot[2],
+                scale, base.enabled(), renderDistance, base.owner(), base.ownerName(), radius, seconds, style, groups,
+                layers, timeline);
+        String audioCaps = HologramAudioMod.checkCaps(spec, ServerConfig.hologramAudioMaxPerValue(),
+                ServerConfig.hologramAudioMaxPerHologram());
+        if (audioCaps != null)
+            throw new Invalid(audioCaps);
+        return spec;
     }
 
     /**
@@ -423,7 +463,27 @@ final class HologramWebJson {
             }
             tracks.add(new HologramTimeline.Track(target, id, prop, effect, keys));
         }
-        HologramTimeline tl = new HologramTimeline(length, mode, start, tracks);
+        List<HologramTimeline.AudioLink> audio = new ArrayList<>();
+        if (t.has("audio") && !t.get("audio").isJsonNull()) {
+            for (JsonElement el : arr(t, "audio", HologramTimeline.HARD_MAX_AUDIO)) {
+                JsonObject j = asObj(el, "audio modulation");
+                HologramTimeline.TargetKind target = enumOf(HologramTimeline.TargetKind.class, j, "target", null);
+                if (target == null)
+                    throw new Invalid("audio modulation needs a target");
+                String id = target == HologramTimeline.TargetKind.ROOT ? "" : str(j, "id", 24);
+                if (target == HologramTimeline.TargetKind.GROUP && groups.stream().noneMatch(x -> x.id().equals(id)))
+                    throw new Invalid("audio modulation refers to missing group '" + id + "'");
+                if (target == HologramTimeline.TargetKind.LAYER && layers.stream().noneMatch(x -> x.uid().equals(id)))
+                    throw new Invalid("audio modulation refers to missing layer '" + id + "'");
+                HologramAudioMod m = readAudioMod(j);
+                if (!m.param().isPropParam())
+                    throw new Invalid(m.param().name() + " is an effect value, not a " + target.name().toLowerCase(java.util.Locale.ROOT) + " value");
+                if (m.param() == HologramAudioMod.Param.RATE && target != HologramTimeline.TargetKind.ROOT)
+                    throw new Invalid("only the root has a playback rate");
+                audio.add(new HologramTimeline.AudioLink(target, id, m));
+            }
+        }
+        HologramTimeline tl = new HologramTimeline(length, mode, start, tracks, audio);
         String caps = tl.checkCaps(ServerConfig.hologramTimelineMaxTracks(), ServerConfig.hologramTimelineMaxKeys());
         if (caps != null)
             throw new Invalid(caps);
@@ -439,6 +499,22 @@ final class HologramWebJson {
         } catch (IllegalArgumentException e) {
             throw new Invalid("unknown " + key + " '" + raw + "'");
         }
+    }
+
+    /** Strict like the rest: unknown enums are refused, numbers are clamped by the record. */
+    private static HologramAudioMod readAudioMod(JsonObject j) throws Invalid {
+        HologramAudioMod.Param param = enumOf(HologramAudioMod.Param.class, j, "param", null);
+        HologramAudioMod.Signal signal = enumOf(HologramAudioMod.Signal.class, j, "signal", HologramAudioMod.Signal.LEVEL);
+        HologramAudioMod.Source source = enumOf(HologramAudioMod.Source.class, j, "source", HologramAudioMod.Source.AUTO);
+        if (param == null)
+            throw new Invalid("audio modulation needs a param");
+        float lim = param.maxAmount();
+        boolean hasMin = j.has("min") && !j.get("min").isJsonNull();
+        boolean hasMax = j.has("max") && !j.get("max").isJsonNull();
+        return new HologramAudioMod(param, source, signal, num(j, "amount", 0, -lim, lim),
+                num(j, "sensitivity", 1, 0.1F, 8), num(j, "attack", 0.03F, 0, 2), num(j, "release", 0.2F, 0, 4),
+                num(j, "threshold", 0, 0, 1), hasMin ? num(j, "min", 0, -1000, 1000) : Float.NaN,
+                hasMax ? num(j, "max", 0, -1000, 1000) : Float.NaN);
     }
 
     private static List<HologramEffect> readEffects(JsonObject parent) throws Invalid {
@@ -459,6 +535,15 @@ final class HologramWebJson {
             } catch (IllegalArgumentException ex) {
                 throw new Invalid("unknown trigger");
             }
+            List<HologramAudioMod> audio = new ArrayList<>();
+            if (e.has("audio") && !e.get("audio").isJsonNull()) {
+                for (JsonElement ael : arr(e, "audio", HologramAudioMod.HARD_MAX_PER_VALUE * 4)) {
+                    HologramAudioMod m = readAudioMod(asObj(ael, "audio modulation"));
+                    if (!m.param().isEffectParam())
+                        throw new Invalid(m.param().name() + " is not an effect value");
+                    audio.add(m);
+                }
+            }
             HologramEffect def = HologramEffect.of(type);
             float min = type.isFx() ? 0.0F : type.minAmount();
             float max = type.isFx() ? 2.0F : type.maxAmount();
@@ -469,7 +554,7 @@ final class HologramWebJson {
                     e.has("axis") ? axis(e, "axis") : def.axis(),
                     num(e, "phase", 0, 0, 1),
                     trigger,
-                    color(e, "color2", HologramEffect.DEFAULT_COLOR2)));
+                    color(e, "color2", HologramEffect.DEFAULT_COLOR2)).withAudio(audio));
         }
         return out;
     }

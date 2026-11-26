@@ -169,10 +169,31 @@ public final class HologramTimeline {
         }
     }
 
+    /**
+     * An audio modulation of one property of one target, addressed like a {@link Track} (the root, a group by id
+     * or a layer by uid). {@link HologramAudioMod.Param#RATE} only means something on the root: it drives this
+     * timeline's playback rate. Lives here rather than on the layer/group records so those stay untouched.
+     */
+    public record AudioLink(TargetKind target, String id, HologramAudioMod mod) {
+        public AudioLink {
+            target = target == null ? TargetKind.LAYER : target;
+            id = target == TargetKind.ROOT || id == null ? "" : id;
+            mod = mod == null ? HologramAudioMod.of(HologramAudioMod.Param.SCALE, HologramAudioMod.Signal.LEVEL, 0.0F) : mod;
+        }
+
+        public boolean matches(TargetKind target, String id) {
+            return this.target == target && this.id.equals(id);
+        }
+    }
+
+    /** Hard ceiling on links, like {@link #HARD_MAX_TRACKS}. */
+    public static final int HARD_MAX_AUDIO = 256;
+
     private final float length;
     private final Mode mode;
     private final HologramEffect.Trigger start;
     private final List<Track> tracks;
+    private final List<AudioLink> audio;
 
     // ---- render-thread caches, see HologramTimelineEval ----
     @Nullable
@@ -186,6 +207,11 @@ public final class HologramTimeline {
     float cullPad = -1.0F;
 
     public HologramTimeline(float length, Mode mode, HologramEffect.Trigger start, List<Track> tracks) {
+        this(length, mode, start, tracks, List.of());
+    }
+
+    public HologramTimeline(float length, Mode mode, HologramEffect.Trigger start, List<Track> tracks,
+                            List<AudioLink> audio) {
         this.length = Mth.clamp(finite(length, 4.0F), MIN_LENGTH, MAX_LENGTH);
         this.mode = mode == null ? Mode.LOOP : mode;
         this.start = start == null ? HologramEffect.Trigger.ALWAYS : start;
@@ -204,6 +230,28 @@ public final class HologramTimeline {
             list.add(n);
         }
         this.tracks = List.copyOf(list);
+        this.audio = sanitiseAudio(audio);
+    }
+
+    private static List<AudioLink> sanitiseAudio(@Nullable List<AudioLink> audio) {
+        if (audio == null || audio.isEmpty())
+            return List.of();
+        List<AudioLink> out = new ArrayList<>(Math.min(audio.size(), HARD_MAX_AUDIO));
+        for (AudioLink link : audio) {
+            if (out.size() >= HARD_MAX_AUDIO)
+                break;
+            if (link == null || !link.mod().param().isPropParam())
+                continue;
+            if (link.mod().param() == HologramAudioMod.Param.RATE && link.target() != TargetKind.ROOT)
+                continue;
+            int same = 0;
+            for (AudioLink o : out)
+                if (o.matches(link.target(), link.id()) && o.mod().param() == link.mod().param())
+                    same++;
+            if (same < HologramAudioMod.HARD_MAX_PER_VALUE)
+                out.add(link);
+        }
+        return List.copyOf(out);
     }
 
     public static HologramTimeline empty(float length) {
@@ -226,6 +274,74 @@ public final class HologramTimeline {
         return this.tracks;
     }
 
+    public List<AudioLink> audio() {
+        return this.audio;
+    }
+
+    public HologramTimeline withAudio(List<AudioLink> audio) {
+        return new HologramTimeline(this.length, this.mode, this.start, this.tracks, audio);
+    }
+
+    /** The modulations of {@code param} on one target, in order. */
+    public List<HologramAudioMod> audioFor(TargetKind target, String id, HologramAudioMod.Param param) {
+        List<HologramAudioMod> out = null;
+        for (AudioLink link : this.audio) {
+            if (link.matches(target, id) && link.mod().param() == param) {
+                if (out == null)
+                    out = new ArrayList<>(2);
+                out.add(link.mod());
+            }
+        }
+        return out == null ? List.of() : out;
+    }
+
+    /** Replaces the modulations of {@code param} on one target, keeping every other link where it was. */
+    public HologramTimeline withAudioFor(TargetKind target, String id, HologramAudioMod.Param param,
+                                         List<HologramAudioMod> mods) {
+        List<AudioLink> out = new ArrayList<>(this.audio.size() + mods.size());
+        boolean placed = false;
+        for (AudioLink link : this.audio) {
+            if (link.matches(target, id) && link.mod().param() == param) {
+                if (!placed) {
+                    for (HologramAudioMod m : mods)
+                        out.add(new AudioLink(target, id, m.withParam(param)));
+                    placed = true;
+                }
+                continue;
+            }
+            out.add(link);
+        }
+        if (!placed)
+            for (HologramAudioMod m : mods)
+                out.add(new AudioLink(target, id, m.withParam(param)));
+        return withAudio(out);
+    }
+
+    /** Every modulation on one target, whatever the param, in stored order. */
+    public List<HologramAudioMod> audioOf(TargetKind target, String id) {
+        List<HologramAudioMod> out = new ArrayList<>(2);
+        for (AudioLink link : this.audio)
+            if (link.matches(target, id))
+                out.add(link.mod());
+        return out;
+    }
+
+    /** Replaces every modulation on one target with {@code mods} (each keeps its own param). */
+    public HologramTimeline withAudioOf(TargetKind target, String id, List<HologramAudioMod> mods) {
+        List<AudioLink> out = new ArrayList<>(this.audio.size() + mods.size());
+        for (AudioLink link : this.audio)
+            if (!link.matches(target, id))
+                out.add(link);
+        for (HologramAudioMod m : mods)
+            out.add(new AudioLink(target, id, m));
+        return withAudio(out);
+    }
+
+    /** A timeline that only carries audio links: no tracks, so it animates nothing by itself. */
+    public boolean isAudioOnly() {
+        return this.tracks.isEmpty() && !this.audio.isEmpty();
+    }
+
     public int keyCount() {
         int n = 0;
         for (Track t : this.tracks)
@@ -234,7 +350,7 @@ public final class HologramTimeline {
     }
 
     public HologramTimeline withTracks(List<Track> tracks) {
-        return new HologramTimeline(this.length, this.mode, this.start, tracks);
+        return new HologramTimeline(this.length, this.mode, this.start, tracks, this.audio);
     }
 
     /** Drops tracks whose group or layer is gone; returns this when nothing changed. */
@@ -253,7 +369,22 @@ public final class HologramTimeline {
                 kept.add(t);
             }
         }
-        return kept == null ? this : withTracks(kept);
+        HologramTimeline out = kept == null ? this : withTracks(kept);
+        List<AudioLink> links = null;
+        for (int i = 0; i < out.audio.size(); i++) {
+            AudioLink l = out.audio.get(i);
+            boolean alive = switch (l.target()) {
+                case ROOT -> true;
+                case GROUP -> groups.stream().anyMatch(g -> g.id().equals(l.id()));
+                case LAYER -> layers.stream().anyMatch(ly -> ly.uid().equals(l.id()));
+            };
+            if (!alive && links == null) {
+                links = new ArrayList<>(out.audio.subList(0, i));
+            } else if (alive && links != null) {
+                links.add(l);
+            }
+        }
+        return links == null ? out : out.withAudio(links);
     }
 
     /**
@@ -279,7 +410,8 @@ public final class HologramTimeline {
         };
         String len = String.format(Locale.ROOT, "%.1f s", this.length);
         String trig = this.start == HologramEffect.Trigger.ALWAYS ? "" : ", on " + this.start.label().toLowerCase(Locale.ROOT);
-        return len + " " + m + trig + ", " + this.tracks.size() + (this.tracks.size() == 1 ? " track" : " tracks");
+        String audio = this.audio.isEmpty() ? "" : ", " + this.audio.size() + " audio";
+        return len + " " + m + trig + ", " + this.tracks.size() + (this.tracks.size() == 1 ? " track" : " tracks") + audio;
     }
 
     // ---------------------------------------------------------------- NBT
@@ -291,6 +423,17 @@ public final class HologramTimeline {
             tag.putString("mode", this.mode.name());
         if (this.start != HologramEffect.Trigger.ALWAYS)
             tag.putString("start", this.start.name());
+        if (!this.audio.isEmpty()) {
+            ListTag links = new ListTag();
+            for (AudioLink l : this.audio) {
+                CompoundTag lt = l.mod().toTag();
+                lt.putString("on", l.target().name());
+                if (!l.id().isEmpty())
+                    lt.putString("id", l.id());
+                links.add(lt);
+            }
+            tag.put("audio", links);
+        }
         ListTag list = new ListTag();
         for (Track t : this.tracks) {
             CompoundTag tt = new CompoundTag();
@@ -353,7 +496,16 @@ public final class HologramTimeline {
             }
             tracks.add(new Track(target, tt.getString("id"), prop, tt.getByte("fx"), keys));
         }
-        return new HologramTimeline(tag.getFloat("len"), mode, start, tracks);
+        List<AudioLink> audio = new ArrayList<>();
+        ListTag links = tag.getList("audio", Tag.TAG_COMPOUND);
+        for (int i = 0; i < links.size() && audio.size() < HARD_MAX_AUDIO; i++) {
+            CompoundTag lt = links.getCompound(i);
+            TargetKind target = enumOf(TargetKind.class, lt.getString("on"), null);
+            HologramAudioMod mod = HologramAudioMod.fromTag(lt);
+            if (target != null && mod != null)
+                audio.add(new AudioLink(target, lt.getString("id"), mod));
+        }
+        return new HologramTimeline(tag.getFloat("len"), mode, start, tracks, audio);
     }
 
     @Nullable
@@ -378,12 +530,12 @@ public final class HologramTimeline {
         if (this == o)
             return true;
         return o instanceof HologramTimeline t && t.length == this.length && t.mode == this.mode
-                && t.start == this.start && t.tracks.equals(this.tracks);
+                && t.start == this.start && t.tracks.equals(this.tracks) && t.audio.equals(this.audio);
     }
 
     @Override
     public int hashCode() {
-        return Objects.hash(this.length, this.mode, this.start, this.tracks);
+        return Objects.hash(this.length, this.mode, this.start, this.tracks, this.audio);
     }
 
     @Override
