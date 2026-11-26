@@ -52,6 +52,7 @@ public final class HologramClient {
     public static void init() {
         NeoForge.EVENT_BUS.addListener(HologramRenderer::onRenderLevel);
         NeoForge.EVENT_BUS.addListener(HologramClient::onClientTick);
+        HologramEditorScale.init();
         NeoForge.EVENT_BUS.addListener(HologramClient::onLevelUnload);
         HologramTriggers.install();
         dev.watdafawx.foxstweaks.client.audio.AudioHub.install();

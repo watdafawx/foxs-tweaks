@@ -31,6 +31,7 @@ public final class HologramEditorPrefs {
 
     private static boolean loaded;
     private static boolean startInCreator = true;
+    private static int guiScale;
     private static final List<Look> looks = new ArrayList<>();
 
     private HologramEditorPrefs() {
@@ -60,6 +61,21 @@ public final class HologramEditorPrefs {
         load();
         if (startInCreator != creator) {
             startInCreator = creator;
+            save();
+        }
+    }
+
+    /** The editor's own GUI scale: 0 follows the game, 1-4 is fixed. */
+    public static int guiScale() {
+        load();
+        return guiScale;
+    }
+
+    public static void setGuiScale(int scale) {
+        load();
+        int v = Math.max(0, Math.min(HologramEditorScale.MAX, scale));
+        if (guiScale != v) {
+            guiScale = v;
             save();
         }
     }
@@ -111,6 +127,8 @@ public final class HologramEditorPrefs {
                 return;
             if (root.contains("startInCreator"))
                 startInCreator = root.getBoolean("startInCreator");
+            if (root.contains("guiScale"))
+                guiScale = Math.max(0, Math.min(HologramEditorScale.MAX, root.getInt("guiScale")));
             ListTag list = root.getList("looks", Tag.TAG_COMPOUND);
             for (int i = 0; i < list.size() && looks.size() < MAX_LOOKS; i++) {
                 CompoundTag t = list.getCompound(i);
@@ -125,6 +143,7 @@ public final class HologramEditorPrefs {
     private static void save() {
         CompoundTag root = new CompoundTag();
         root.putBoolean("startInCreator", startInCreator);
+        root.putInt("guiScale", guiScale);
         ListTag list = new ListTag();
         for (Look l : looks) {
             CompoundTag t = new CompoundTag();

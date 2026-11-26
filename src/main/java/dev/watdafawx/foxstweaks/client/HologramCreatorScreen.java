@@ -318,6 +318,10 @@ public final class HologramCreatorScreen extends Screen {
                     : m.label + " handles on the selected layer (" + (m.ordinal() + 1) + ")";
             gx += bw + 2;
         }
+        String sl = HologramEditorScale.label();
+        int sw = this.font.width(sl) + 12;
+        Hit sh = button(g, mx, my, gx + 6, 22, sw, 15, sl, HologramEditorPrefs.guiScale() != 0, true, HologramEditorScale::cycle);
+        sh.tooltip = "The editor's own GUI scale. Game = follow Video Settings; 1-4 = fixed, whatever the game uses.";
     }
 
     // ---------------------------------------------------------------- left: layers + looks

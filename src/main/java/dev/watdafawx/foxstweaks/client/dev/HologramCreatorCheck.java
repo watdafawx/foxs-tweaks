@@ -497,6 +497,28 @@ public final class HologramCreatorCheck {
             }
         });
 
+        // ---- Own editor GUI scale: game at 3, editor at 2, vanilla back at 3 after leaving ----
+        add(2, () -> guiScale(3));
+        add(6, () -> {
+            var mc = Minecraft.getInstance();
+            check("game GUI scale is 3 here", mc.getWindow().getGuiScale() == 3.0, "scale=" + mc.getWindow().getGuiScale());
+            dev.watdafawx.foxstweaks.client.HologramEditorPrefs.setGuiScale(2);
+            dev.watdafawx.foxstweaks.client.HologramEditorScale.apply();
+        });
+        add(6, () -> {
+            var mc = Minecraft.getInstance();
+            check("editor runs at its own scale 2", mc.getWindow().getGuiScale() == 2.0 && creator() != null,
+                    "scale=" + mc.getWindow().getGuiScale() + " screen=" + mc.screen);
+            shot("creator-own-scale-2-game-3.png");
+            dev.watdafawx.foxstweaks.client.HologramEditorPrefs.setGuiScale(0);
+            dev.watdafawx.foxstweaks.client.HologramEditorScale.apply();
+        });
+        add(6, () -> {
+            var mc = Minecraft.getInstance();
+            check("Game setting follows the game scale", mc.getWindow().getGuiScale() == 3.0, "scale=" + mc.getWindow().getGuiScale());
+        });
+        add(2, () -> guiScale(2));
+
         // ---- Studio and back: same instance, same edits ----
         add(6, () -> {
             List<HologramEffect> before = effects();

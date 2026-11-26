@@ -1180,6 +1180,7 @@ anyway), on logout, dimension change, server stop, and after `IDLE_TICKS` (10 mi
 path must call `openEditor`, or the player is held to 14 blocks again. A refused non-PREVIEW save sends a chat line.
 **Text fit:** `HologramCreatorScreen` records fits (`TextFit`, `devFits()`) and `HologramCreatorCheck.assertFits` asserts
 them; GUI 3/4 checks must set a 1920x1080 window (854x480 caps the GUI scale at 2) and assert the real scale.
+**Own GUI scale:** `client/HologramEditorScale` swaps `Window#setGuiScale` while an editor screen (`isEditor`, also used by `HologramCamera.isActive`) is open: `ScreenEvent.Opening` runs before the new screen lays out, and a tick check resizes after a window resize/options change. Pref `HologramEditorPrefs.guiScale` (0 game, 1-4); a new editor screen class must be added to `isEditor`. Checked in `runHologramCreatorCheck` (game 3, editor 2).
 **Names:** `HologramBlockNames.disambiguate` is the one place duplicate block names get "(wall)" or "(path)" (picker and
 `HologramWebRegistries`). `HologramSearch.rank` and `rank` in `web/src/browser.tsx` must stay equivalent.
 
