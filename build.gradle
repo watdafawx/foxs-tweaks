@@ -372,6 +372,13 @@ tasks.register('mediaSelfTest', JavaExec) {
     mainClass = 'dev.watdafawx.foxstweaks.media.dev.VideoConverterSelfTest'
 }
 
+tasks.register('modelSelfTest', JavaExec) {
+    group = 'verification'
+    description = 'Runs the 3D model self-test (glb + Blockbench readers, FTM1 round trip, pose maths).'
+    classpath = sourceSets.main.runtimeClasspath
+    mainClass = 'dev.watdafawx.foxstweaks.hologram.model.dev.ModelSelfTest'
+}
+
 tasks.withType(JavaCompile).configureEach {
     options.encoding = 'UTF-8'
     options.release = 21
