@@ -1670,7 +1670,6 @@ kbd {
 
 .au-card {
   border: 1px solid var(--line);
-  border-left: 2px solid var(--warn);
   border-radius: var(--radius);
   background: var(--panel-2);
   padding: 6px;
