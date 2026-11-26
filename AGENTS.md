@@ -1240,6 +1240,10 @@ server's way, `ceil(1000/fps)` each: 150 frames of 67 ms is 10.05 s and a 10 s c
 old browser converter). Verified headless (Chrome + the server's real `AssetFrames.sanitize`): 5000x3000 20 MB PNG, 40 s
 720p MP4 cut to 15-25 s, 6 MB 20 s GIF cut, alpha WebP, a 300 KB cap forcing 128 px / 9 fps. Not verified: an upload
 through a live game, Firefox/Safari (no `ImageDecoder` there means a GIF over the cap keeps only its first frame).
+**Animated WebP without `ImageDecoder` (1.47.1):** `web/src/webp.ts` parses the RIFF (VP8X animation flag, ANMF frames), re-wraps each
+frame as a still WebP (VP8X + frame chunks) for `createImageBitmap`, and `fit.ts#openWebpAnimation` composites them (dispose/blend,
+replay from frame 0 when seeking back). The server never reads WebP. Parser checked on a Pillow-made file; the browser decode
+path is not checked in Firefox.
 
 **Entity life (1.44.0).** `client/HologramEntityLife` samples animation fields without calling `tick()` or `aiStep()`:
 walk/run from the hologram clock, FLY/SWIM set ground/water/swimming flags and wing/tail/tentacle fields, and public

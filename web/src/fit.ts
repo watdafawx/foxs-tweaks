@@ -4,6 +4,7 @@
 // and the size second until the bundle fits. Nothing here talks to the game: upload.ts sends what this returns.
 
 import type { AssetCaps } from './protocol';
+import { parseAnimatedWebp } from './webp';
 
 /** FTAS v1 (AssetFrames.java): magic, frame count, then per frame its delay in ms, its length and its bytes. */
 const FTAS_MAGIC = 0x46544131;
@@ -179,11 +180,13 @@ export function imageDecoderAvailable(): boolean {
  */
 export async function openAnimation(file: Blob, onProgress?: Progress): Promise<TimedSource | null> {
   const Decoder = (globalThis as any).ImageDecoder;
-  if (!Decoder || !file.type) return null;
+  // Browsers without ImageDecoder (Firefox) still decode a single WebP frame, so animated WebP is taken apart by hand.
+  const webp = file.type === 'image/webp' ? () => openWebpAnimation(file, onProgress) : () => null;
+  if (!Decoder || !file.type) return webp();
   try {
-    if (!(await Decoder.isTypeSupported(file.type))) return null;
+    if (!(await Decoder.isTypeSupported(file.type))) return webp();
   } catch {
-    return null;
+    return webp();
   }
   let decoder: any;
   try {
@@ -192,7 +195,7 @@ export async function openAnimation(file: Blob, onProgress?: Progress): Promise<
     await decoder.completed;
   } catch {
     decoder?.close();
-    return null;
+    return webp();
   }
   const track = decoder.tracks.selectedTrack;
   const count: number = track?.frameCount ?? 0;
@@ -225,6 +228,111 @@ export async function openAnimation(file: Blob, onProgress?: Progress): Promise<
     image.close();
     if (i % 16 === 0) onProgress?.(`reading animation (${i + 1}/${count} frames)`, ((i + 1) / count) * 100);
   }
+  const src = animationSource(delays, width, height, alpha, async (ctx, at, w, h) => {
+    const { image } = await decoder.decode({ frameIndex: at });
+    try {
+      ctx.clearRect(0, 0, w, h);
+      ctx.drawImage(image, 0, 0, w, h);
+    } finally {
+      image.close();
+    }
+  }, () => decoder.close());
+  return src;
+}
+
+/** Hand-made animated WebP reader (see webp.ts): null for a still WebP or one the browser cannot decode. */
+async function openWebpAnimation(file: Blob, onProgress?: Progress): Promise<TimedSource | null> {
+  let anim;
+  try {
+    anim = parseAnimatedWebp(new Uint8Array(await file.arrayBuffer()));
+  } catch {
+    return null;
+  }
+  if (!anim || anim.frames.length < 2) return null;
+  const { width, height, frames } = anim;
+  const canvas = new OffscreenCanvas(width, height);
+  const ctx = canvas.getContext('2d', { willReadFrequently: true })!;
+  const bitmaps = new Map<number, ImageBitmap>();
+  // Keep decoded frames while they stay modest; past that, decode again when drawn.
+  let cachedPixels = 0;
+  const bitmap = async (i: number) => {
+    const have = bitmaps.get(i);
+    if (have) return have;
+    const f = frames[i];
+    const made = await createImageBitmap(new Blob([f.file as BlobPart], { type: 'image/webp' }));
+    if (cachedPixels + f.width * f.height <= 48_000_000) {
+      bitmaps.set(i, made);
+      cachedPixels += f.width * f.height;
+    }
+    return made;
+  };
+  let shown = -1;
+  // Frames are deltas over the canvas, so showing frame i means replaying from the start (or from where it stands).
+  const compose = async (to: number) => {
+    if (to < shown) {
+      ctx.clearRect(0, 0, width, height);
+      shown = -1;
+    }
+    for (let i = shown + 1; i <= to; i++) {
+      const f = frames[i];
+      if (i > 0 && frames[i - 1].dispose) {
+        const p = frames[i - 1];
+        ctx.clearRect(p.x, p.y, p.width, p.height);
+      }
+      if (!f.blend) ctx.clearRect(f.x, f.y, f.width, f.height);
+      const img = await bitmap(i);
+      ctx.drawImage(img, f.x, f.y);
+      if (!bitmaps.has(i)) img.close();
+      shown = i;
+    }
+  };
+
+  const delays = frames.map((f) => (f.delay <= 10 ? 100 : f.delay));
+  try {
+    await compose(0);
+  } catch {
+    return null;
+  }
+  // Probe a few frames for see-through pixels, as openAnimation does.
+  let alpha = false;
+  const probeAt = [0, Math.floor(frames.length / 2), frames.length - 1];
+  for (const i of probeAt) {
+    onProgress?.(`reading animation (${i + 1}/${frames.length} frames)`, ((i + 1) / frames.length) * 100);
+    try {
+      await compose(i);
+    } catch {
+      return null;
+    }
+    if (!alpha) alpha = hasAlpha(ctx, width, height);
+  }
+  const close = () => {
+    for (const b of bitmaps.values()) b.close();
+    bitmaps.clear();
+  };
+  return animationSource(
+    delays,
+    width,
+    height,
+    alpha,
+    async (out, at, w, h) => {
+      await compose(at);
+      out.clearRect(0, 0, w, h);
+      out.drawImage(canvas, 0, 0, w, h);
+    },
+    close,
+  );
+}
+
+/** A timed source over frames with their own delays (ms); {@code draw} paints frame {@code at} scaled to w x h. */
+function animationSource(
+  delays: number[],
+  width: number,
+  height: number,
+  alpha: boolean,
+  draw: TimedSource['draw'],
+  close: () => void,
+): TimedSource {
+  const count = delays.length;
   const starts: number[] = [];
   let t = 0;
   for (const d of delays) {
@@ -258,16 +366,8 @@ export async function openAnimation(file: Blob, onProgress?: Progress): Promise<
       }
       return finishDelays(out, minDelay, range.length * 1000);
     },
-    async draw(ctx, at, w, h) {
-      const { image } = await decoder.decode({ frameIndex: at });
-      try {
-        ctx.clearRect(0, 0, w, h);
-        ctx.drawImage(image, 0, 0, w, h);
-      } finally {
-        image.close();
-      }
-    },
-    close: () => decoder.close(),
+    draw,
+    close,
   };
 }
 

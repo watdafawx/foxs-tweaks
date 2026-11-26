@@ -76,7 +76,8 @@ The **Images** tab of the content browser is the world's asset library (PNG, JPE
   sets `assetUploadEveryone`; anyone editing can place what is already there.
 - **Video** is sent as is when the server has ffmpeg. Otherwise this page decodes it with WebCodecs and sends
   JPEG frames in an FTAS bundle sized to the server's limits (`assetCaps`); without either, the upload says why.
-  WebP, AVIF and BMP become PNG here (first frame only), since the server reads PNG, JPEG and GIF.
+  AVIF and BMP become PNG here (first frame only), since the server reads PNG, JPEG and GIF. Animated WebP keeps its
+  animation: through `ImageDecoder` where there is one, else through the page's own reader (`webp.ts`).
 - **+** (or double-click) adds a picture as a new layer; a click swaps it into the selected image layer. The
   server allows `maxImageLayers` image layers per hologram, and the + button says so once it is reached.
 - The **Image** section of the layer inspector sets width (height follows the picture's aspect unless set),

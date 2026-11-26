@@ -1,5 +1,9 @@
 # Changelog
 
+## 1.47.1
+
+- **Web editor: animated WebP now animates in every browser.** Browsers without `ImageDecoder` (Firefox) used to keep only the first frame. The page now reads the WebP's frames itself (`web/src/webp.ts`), composites them with their blend and dispose rules, and sends the same frame bundle as for a GIF. Chrome and Edge still use `ImageDecoder`. Nothing changes on the server.
+
 ## 1.47.0
 
 - **Web editor: delete pictures and videos from the Images tab.** Each card you may delete (operators: any; everyone else: what they uploaded) has a ✕. It asks first, and when holograms use the picture it says how many layers will turn empty. Web protocol 6.
