@@ -141,6 +141,22 @@ public final class ServerConfig {
         BUILDER.pop();
     }
 
+    static { BUILDER.push("assets"); }
+
+    public static final ModConfigSpec.IntValue ASSET_MAX_FILE_BYTES = BUILDER.comment("Maximum uploaded file and canonical asset bytes.").defineInRange("assetMaxFileBytes", 2097152, 1024, 16777216);
+
+    public static final ModConfigSpec.IntValue ASSET_MAX_WORLD_BYTES = BUILDER.comment("Maximum stored asset bytes per world.").defineInRange("assetMaxWorldBytes", 209715200, 1024, 1073741824);
+    public static final ModConfigSpec.BooleanValue ASSET_UPLOAD_EVERYONE = BUILDER.comment("Allow everyone to upload; otherwise operators only.").define("assetUploadEveryone", false);
+
+    public static final ModConfigSpec.IntValue ASSET_MAX_DIMENSION = BUILDER.comment("Larger images are downscaled preserving aspect ratio.").defineInRange("assetMaxDimension", 256, 16, 1024);
+
+    public static final ModConfigSpec.IntValue ASSET_MAX_FPS = BUILDER.comment("Maximum animation frames per second.").defineInRange("assetMaxFps", 15, 1, 30);
+
+    public static final ModConfigSpec.IntValue ASSET_MAX_SECONDS = BUILDER.comment("Maximum animation duration in seconds.").defineInRange("assetMaxSeconds", 10, 1, 30);
+
+    public static final ModConfigSpec.IntValue ASSET_MAX_PER_PLAYER = BUILDER.comment("Maximum assets owned by each player.").defineInRange("assetMaxPerPlayer", 100, 1, 10000);
+    static { BUILDER.pop(); }
+
     public static final ModConfigSpec SPEC = BUILDER.build();
 
     /** False before a world's server config is read (main menu, datapack loading); callers fall back to the defaults. */

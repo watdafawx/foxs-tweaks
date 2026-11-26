@@ -23,6 +23,7 @@ public final class HologramNetwork {
     }
 
     public static void register(RegisterPayloadHandlersEvent event) {
+        dev.watdafawx.foxstweaks.hologram.asset.AssetNetwork.register(event);
         var registrar = event.registrar("3").optional();
 
         registrar.playToClient(HologramSyncPayload.TYPE, HologramSyncPayload.CODEC, (payload, context) ->

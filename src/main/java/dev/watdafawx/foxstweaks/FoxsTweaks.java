@@ -134,6 +134,9 @@ public class FoxsTweaks {
         if (FMLEnvironment.dist.isClient() && !FMLEnvironment.production && Boolean.getBoolean("foxstweaks.anchorCheck"))
             dev.watdafawx.foxstweaks.client.dev.AnchorCheck.install();
 
+        if (FMLEnvironment.dist.isClient() && !FMLEnvironment.production && Boolean.getBoolean("foxstweaks.hologramAssetCheck"))
+            dev.watdafawx.foxstweaks.client.dev.HologramAssetCheck.install();
+
         // Dev-only end-to-end check of holograms; `build.bat runHologramCheck` sets the property.
         if (FMLEnvironment.dist.isClient() && !FMLEnvironment.production && Boolean.getBoolean("foxstweaks.hologramCheck"))
             dev.watdafawx.foxstweaks.client.dev.HologramCheck.install();
