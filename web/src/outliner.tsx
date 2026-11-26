@@ -11,6 +11,8 @@ export function layerName(l: Layer): string {
       return REG.blocks.get(l.id)?.name ?? l.id;
     case 'ENTITY':
       return REG.entities.get(l.id) ?? l.id;
+    case 'MODEL':
+      return ASSETS.get(l.id)?.name ?? `model ${l.id.slice(0, 8)}`;
     case 'IMAGE':
       // The id is a hash; the library knows the file name it was uploaded as.
       return ASSETS.get(l.id)?.name ?? `image ${l.id.slice(0, 8)}`;
@@ -19,7 +21,7 @@ export function layerName(l: Layer): string {
   }
 }
 
-export const KIND_BADGE: Record<Layer['kind'], string> = { BLOCK: 'B', ENTITY: 'E', PARTICLE: 'P', STRUCTURE: 'S', IMAGE: 'I' };
+export const KIND_BADGE: Record<Layer['kind'], string> = { BLOCK: 'B', ENTITY: 'E', PARTICLE: 'P', STRUCTURE: 'S', IMAGE: 'I', MODEL: 'M' };
 
 type Drag = { type: 'layer'; index: number } | { type: 'group'; id: string };
 let dragging: Drag | null = null;

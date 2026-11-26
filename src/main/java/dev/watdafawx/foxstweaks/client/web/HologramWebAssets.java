@@ -105,6 +105,18 @@ final class HologramWebAssets {
         int offset = Math.max(0, intOf(msg, "offset", 0));
         HologramAssets.requestListing(offset, page -> {
             JsonObject o = page.deepCopy();
+            // A model's animation names are only known once the game has decoded it; asking starts that download.
+            if (o.has("entries") && o.get("entries").isJsonArray()) {
+                for (var e : o.getAsJsonArray("entries")) {
+                    JsonObject entry = e.getAsJsonObject();
+                    if (entry.has("type") && "MODEL".equals(entry.get("type").getAsString()) && entry.has("id")) {
+                        var names = new com.google.gson.JsonArray();
+                        for (String n : dev.watdafawx.foxstweaks.client.HologramModels.animations(entry.get("id").getAsString()))
+                            names.add(n);
+                        entry.add("animations", names);
+                    }
+                }
+            }
             o.addProperty("type", "assets");
             o.addProperty("seq", seq);
             send(c, o);

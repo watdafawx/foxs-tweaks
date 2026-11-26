@@ -1,9 +1,9 @@
-// Wire types for docs/hologram-web-protocol.md (protocol 6). Keep in step with client/web/HologramWebJson.java.
+// Wire types for docs/hologram-web-protocol.md (protocol 7). Keep in step with client/web/HologramWebJson.java.
 
-export const PROTOCOL = 6;
+export const PROTOCOL = 7;
 
 export type Vec3 = [number, number, number];
-export type Kind = 'BLOCK' | 'ENTITY' | 'PARTICLE' | 'STRUCTURE' | 'IMAGE';
+export type Kind = 'BLOCK' | 'ENTITY' | 'PARTICLE' | 'STRUCTURE' | 'IMAGE' | 'MODEL';
 
 export interface Effect {
   type: string;
@@ -270,6 +270,8 @@ export interface AssetEntry {
   frames: number;
   durationMs: number;
   bytes: number;
+  /** Animation names of a 3D model (type MODEL), once the game has decoded it; empty before that. */
+  animations?: string[];
   /** How many saved image layers use it; the server refuses to delete one that is in use. */
   used: number;
   mine: boolean;

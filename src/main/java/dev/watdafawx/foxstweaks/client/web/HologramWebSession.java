@@ -55,7 +55,7 @@ public final class HologramWebSession {
      * 2: layer uids, the timeline, and the preview-only playhead message. 3: image layers and assets. 4: audio
      * modulations and the meter. 5: block, entity and particle icons rendered by the game ({@link HologramWebIcons}).
      */
-    public static final int PROTOCOL = 6;
+    public static final int PROTOCOL = 7;
     /** Ticks with no screen at all (and no grab mode) after which the editor is treated as gone. */
     private static final int ORPHAN_TICKS = 100;
     private static final int MAX_DATA_KEYS = 128;

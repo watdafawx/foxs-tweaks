@@ -5,10 +5,17 @@ import { useEffect, useRef, useState } from 'preact/hooks';
 import type { AssetEntry, Layer } from './protocol';
 import { ASSETS, S, deleteAsset, edit, refreshAssets, requestThumb } from './store';
 import { addLayer } from './browser';
-import { uploadFile, webCodecsAvailable, type TrimRequest } from './upload';
+import { isModelFile, uploadFile, webCodecsAvailable, type TrimRequest } from './upload';
 import type { Range } from './fit';
 
-const ACCEPT = 'image/png,image/jpeg,image/gif,image/webp,image/avif,image/bmp,video/*';
+const ACCEPT = 'image/png,image/jpeg,image/gif,image/webp,image/avif,image/bmp,video/*,.glb,.gltf,.bbmodel';
+
+/** The server keeps at most this many 3D model layers in one hologram. */
+export const MAX_MODEL_LAYERS = 4;
+
+export function modelLayerCount(): number {
+  return S.spec?.layers.filter((l) => l.kind === 'MODEL').length ?? 0;
+}
 
 /** Image layers already in the hologram, against the server's per-hologram cap. */
 export function imageLayerCount(): number {
@@ -93,11 +100,15 @@ export function AssetLibrary() {
     if (!file) return;
     const hash = await uploadFile(file, choose);
     // A fresh upload goes straight into the hologram, which is what someone dropping a file nearly always wants.
-    if (hash && !full && !imageCapReached()) addImage(hash);
+    if (hash && !full) {
+      if (isModelFile(file)) {
+        if (modelLayerCount() < MAX_MODEL_LAYERS) addLayer('MODEL', hash);
+      } else if (!imageCapReached()) addImage(hash);
+    }
   };
 
   const replace = (a: AssetEntry) => {
-    if (!layer || layer.kind !== 'IMAGE' || layer.id === a.id) return;
+    if (!layer || layer.id === a.id || layer.kind !== (a.type === 'MODEL' ? 'MODEL' : 'IMAGE')) return;
     const index = sel.layer;
     edit((s) => (s.layers[index].id = a.id));
   };
@@ -126,7 +137,7 @@ export function AssetLibrary() {
         <button
           class="btn primary"
           disabled={!lib.canUpload || !!up}
-          title={lib.canUpload ? 'Any picture, GIF or video; it is scaled to fit here' : 'Only operators may upload on this server'}
+          title={lib.canUpload ? 'Any picture, GIF, video or 3D model (.glb, .bbmodel); pictures are scaled to fit here' : 'Only operators may upload on this server'}
           onClick={() => input.current?.click()}
         >
           Upload…
@@ -161,9 +172,9 @@ export function AssetLibrary() {
       ) : (
         <div class="browser-hint muted small">
           {lib.canUpload
-            ? `Drop any picture, GIF or video here, or use Upload. Big files are scaled down in this page to fit ${caps.maxDimension} px and ${(caps.maxFileBytes / (1024 * 1024)).toFixed(0)} MB; for anything longer than ${caps.maxSeconds} s you pick the part to keep. ${videoNote}`
+            ? `Drop any picture, GIF, video or 3D model (.glb, .bbmodel) here, or use Upload. Big files are scaled down in this page to fit ${caps.maxDimension} px and ${(caps.maxFileBytes / (1024 * 1024)).toFixed(0)} MB; for anything longer than ${caps.maxSeconds} s you pick the part to keep. ${videoNote}`
             : 'Only operators may upload on this server; anyone editing can place what is already here.'}
-          {layer?.kind === 'IMAGE' ? ' Click a picture to swap it into the selected layer.' : ''}
+          {layer?.kind === 'IMAGE' || layer?.kind === 'MODEL' ? ' Click one to swap it into the selected layer.' : ''}
         </div>
       )}
       {lib.error && <div class="empty error">{lib.error}</div>}
@@ -173,9 +184,9 @@ export function AssetLibrary() {
           <AssetCard
             key={a.id}
             a={a}
-            current={layer?.kind === 'IMAGE' && layer.id === a.id}
+            current={(layer?.kind === 'IMAGE' || layer?.kind === 'MODEL') && layer.id === a.id}
             onPick={() => replace(a)}
-            onAdd={() => addImage(a.id)}
+            onAdd={() => (a.type === 'MODEL' ? addLayer('MODEL', a.id) : addImage(a.id))}
             addDisabled={full || capped}
             addTitle={addTitle}
           />
@@ -199,12 +210,12 @@ function AssetCard(p: {
 }) {
   const a = p.a;
   const thumb = S.thumbs[a.id];
-  useEffect(() => requestThumb(a.id), [a.id]);
+  useEffect(() => (a.type === 'MODEL' ? undefined : requestThumb(a.id)), [a.id, a.type]);
   const owner = a.mine ? 'you' : a.owner || 'unknown';
   const [confirm, setConfirm] = useState(false);
   // a.used counts saved holograms, the open one included once saved; it may also use the picture unsaved. The page
   // cannot tell which, so take the larger count rather than adding the two.
-  const here = S.spec?.layers.filter((l) => l.kind === 'IMAGE' && l.id === a.id).length ?? 0;
+  const here = S.spec?.layers.filter((l) => (l.kind === 'IMAGE' || l.kind === 'MODEL') && l.id === a.id).length ?? 0;
   const inUse = Math.max(a.used, here);
   return (
     <div
@@ -214,7 +225,13 @@ function AssetCard(p: {
       title={`${a.name}\n${a.id}`}
     >
       <div class="asset-thumb">
-        {thumb ? <img src={thumb} alt="" draggable={false} /> : <span class="muted small">…</span>}
+        {a.type === 'MODEL' ? (
+          <span class="small">3D</span>
+        ) : thumb ? (
+          <img src={thumb} alt="" draggable={false} />
+        ) : (
+          <span class="muted small">…</span>
+        )}
         {a.frames > 1 && <span class="chip asset-anim">anim</span>}
       </div>
       <div class="asset-name">{a.name}</div>

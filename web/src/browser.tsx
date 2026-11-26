@@ -6,7 +6,7 @@ import type { Kind, Layer } from './protocol';
 import { S, edit, select } from './store';
 import { KIND_BADGE } from './outliner';
 import { Icon } from './icons';
-import { AssetLibrary, imageCapReached, imageHeight } from './library';
+import { AssetLibrary, MAX_MODEL_LAYERS, imageCapReached, imageHeight, modelLayerCount } from './library';
 
 interface Item {
   id: string;
@@ -85,6 +85,7 @@ export function newLayer(kind: Kind, id: string): Layer {
 function layerHeight(l: Layer): number {
   if (l.kind === 'PARTICLE') return 0.5;
   if (l.kind === 'IMAGE') return imageHeight(l) * l.scale;
+  if (l.kind === 'MODEL') return (Number(l.props.h ?? 0) > 0 ? Number(l.props.h) : 1) * l.scale;
   return l.scale;
 }
 
@@ -93,6 +94,7 @@ export function addLayer(kind: Kind, id: string): void {
   const max = S.registries!.limits.maxLayers;
   if (spec.layers.length >= max) return;
   if (kind === 'IMAGE' && imageCapReached()) return;
+  if (kind === 'MODEL' && modelLayerCount() >= MAX_MODEL_LAYERS) return;
   const sel = S.selection;
   // New layers stack on top of what is there, like the in-game editor, and join the selected layer's group.
   let top = 0;

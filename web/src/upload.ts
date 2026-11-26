@@ -16,7 +16,7 @@ import {
   type TimedSource,
 } from './fit';
 
-type Mode = 'image' | 'video' | 'bundle';
+type Mode = 'image' | 'video' | 'bundle' | 'model';
 
 const VIDEO_EXT = /\.(mp4|m4v|webm|mov|mkv|avi|ogv)$/i;
 
@@ -119,7 +119,17 @@ interface Prepared {
   close?: () => void;
 }
 
+/** A glTF binary or a Blockbench project: sent as it is, the game reads and checks it. */
+export function isModelFile(file: File): boolean {
+  return /\.(glb|gltf|bbmodel)$/i.test(file.name);
+}
+
 async function prepare(file: File, caps: AssetCaps, choose?: TrimChooser): Promise<Prepared | null> {
+  if (isModelFile(file)) {
+    if (file.size > caps.maxUploadBytes)
+      throw new Error(`${file.name} is ${mib(file.size)}; the server takes models up to ${mib(caps.maxUploadBytes)}.`);
+    return { bytes: file, mode: 'model' };
+  }
   if (isVideo(file)) {
     stage('opening video', 0);
     const src = await openVideo(file);

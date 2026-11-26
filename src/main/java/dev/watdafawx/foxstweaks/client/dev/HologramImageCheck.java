@@ -156,7 +156,7 @@ public final class HologramImageCheck {
             check("hello received", hello != null, ws.types());
             if (hello == null)
                 return;
-            check("hello speaks protocol 6", hello.get("protocol").getAsInt() == 6 && HologramWebSession.PROTOCOL == 6,
+            check("hello speaks protocol 7", hello.get("protocol").getAsInt() == 7 && HologramWebSession.PROTOCOL == 7,
                     hello.get("protocol").toString());
             JsonObject caps = hello.getAsJsonObject("assetCaps");
             check("hello carries asset capabilities", caps != null && caps.get("available").getAsBoolean()

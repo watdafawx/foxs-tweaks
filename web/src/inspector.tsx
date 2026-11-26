@@ -136,6 +136,7 @@ function TargetInspector({ t }: { t: Target }) {
       {t.kind === 'layer' ? <LayerHeader l={t.l} index={t.index} /> : <GroupHeader g={t.g} />}
       {t.kind === 'layer' && t.l.kind === 'BLOCK' && <BlockProps l={t.l} index={t.index} />}
       {t.kind === 'layer' && t.l.kind === 'IMAGE' && <ImageSection l={t.l} index={t.index} />}
+      {t.kind === 'layer' && t.l.kind === 'MODEL' && <ModelSection l={t.l} index={t.index} />}
       <Section title="Transform">
         <Vec3Field
           label="Offset"
@@ -235,6 +236,94 @@ function setImageProp(index: number, key: string, value: string | undefined, ges
     else props[key] = value;
     s.layers[index].props = props;
   }, gesture);
+}
+
+function ModelSection({ l, index }: { l: Layer; index: number }) {
+  const asset = ASSETS.get(l.id);
+  const names = asset?.animations ?? [];
+  const height = Number(l.props.h ?? 0) || 0;
+  const anim = l.props.anim ?? '';
+  const listId = `anims-${index}`;
+  return (
+    <Section title="3D model">
+      <Row label="Model">
+        <span class="small">
+          {asset ? (
+            <>
+              {asset.name}
+              {asset.frames > 0 && (
+                <span class="muted">
+                  {' '}
+                  · {asset.frames} animation{asset.frames === 1 ? '' : 's'}
+                </span>
+              )}
+            </>
+          ) : (
+            <span class="muted mono">{l.id.slice(0, 16)}…</span>
+          )}
+        </span>
+      </Row>
+      <Row label="Animation" title="Name of the animation to play; empty keeps the model still">
+        <input
+          class="input"
+          list={listId}
+          value={anim}
+          placeholder={names.length ? 'pick one' : 'name (reload the library to list them)'}
+          onChange={(e) => setImageProp(index, 'anim', (e.currentTarget as HTMLInputElement).value.trim() || undefined)}
+        />
+        <datalist id={listId}>
+          {names.map((n) => (
+            <option key={n} value={n} />
+          ))}
+        </datalist>
+      </Row>
+      <NumRow
+        rowLabel="Height"
+        label="h"
+        title="0 keeps the model's own size"
+        value={height}
+        min={0}
+        max={32}
+        step={0.05}
+        decimals={2}
+        unit="blocks"
+        onChange={(v, g) => setImageProp(index, 'h', v > 0 ? fmt(v) : undefined, g)}
+      />
+      <Row label="Emissive" title="Full brightness, day and night">
+        <Toggle value={l.fullbright} onChange={(v) => edit((s) => (s.layers[index].fullbright = v))} />
+      </Row>
+      <Row label="Playback">
+        <SelectField
+          value={l.props.play ?? 'LOOP'}
+          options={PLAYBACKS}
+          onChange={(v) => setImageProp(index, 'play', v === 'LOOP' ? undefined : v)}
+        />
+      </Row>
+      <NumRow
+        rowLabel="Speed"
+        label="×"
+        title="Negative plays backwards"
+        value={Number(l.props.speed ?? 1)}
+        min={-8}
+        max={8}
+        step={0.05}
+        decimals={2}
+        onChange={(v, g) => setImageProp(index, 'speed', v === 1 ? undefined : fmt(v), g)}
+      />
+      <NumRow
+        rowLabel="Start at"
+        label="t₀"
+        title="Seconds into the animation the hologram's clock starts from"
+        value={Number(l.props.start ?? 0)}
+        min={0}
+        max={600}
+        step={0.05}
+        decimals={2}
+        unit="s"
+        onChange={(v, g) => setImageProp(index, 'start', v === 0 ? undefined : fmt(v), g)}
+      />
+    </Section>
+  );
 }
 
 function ImageSection({ l, index }: { l: Layer; index: number }) {

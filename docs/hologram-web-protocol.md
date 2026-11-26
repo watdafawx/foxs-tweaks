@@ -1,4 +1,4 @@
-# Hologram web editor protocol (version 6)
+# Hologram web editor protocol (version 7)
 
 The web editor is a second client of the in-game hologram editor. The game stays in charge: it owns the
 preview, undo history and saving, and it validates everything the browser sends. The browser only proposes
@@ -177,6 +177,15 @@ An animation runs on the hologram's clock: the timeline's clip time when the hol
 `playhead` message scrubs it too), otherwise game time. The timeline animates image layers like any other layer
 (offset, rotation, scale, visible, tint, effects).
 
+### Model layers (v7)
+
+`kind: "MODEL"`, `id` = the asset's hash. A model is a 3D mesh with an optional skeleton and animations, stored by
+the server as a canonical model blob (the game reads glTF/Blockbench, the server re-checks and re-encodes it).
+Settings (`HologramModelSettings`): `h` height in blocks, 0..32 (`0`/missing keeps the model's own size),
+`anim` animation name (empty = still), `play`, `speed`, `start` as for images. `fullbright` is emissive. A
+hologram holds at most 4 model layers. Library entries of type `MODEL` carry `frames` = animation count and
+`animations` = their names once the game has decoded the model (empty before; ask for the listing again).
+
 ## Icons
 
 v5. The page shows the blocks, entities and particles of its lists with real pictures instead of letter badges. The game
@@ -263,7 +272,7 @@ of the same picture finds it again).
 One upload at a time per session, in order:
 
 1. `upload {name, size, mode}`: `mode` is `image` (PNG, JPEG, GIF), `video` (anything ffmpeg reads; only when
-   `video` is true) or `bundle` (FTAS, below). `size` 8 bytes to 16 MiB. Answer: `uploadStarted {seq, upload,
+   `video` is true), `bundle` (FTAS, below) or `model` (v7: a `.glb`, `.gltf` or Blockbench `.bbmodel`, sent as it is). `size` 8 bytes to 16 MiB. Answer: `uploadStarted {seq, upload,
    chunkBytes}` or `error {code: "upload"}`.
 2. `uploadChunk {upload, index, data}`: `data` is base64 of at most `chunkBytes` bytes, `index` from 0 with no
    gaps. Each chunk is answered with `uploadProgress {upload, percent, stage, server: false}` and then

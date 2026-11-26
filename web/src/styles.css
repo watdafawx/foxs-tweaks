@@ -942,7 +942,8 @@ select {
   color: var(--z);
 }
 
-.select {
+.select,
+.input {
   height: 24px;
   width: 100%;
   min-width: 0;
