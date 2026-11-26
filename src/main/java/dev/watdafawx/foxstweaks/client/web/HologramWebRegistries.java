@@ -102,6 +102,9 @@ final class HologramWebRegistries {
                     JsonObject j = new JsonObject();
                     j.addProperty("id", e.getKey().location().toString());
                     j.addProperty("name", e.getValue().getDescription().getString());
+                    JsonArray animations = new JsonArray();
+                    dev.watdafawx.foxstweaks.client.HologramEntityLife.offered(e.getKey().location().toString()).forEach(t -> animations.add(t.name()));
+                    j.add("animations", animations);
                     entities.add(j);
                 });
         o.add("entities", entities);

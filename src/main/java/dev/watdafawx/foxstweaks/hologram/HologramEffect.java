@@ -122,7 +122,8 @@ public record HologramEffect(Type type, float strength, float speed, int color, 
         /** Falls over and pops back up, Hz cycles per second. */
         DEATH,
         /** Crouched pose. */
-        SNEAK;
+        SNEAK,
+        RUN, FLY, SWIM, REST, ROAR, SNIFF, CROAK, ROLL;
 
         public boolean isFx() {
             return this.ordinal() <= JUMP.ordinal();
@@ -223,6 +224,14 @@ public record HologramEffect(Type type, float strength, float speed, int color, 
                 case HURT -> "Hurt";
                 case DEATH -> "Die";
                 case SNEAK -> "Sneak";
+                case RUN -> "Run";
+                case FLY -> "Fly";
+                case SWIM -> "Swim";
+                case REST -> "Rest";
+                case ROAR -> "Roar";
+                case SNIFF -> "Sniff";
+                case CROAK -> "Croak";
+                case ROLL -> "Curl";
             };
         }
 
@@ -355,7 +364,7 @@ public record HologramEffect(Type type, float strength, float speed, int color, 
             case ATTACK -> new HologramEffect(type, 1.0F, 1.5F, DEFAULT_COLOR);
             case HURT -> new HologramEffect(type, 1.0F, 0.8F, DEFAULT_COLOR);
             case DEATH -> new HologramEffect(type, 1.0F, 0.25F, DEFAULT_COLOR);
-            case SNEAK -> new HologramEffect(type, 1.0F, 1.0F, DEFAULT_COLOR);
+            case RUN, FLY, SWIM, REST, ROAR, SNIFF, CROAK, ROLL, SNEAK -> new HologramEffect(type, 1.0F, 1.0F, DEFAULT_COLOR);
         };
     }
 

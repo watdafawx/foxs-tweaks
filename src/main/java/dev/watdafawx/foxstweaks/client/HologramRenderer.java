@@ -562,7 +562,7 @@ public final class HologramRenderer {
                 pose.popPose();
             }
             case ENTITY -> {
-                var entity = HologramEntities.get(layer, 0.0, 0.0, 0.0, 0.0F, (float) seconds);
+                var entity = HologramEntities.get(spec.id(), layer, 0.0, 0.0, 0.0, 0.0F, (float) seconds);
                 if (entity == null)
                     return;
                 HologramEntities.applyAnimations(entity, effects, gEffects, seconds);

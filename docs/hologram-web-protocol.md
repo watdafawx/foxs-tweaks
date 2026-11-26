@@ -64,7 +64,7 @@ back the `uid`s and `timeline` it was given (a missing `timeline` removes the ti
 `ack` is below the last `seq` it sent, so a late `state` cannot undo a keystroke.
 
 `registries`: `blocks` (`id`, `name`, `blockEntity?`, property refs), `properties` (shared property table:
-name and values), `entities` (`id`, `name`), `particles` (ids of simple particle types), `effects` (per type:
+name and values), `entities` (`id`, `name`, `animations`: offered entity-effect type names), `particles` (ids of simple particle types), `effects` (per type:
 `label`, `short`, `family` fx/motion/entity, which fields it uses, amount `min`/`max`/`step`/`decimals`),
 `triggers`, `presets`, `revealStyles`, `limits` (max layers/groups/effects, name length, and a `{min,max}`
 range per numeric field), `timeline` (`length` range, `modes`, `eases`, `props` with `min`/`max`/`stepped`).

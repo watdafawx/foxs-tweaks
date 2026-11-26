@@ -380,7 +380,9 @@ function EffectStack({ t, effects }: { t: Target; effects: Effect[] }) {
           {families.map(([f, label]) => (
             <optgroup key={f} label={label}>
               {reg.effects
-                .filter((e) => e.family === f)
+                .filter((e) => e.family === f && (f !== 'entity' || (t.kind === 'group'
+                  ? S.spec!.layers.some((l) => l.group === t.g.id && l.kind === 'ENTITY' && reg.entities.find((x) => x.id === l.id)?.animations?.includes(e.type))
+                  : t.l.kind === 'ENTITY' && reg.entities.find((x) => x.id === t.l.id)?.animations?.includes(e.type))))
                 .map((e) => (
                   <option key={e.type} value={e.type}>
                     {e.label}
