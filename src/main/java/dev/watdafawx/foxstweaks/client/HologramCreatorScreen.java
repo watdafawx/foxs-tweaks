@@ -165,6 +165,8 @@ public final class HologramCreatorScreen extends Screen {
     /** The colour the HSV fields were last synced from, so an outside change (undo, look) re-syncs them. */
     private int hsvSource = -1;
     private EditBox hexBox;
+    private static final long DELETE_ARM_MS = 3000L;
+    private long deleteArmedUntil;
     private boolean hexVisible;
     @Nullable
     private String toast;
@@ -472,11 +474,14 @@ public final class HologramCreatorScreen extends Screen {
 
         // footer
         int footY = bottom - 21;
-        int bw = (w - 16 - 4) / 3;
+        int delW = 30;
+        int bw = (w - 16 - 6 - delW) / 3;
         button(g, mx, my, x + 8, footY, bw, 15, "Studio ›", false, true, this.editor::openStudio)
                 .tooltip = "The full editor: groups, gizmo, every number. Same hologram, nothing lost.";
         button(g, mx, my, x + 8 + bw + 2, footY, bw, 15, "Cancel", false, true, this.editor::cancelAndClose);
-        primaryButton(g, mx, my, x + 8 + (bw + 2) * 2, footY, w - 16 - (bw + 2) * 2, 15, "Done", this.editor::saveAndClose)
+        deleteButton(g, mx, my, x + 8 + (bw + 2) * 2, footY, delW, 15);
+        int doneX = x + 8 + (bw + 2) * 2 + delW + 2;
+        primaryButton(g, mx, my, doneX, footY, x + w - 8 - doneX, 15, "Done", this.editor::saveAndClose)
                 .tooltip = "Save and close";
 
         int clipTop = top + 18;
@@ -1456,6 +1461,28 @@ public final class HologramCreatorScreen extends Screen {
         if (enabled)
             hit.click = onClick;
         return hit;
+    }
+
+    /**
+     * Deletes the whole hologram, as the Studio's Del does, but only on a second click within {@link #DELETE_ARM_MS}:
+     * the Creator sits next to Done and Cancel, and a stray click must not throw away a finished hologram.
+     */
+    private void deleteButton(GuiGraphics g, int mx, int my, int x, int y, int w, int h) {
+        boolean armed = System.currentTimeMillis() < this.deleteArmedUntil;
+        boolean hover = mx >= x && mx < x + w && my >= y && my < y + h;
+        g.fill(x, y, x + w, y + h, armed ? 0xFFB3261E : (hover ? 0xFF5A1F1F : SURFACE));
+        outline(g, x, y, w, h, armed || hover ? 0xFFE5484D : 0x25FFFFFF);
+        String label = armed ? "Sure?" : "Del";
+        int color = armed ? 0xFFFFFFFF : (hover ? 0xFFFF8A8A : 0xFFE5484D);
+        g.drawString(this.font, label, x + (w - this.font.width(label)) / 2, y + (h - 8) / 2, color, false);
+        Hit hit = hit(x, y, w, h);
+        hit.tooltip = armed ? "Click again to delete this hologram" : "Delete this hologram (click twice)";
+        hit.click = () -> {
+            if (System.currentTimeMillis() < this.deleteArmedUntil)
+                this.editor.deleteAndClose();
+            else
+                this.deleteArmedUntil = System.currentTimeMillis() + DELETE_ARM_MS;
+        };
     }
 
     private Hit primaryButton(GuiGraphics g, int mx, int my, int x, int y, int w, int h, String label, Runnable onClick) {

@@ -357,6 +357,29 @@ public final class HologramCreatorCheck {
         });
         add(30, () -> shot("creator-world.png"));
 
+        // ---- Del: one click only arms it, the second within 3 s deletes the hologram ----
+        add(10, () -> onServer(player -> {
+            player.server.getCommands().performPrefixedCommand(
+                    player.createCommandSourceStack().withPermission(4), "foxstweaks hologram edit " + hologramId);
+            return null;
+        }));
+        add(10, () -> {
+            check("edit reopens the Creator", creator() != null, String.valueOf(Minecraft.getInstance().screen));
+            click("Delete this hologram", 0);
+        });
+        add(4, () -> {
+            check("one Del click keeps the editor open", creator() != null,
+                    String.valueOf(Minecraft.getInstance().screen));
+            shot("creator-delete-armed.png");
+        });
+        add(2, () -> click("Click again to delete", 0));
+        add(10, () -> {
+            check("second Del click closes the editor", Minecraft.getInstance().screen == null,
+                    String.valueOf(Minecraft.getInstance().screen));
+            HologramSpec gone = onServer(p -> Holograms.get(p.serverLevel(), hologramId));
+            check("server deleted the hologram", gone == null, String.valueOf(gone));
+        });
+
         add(6, () -> {
             log("done: " + (failures == 0 ? "ALL PASS" : failures + " FAILURE(S)"));
             try {

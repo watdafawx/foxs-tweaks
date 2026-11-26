@@ -1,5 +1,9 @@
 # Changelog
 
+## 1.44.3
+
+- **Hologram Creator: Del button.** The Creator's footer can now delete the hologram, as the Studio's Del does. The first click turns it into "Sure?", and a second click within 3 seconds deletes it.
+
 ## 1.44.2
 
 - **Fixed: WASD (and Space/Shift/Q/E) did not fly the camera in the hologram Creator**, the default editor. It only worked in the Studio.
