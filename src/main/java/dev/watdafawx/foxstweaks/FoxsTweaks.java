@@ -64,9 +64,10 @@ public class FoxsTweaks {
             modBus.addListener(dev.watdafawx.foxstweaks.client.PortalTint::register);
 
         // Hologram rendering + editor. Client only; the server half lives in `hologram/Holograms`.
-        if (FMLEnvironment.dist.isClient())
+        if (FMLEnvironment.dist.isClient()) {
             dev.watdafawx.foxstweaks.client.HologramClient.init();
             modBus.addListener(dev.watdafawx.foxstweaks.client.HologramStructureMesh::registerReload);
+        }
 
         // Settings screen (Mods list "Config" button + hotkey).
         if (FMLEnvironment.dist.isClient())

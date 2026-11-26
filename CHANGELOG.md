@@ -1,5 +1,9 @@
 # Changelog
 
+## 1.44.1
+
+- **Fixed: dedicated servers would not start with 1.44.0** ("Attempted to load class com/mojang/blaze3d/vertex/VertexConsumer for invalid dist DEDICATED_SERVER"). A client-only reload listener for hologram structure meshes was registered on servers too.
+
 ## 1.44.0
 
 - **Holograms: image layers.** A layer can now be a picture: PNG (with transparency), JPEG, animated GIF, WebP or a short video. Upload them from the web editor's new **Images** tab (button or drag and drop, with progress) into the world's asset library, where anyone editing a hologram can reuse them.
