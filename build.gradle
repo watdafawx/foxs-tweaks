@@ -317,6 +317,16 @@ dependencies {
     compileOnly "com.github.bawnorton.mixinsquared:mixinsquared-common:${mixinsquared_version}"
 }
 
+// Headless self-test of the video import (media/dev/VideoConverterSelfTest): plain Java, no game window.
+// It checks the ffmpeg locator and, when ffmpeg is installed, converts a generated 3 s testsrc video,
+// asserts the container gate and the timeout. Without ffmpeg the conversion cases print SKIP.
+tasks.register('mediaSelfTest', JavaExec) {
+    group = 'verification'
+    description = 'Runs the video import self-test (ffmpeg locator, conversion caps, container gate, timeout).'
+    classpath = sourceSets.main.runtimeClasspath
+    mainClass = 'dev.watdafawx.foxstweaks.media.dev.VideoConverterSelfTest'
+}
+
 tasks.withType(JavaCompile).configureEach {
     options.encoding = 'UTF-8'
     options.release = 21
