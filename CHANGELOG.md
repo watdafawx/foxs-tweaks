@@ -1,5 +1,9 @@
 # Changelog
 
+## 1.45.0
+
+- **Web editor: real icons.** The content browser, layer list and inspector header in the web editor now show the same block, item, entity and particle icons as the game instead of letter badges. The game draws them only for what is on screen, a few per frame, so scrolling through 48,000 blocks does not stall it. Web protocol 5; an older page still works without icons.
+
 ## 1.44.3
 
 - **Hologram Creator: Del button.** The Creator's footer can now delete the hologram, as the Studio's Del does. The first click turns it into "Sure?", and a second click within 3 seconds deletes it.
