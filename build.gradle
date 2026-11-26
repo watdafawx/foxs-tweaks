@@ -271,6 +271,14 @@ neoForge {
             server()
             gameDirectory = file('run-server')
         }
+
+        // Dev-only check of the Taverns & Adventurers locate guard (dev/RumorLocateCheck): headless, game dir
+        // run-rumor/ (the Taverns jar in run-rumor/mods), writes run-rumor/foxstweaks-rumor-check.txt and stops.
+        rumorCheck {
+            server()
+            gameDirectory = file('run-rumor')
+            systemProperty 'foxstweaks.rumorCheck', 'true'
+        }
     }
 
     mods {

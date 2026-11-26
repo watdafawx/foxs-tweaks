@@ -29,7 +29,8 @@ import net.minecraft.world.level.levelgen.structure.Structure;
  * can sit on chunk IO or a slow worldgen noise (ReTerraForged) for a minute, and the watchdog then kills the
  * server ("a single server tick took 60000 seconds").
  *
- * <p>The search runs on one worker thread and the tick waits for it at most {@code taverns locate wait} ms. A
+ * <p>The search runs on one worker thread and the tick waits for it (while still running its queued tasks, which the
+ * worker's chunk loads need) at most {@code tavernsLocateWaitMs} ms. A
  * search that is not finished by then counts as "nothing found" (the mod already handles that, it just tries
  * another rumor), and while the worker is still stuck on it further searches are refused at once instead of
  * stacking up. Against Taverns &amp; Adventurers 0.4.5 - re-check the member names on update.
@@ -69,6 +70,19 @@ public abstract class AdventurersGuildRumorLocateMixin {
             return null;
         }
         try {
+            // The search loads chunks, and an off-thread chunk request is queued onto the server thread and joined.
+            // Blocking the tick here would therefore deadlock it, so the tick runs its queued tasks while it waits.
+            if (level.getServer().isSameThread()) {
+                long deadline = System.nanoTime() + wait * 1_000_000L;
+                level.getServer().managedBlock(() -> {
+                    // The chunk cache's own queue is only polled by the server while the tick has time left.
+                    level.getChunkSource().pollTask();
+                    return job.isDone() || System.nanoTime() > deadline;
+                });
+                if (!job.isDone())
+                    throw new TimeoutException();
+                return job.get();
+            }
             return job.get(wait, TimeUnit.MILLISECONDS);
         } catch (TimeoutException e) {
             LogUtils.getLogger().warn("Taverns & Adventurers: structure search near {} took over {} ms, giving up on it (worker keeps going)", origin, wait);

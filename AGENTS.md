@@ -1591,7 +1591,18 @@ interface mixin may not declare fields (Mixin rejects it with `InvalidInterfaceM
 `RumorService.locate(ServerLevel, List, BlockPos)` (every rumor, dungeon and map path ends there) calls
 `ChunkGenerator#findNearestMapStructure` on the server thread; DrunkGamblers crashed three times on 2026-11-26 with the
 watchdog parked in `StructureCheck.tryLoadFromStorage` / ReTerraForged `CellSampler`. The mixin `@WrapOperation`s that one
-call: one daemon worker thread runs it, the tick waits `tavernsLocateWaitMs` (4000), a timeout returns null (the mod then
-tries another rumor) and a search still running makes later ones return null at once. The mod is closed source: decompiled with
-`javap -c` from 0.4.5. `require = 0`, so an update that moves the call just drops the fix. **Built, not run against the real
-mod yet**: drop 1.47.2 on the server and look for the `structure search near ... giving up` warning.
+call: one daemon worker thread runs it, the tick waits up to `tavernsLocateWaitMs` (4000), a timeout returns null (the mod
+then tries another rumor) and a search still running makes later ones return null at once. The mod is closed source:
+decompiled with `javap -c` from 0.4.5. `require = 0`, so an update that moves the call just drops the fix.
+
+**The tick must not just block on the worker.** The search loads chunks, and `ServerChunkCache#getChunk` called off-thread
+queues the load onto the chunk cache's main-thread executor and joins it, so a blocked tick deadlocks it (proven: 60 s with a
+plain `Future.get`). `managedBlock` alone is not enough either: the server polls the chunk cache's queue only while the tick
+still has time (`haveTime`), so the wait loop also calls `level.getChunkSource().pollTask()`.
+
+Dev check: `build.bat runRumorCheck` (headless, game dir `run-rumor/`, gitignored; put the Taverns jar in `run-rumor/mods` and
+edit its `neoforge.mods.toml` range to `[21.1.200,)` because the dev NeoForge is older than the jar wants; `eula.txt`,
+`max-tick-time=-1` in `server.properties`). `dev/RumorLocateCheck` calls `locate` by reflection: worker path finds a village
+(~0.8 s vs 0.6 s direct), a 1 ms wait gives up in 2 ms, a follow-up is refused at once, searches work again once the stuck one
+ends, wait 0 uses the original call. Report `run-rumor/foxstweaks-rumor-check.txt`, all PASS. Not verified: the real hang
+(chunk IO that never finishes) - it could not be reproduced here, so whether 4 s is the right wait on the live pack is open.
