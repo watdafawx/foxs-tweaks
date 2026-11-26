@@ -122,6 +122,21 @@ public final class ServerConfig {
                     "the area has to draw from the far side of the map.")
             .defineInRange("hologramsMaxRenderDistance", 256, 16, 512);
 
+    public static final ModConfigSpec.IntValue HOLOGRAM_STRUCTURE_MAX_DIMENSION = BUILDER
+            .comment(
+                    "Maximum width, height or depth (in blocks) of a structure grabbed into a hologram layer.")
+            .defineInRange("hologramStructureMaxDimension", 32, 1, 64);
+
+    public static final ModConfigSpec.IntValue HOLOGRAM_STRUCTURE_MAX_BLOCKS = BUILDER
+            .comment(
+                    "Maximum number of non-air blocks allowed in a single grabbed structure hologram layer.")
+            .defineInRange("hologramStructureMaxBlocks", 4096, 1, 32768);
+
+    public static final ModConfigSpec.IntValue HOLOGRAM_STRUCTURE_MAX_BYTES = BUILDER
+            .comment(
+                    "Maximum NBT size (in bytes) of a single grabbed structure hologram layer, including block entity data.")
+            .defineInRange("hologramStructureMaxBytes", 262144, 16384, 1048576);
+
     static {
         BUILDER.pop();
     }
@@ -179,6 +194,18 @@ public final class ServerConfig {
 
     public static int hologramsMaxRenderDistance() {
         return loaded() ? HOLOGRAMS_MAX_RENDER_DISTANCE.get() : 256;
+    }
+
+    public static int hologramStructureMaxDimension() {
+        return loaded() ? HOLOGRAM_STRUCTURE_MAX_DIMENSION.get() : 32;
+    }
+
+    public static int hologramStructureMaxBlocks() {
+        return loaded() ? HOLOGRAM_STRUCTURE_MAX_BLOCKS.get() : 4096;
+    }
+
+    public static int hologramStructureMaxBytes() {
+        return loaded() ? HOLOGRAM_STRUCTURE_MAX_BYTES.get() : 262144;
     }
 
     private ServerConfig() {

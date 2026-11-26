@@ -47,6 +47,61 @@ final class TintedBuffer implements MultiBufferSource {
         return wrap(delegate, effects, seconds, 0.0F, 1.0F);
     }
 
+    /** True when any per-vertex Y-dependent FX (SCANLINE or GRADIENT) is present in {@code effects}. */
+    static boolean hasPerVertexFx(List<HologramEffect> effects) {
+        for (int i = 0; i < effects.size(); i++) {
+            HologramEffect fx = effects.get(i);
+            if (fx.type() == HologramEffect.Type.SCANLINE)
+                return true;
+            if (fx.type() == HologramEffect.Type.GRADIENT && fx.strength() > 0.001F)
+                return true;
+        }
+        return false;
+    }
+
+    /**
+     * Multiplies uniform RGB FX (TINT, RAINBOW, PULSE, GLITCH flash) from {@code effects} into
+     * {@code outRgb[0..2]}. Used by the cached structure VBO path via {@code RenderSystem.setShaderColor}.
+     */
+    static void applyUniformColor(List<HologramEffect> effects, double seconds, float[] outRgb) {
+        if (effects.isEmpty())
+            return;
+
+        HologramEffect tint = HologramAnim.tint(effects);
+        if (tint != null) {
+            float mix = Mth.clamp(tint.strength(), 0.0F, 1.0F);
+            outRgb[0] *= 1.0F - mix + mix * ((tint.color() >> 16 & 0xFF) / 255.0F);
+            outRgb[1] *= 1.0F - mix + mix * ((tint.color() >> 8 & 0xFF) / 255.0F);
+            outRgb[2] *= 1.0F - mix + mix * ((tint.color() & 0xFF) / 255.0F);
+        }
+
+        int rainbow = HologramAnim.rainbowColor(effects, seconds);
+        if (rainbow >= 0) {
+            outRgb[0] *= ((rainbow >> 16) & 0xFF) / 255.0F;
+            outRgb[1] *= ((rainbow >> 8) & 0xFF) / 255.0F;
+            outRgb[2] *= (rainbow & 0xFF) / 255.0F;
+        }
+
+        float pulse = HologramAnim.pulseMultiplier(effects, seconds);
+        if (Math.abs(pulse - 1.0F) > 0.005F) {
+            outRgb[0] *= pulse;
+            outRgb[1] *= pulse;
+            outRgb[2] *= pulse;
+        }
+
+        HologramEffect glitch = HologramAnim.firstOf(effects, HologramEffect.Type.GLITCH);
+        if (glitch != null) {
+            float burst = HologramAnim.glitchBurst(seconds, glitch.speed());
+            if (burst > 0.1F) {
+                boolean cyan = HologramAnim.wave(seconds, glitch.speed() * 17.0F, 0.41) > 0.0F;
+                float m = Mth.clamp(burst * glitch.strength() * 0.7F, 0.0F, 0.85F);
+                outRgb[0] *= cyan ? (1.0F - 0.65F * m) : (1.0F + 0.35F * m);
+                outRgb[1] *= cyan ? (1.0F + 0.25F * m) : (1.0F - 0.75F * m);
+                outRgb[2] *= 1.0F + 0.35F * m;
+            }
+        }
+    }
+
     /**
      * Wraps {@code delegate} when any vertex-colour FX is active, otherwise returns {@code delegate}.
      * {@code bottomY}/{@code topY} are the drawn content's vertical extent in vertex space, read only by GRADIENT.

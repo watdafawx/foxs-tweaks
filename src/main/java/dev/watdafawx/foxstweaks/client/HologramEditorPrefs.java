@@ -47,7 +47,8 @@ public final class HologramEditorPrefs {
     private static boolean devPinsStudio() {
         return Boolean.getBoolean("foxstweaks.hologramCheck")
                 || Boolean.getBoolean("foxstweaks.hologramPickerCheck")
-                || Boolean.getBoolean("foxstweaks.hologramGrabCheck");
+                || Boolean.getBoolean("foxstweaks.hologramGrabCheck")
+                || Boolean.getBoolean("foxstweaks.hologramStructureCheck");
     }
 
     public static boolean startInCreator() {

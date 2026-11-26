@@ -66,6 +66,7 @@ public class FoxsTweaks {
         // Hologram rendering + editor. Client only; the server half lives in `hologram/Holograms`.
         if (FMLEnvironment.dist.isClient())
             dev.watdafawx.foxstweaks.client.HologramClient.init();
+            modBus.addListener(dev.watdafawx.foxstweaks.client.HologramStructureMesh::registerReload);
 
         // Settings screen (Mods list "Config" button + hotkey).
         if (FMLEnvironment.dist.isClient())
@@ -147,6 +148,10 @@ public class FoxsTweaks {
         // Dev-only end-to-end check of hologram grab mode; `build.bat runHologramGrabCheck` sets the property.
         if (FMLEnvironment.dist.isClient() && !FMLEnvironment.production && Boolean.getBoolean("foxstweaks.hologramGrabCheck"))
             dev.watdafawx.foxstweaks.client.dev.HologramGrabCheck.install();
+
+        // Dev-only end-to-end check and benchmark of hologram structure grab; `build.bat runHologramStructureCheck`.
+        if (FMLEnvironment.dist.isClient() && !FMLEnvironment.production && Boolean.getBoolean("foxstweaks.hologramStructureCheck"))
+            dev.watdafawx.foxstweaks.client.dev.HologramStructureCheck.install();
 
         // Dev-only check of the hologram asset browser; `build.bat runHologramPickerCheck` sets the property.
         if (FMLEnvironment.dist.isClient() && !FMLEnvironment.production
