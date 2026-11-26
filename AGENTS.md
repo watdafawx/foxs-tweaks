@@ -1109,7 +1109,9 @@ live there too). It owns no state: it wraps a `HologramScreen` instance and edit
 `creator*` bridge methods, so undo, preview and saving stay in one place; Studio ›/< Simple swap screens on the same instance.
 It is immediate-mode: every control registers a `Hit` per frame with its own `clipTop`/`clipBottom`, and a click outside the
 clip is ignored - without that, a half-scrolled row stole clicks from the footer (Done stopped working). Looks replace FX only,
-never motion. Axis chips colour by `axisLabel` (X red, Y green, Z blue), not by axis index. `HologramCamera.isActive` has
+never motion. Axis chips colour by `axisLabel` (X red, Y green, Z blue), not by axis index. PLACE (collapsed by default, so the panel does not grow at GUI 3) and the "Whole hologram" root row go through `creatorPlace`/`creatorSelectRoot`; never call `creatorEffects`/`creatorScale` while the root is selected, they force the target back to a layer. The 3D gizmo (1.47.3) is `HologramScreen`'s own `HologramGizmo`,
+reached through `creatorGizmo*` bridge methods (mode row under the top bar, keys 1-4, Esc undoes a drag); it acts on the selected layer. Any
+new editor feature must go through the bridge too, or the Creator falls behind the Studio again. Not yet checked in a live client. `HologramCamera.isActive` has
 to list every hologram screen (Studio, chat, picker, Creator) or the studio camera switches off when one opens.
 Dev check `build.bat runHologramCreatorCheck` (`run-hologram-creator/`); `devClick`/`devDrag` press controls by tooltip
 prefix and return false for a control outside its clip, so a check must `devReveal` (scroll) first. `devPinsStudio` keeps

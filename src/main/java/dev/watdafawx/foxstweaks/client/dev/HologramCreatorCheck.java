@@ -284,6 +284,55 @@ public final class HologramCreatorCheck {
         });
         add(2, () -> guiScale(2));
 
+        // ---- PLACE sliders, zero chip, gizmo mode buttons (layer target) ----
+        add(2, () -> {
+            creator().devCollapseAll(false);
+            check("gizmo mode button works", creator().devClick("Rotate handles", 0)
+                    && creator().devGizmoMode().equals("ROTATE"), creator().devGizmoMode());
+            creator().devClick("Move handles", 0);
+        });
+        add(4, () -> reveal("Blocks"));
+        add(4, () -> {
+            creator().devDrag("Blocks", 1.0);
+            check("PLACE Z slider moves the layer", creator().devPlace(2) > 5.0F, "z=" + creator().devPlace(2));
+        });
+        add(4, () -> {
+            click("Put the offset back", 0);
+            check("Zero chip resets offset", Math.abs(creator().devPlace(2)) < 0.01F, "z=" + creator().devPlace(2));
+        });
+        add(2, () -> guiScale(3));
+        add(8, () -> {
+            reveal("Blocks");
+            assertFits(3, "PLACE open", false);
+        });
+        add(6, () -> shot("creator-s3-place.png"));
+
+        // ---- Whole hologram row: root target, size, range ----
+        add(2, () -> {
+            click("Move, turn and resize", 0);
+            check("Whole hologram row selects the root", creator().devRootSelected(), "not root");
+        });
+        add(6, () -> {
+            creator().devDrag("Degrees", 0.75);
+            check("root yaw/roll slider moves", creator().devPlace(5) > 20.0F, "roll=" + creator().devPlace(5));
+            float before = creator().devTargetScale();
+            creator().devDrag("Drag or scroll. Shift", 0.5);
+            check("root Size slider changes scale", Math.abs(creator().devTargetScale() - before) > 0.05F,
+                    before + " -> " + creator().devTargetScale());
+        });
+        add(6, () -> {
+            assertFits(3, "root selected", false);
+            shot("creator-s3-root.png");
+        });
+        add(4, () -> {
+            click("Put the offset back", 0);
+            creator().devSetTargetScale(1.0F);
+            creator().devSetPlace(5, 0.0F);
+            check("root reset", Math.abs(creator().devPlace(5)) < 0.01F && Math.abs(creator().devPlace(0)) < 0.01F,
+                    "roll=" + creator().devPlace(5) + " x=" + creator().devPlace(0));
+        });
+        add(2, () -> guiScale(2));
+
         // ---- Studio and back: same instance, same edits ----
         add(6, () -> {
             List<HologramEffect> before = effects();

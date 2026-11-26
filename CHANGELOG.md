@@ -1,5 +1,10 @@
 # Changelog
 
+## 1.47.3
+
+- **Simple (Creator) hologram editor now has the 3D handles.** Move, Rotate and Scale arrows/rings appear on the selected layer, dragged with the left mouse button like in the full editor. Mode buttons sit in a second row under the top bar; keys 1-4 switch (Move, Rotate, Scale, Off); Esc during a drag undoes it. Same gizmo code as the full editor, so the maths is identical.
+- **Simple editor: exact position and whole-hologram controls.** New collapsed **PLACE** section (X/Y/Z, yaw/pitch/roll sliders + Zero position; drag or scroll, Shift fine, Ctrl coarse) moves the same values as the handles. New **Whole hologram** row at the top of the layer list selects the root: place, Size, render Range and In-front preview for every layer at once, with the handles acting on it. Selected layer rows get ▲/▼ buttons to reorder. Not yet in the simple editor: groups, layer copy/paste, solo, blockstate properties.
+
 ## 1.47.2
 
 - **Taverns & Adventurers: rumor lookups can no longer freeze the server.** Its rumor and dungeon-map searches ran a structure search on the server thread, which on a big pack hung for a minute and tripped the watchdog (server crashes on DrunkGamblers). The search now runs on a helper thread and the tick waits at most `tavernsLocateWaitMs` (default 4000 ms, 0 = off) before treating it as "nothing found". New config key in the **performance** section; paths unchanged since it is a new key.

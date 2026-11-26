@@ -2605,6 +2605,33 @@ public class HologramScreen extends Screen {
         refresh();
     }
 
+    private void gizmoUpdate(double mouseX, double mouseY) {
+        this.gizmo.updateDrag(mouseX, mouseY, this.width, this.height,
+                1.0F, hasShiftDown(), new HologramGizmo.Target() {
+                    @Override
+                    public void setOffset(float x, float y, float z) {
+                        setTargetOffsetX(x);
+                        setTargetOffsetY(y);
+                        setTargetOffsetZ(z);
+                        refresh();
+                    }
+
+                    @Override
+                    public void setRotation(float y, float p, float r) {
+                        setTargetYaw(y);
+                        setTargetPitch(p);
+                        setTargetRoll(r);
+                        refresh();
+                    }
+
+                    @Override
+                    public void setScale(float s) {
+                        setTargetScale(s);
+                        refresh();
+                    }
+                });
+    }
+
     private boolean clickLeftPanel(double mouseX, double mouseY, int button) {
         int gridX = this.leftX + 8;
         int gridY = gridTop();
@@ -2702,30 +2729,7 @@ public class HologramScreen extends Screen {
             return true;
         }
         if (this.gizmo.isDragging()) {
-            this.gizmo.updateDrag(mouseX, mouseY, this.width, this.height,
-                    1.0F, hasShiftDown(), new HologramGizmo.Target() {
-                        @Override
-                        public void setOffset(float x, float y, float z) {
-                            setTargetOffsetX(x);
-                            setTargetOffsetY(y);
-                            setTargetOffsetZ(z);
-                            refresh();
-                        }
-
-                        @Override
-                        public void setRotation(float y, float p, float r) {
-                            setTargetYaw(y);
-                            setTargetPitch(p);
-                            setTargetRoll(r);
-                            refresh();
-                        }
-
-                        @Override
-                        public void setScale(float s) {
-                            setTargetScale(s);
-                            refresh();
-                        }
-                    });
+            gizmoUpdate(mouseX, mouseY);
             return true;
         }
         return super.mouseDragged(mouseX, mouseY, button, dragX, dragY);
@@ -3310,6 +3314,127 @@ public class HologramScreen extends Screen {
 
     void creatorFrameCamera() {
         frameCamera();
+    }
+
+    // Placement: the whole hologram (root) or the selected layer, as numbers. Index 0-2 = offset X/Y/Z, 3-5 = yaw/pitch/roll.
+
+    boolean creatorRootSelected() {
+        return this.targetKind == TargetKind.ROOT;
+    }
+
+    void creatorSelectRoot() {
+        selectRoot();
+    }
+
+    float creatorPlace(int i) {
+        return (float) switch (i) {
+            case 0 -> getTargetOffsetX();
+            case 1 -> getTargetOffsetY();
+            case 2 -> getTargetOffsetZ();
+            case 3 -> getTargetYaw();
+            case 4 -> getTargetPitch();
+            default -> getTargetRoll();
+        };
+    }
+
+    void creatorSetPlace(int i, float v) {
+        switch (i) {
+            case 0 -> setTargetOffsetX(v);
+            case 1 -> setTargetOffsetY(v);
+            case 2 -> setTargetOffsetZ(v);
+            case 3 -> setTargetYaw(v);
+            case 4 -> setTargetPitch(v);
+            default -> setTargetRoll(v);
+        }
+        refresh();
+    }
+
+    /** Current target's scale (root or layer), without switching the target like {@link #creatorScale} does. */
+    float creatorTargetScale() {
+        return (float) getTargetScale();
+    }
+
+    void creatorSetTargetScale(float scale) {
+        setTargetScale(scale);
+        refresh();
+    }
+
+    boolean creatorCanZero() {
+        return canZeroTarget();
+    }
+
+    void creatorZeroPlace() {
+        zeroTarget();
+    }
+
+    int creatorRange() {
+        return this.renderDistance;
+    }
+
+    int creatorMaxRange() {
+        return this.maxRenderDistance;
+    }
+
+    void creatorSetRange(int blocks) {
+        this.renderDistance = (int) clamp(Math.round(blocks), 8, this.maxRenderDistance);
+    }
+
+    void creatorMoveLayer(int index, int delta) {
+        moveLayer(index, delta);
+    }
+
+    // The 3D gizmo (Move / Rotate / Scale handles over the hologram), shared with the Creator so both editors
+    // drag the same selected layer through the same maths.
+
+    HologramGizmo.Mode creatorGizmoMode() {
+        return this.gizmo.mode();
+    }
+
+    void creatorSetGizmoMode(HologramGizmo.Mode mode) {
+        this.gizmo.setMode(mode);
+    }
+
+    boolean creatorGizmoDragging() {
+        return this.gizmo.isDragging();
+    }
+
+    void creatorGizmoRender(GuiGraphics g, net.minecraft.client.gui.Font font, int mx, int my, int w, int h) {
+        if (HologramClient.previewAnchored())
+            return;
+        this.gizmo.render(g, font, mx, my, w, h, targetWorldCenter(), (float) getTargetScale());
+    }
+
+    /** Starts a handle drag at the mouse; true (with one undo step pushed) when a handle was hit. */
+    boolean creatorGizmoBegin(double mx, double my, int w, int h) {
+        if (HologramClient.previewAnchored())
+            return false;
+        if (!this.gizmo.beginDrag(mx, my, w, h, targetWorldCenter(),
+                (float) getTargetOffsetX(), (float) getTargetOffsetY(), (float) getTargetOffsetZ(),
+                (float) getTargetYaw(), (float) getTargetPitch(), (float) getTargetRoll(),
+                (float) getTargetScale()))
+            return false;
+        pushUndo();
+        return true;
+    }
+
+    void creatorGizmoDrag(double mx, double my) {
+        if (this.gizmo.isDragging())
+            gizmoUpdate(mx, my);
+    }
+
+    void creatorGizmoEnd() {
+        if (this.gizmo.isDragging()) {
+            this.gizmo.cancelDrag();
+            rebuildInspector();
+        }
+    }
+
+    /** Esc during a drag: drop the handle and take the drag back. */
+    void creatorGizmoCancel() {
+        if (this.gizmo.isDragging()) {
+            this.gizmo.cancelDrag();
+            undo();
+        }
     }
 
     Vec3 creatorTargetCenter() {

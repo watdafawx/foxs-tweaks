@@ -79,10 +79,10 @@ public final class HologramCreatorScreen extends Screen {
     };
     private static final String[] REVEALS = { "Rise", "Pop", "Unfold", "Spin", "Drop", "Glitch" };
 
-    private enum Section { SHAPE, COLOUR, FX, MOTION, STACK, MUSIC, REVEAL }
+    private enum Section { SHAPE, PLACE, COLOUR, FX, MOTION, STACK, MUSIC, REVEAL }
 
     /** Collapsed sections survive closing the editor, like a designer's panel layout would. */
-    private static final Set<Section> collapsed = EnumSet.noneOf(Section.class);
+    private static final Set<Section> collapsed = EnumSet.of(Section.PLACE);
 
     /** One built-in look: an FX stack that replaces the layer's FX and keeps its motion. */
     private record BuiltinLook(String name, int c1, int c2, boolean stripes, List<HologramEffect> fx) {
@@ -230,14 +230,17 @@ public final class HologramCreatorScreen extends Screen {
         this.hits.clear();
         this.fits.clear();
         HologramCamera.setAnchor(this.editor.creatorTargetCenter());
-        HologramCamera.setMovementBlocked(this.hexBox.isFocused() || this.activeDrag != null);
+        HologramCamera.setMovementBlocked(this.hexBox.isFocused() || this.activeDrag != null
+                || this.editor.creatorGizmoDragging());
         renderBackground(g, mx, my, pt);
+
+        this.editor.creatorGizmoRender(g, this.font, mx, my, this.width, this.height);
 
         renderTopBar(g, mx, my);
         renderLeft(g, mx, my);
         renderRight(g, mx, my);
 
-        String hint = "R-drag look · M-drag pan · Scroll zoom · WASD fly · F frame · Ctrl+Z undo";
+        String hint = "R-drag look · M-drag pan · Scroll zoom · WASD fly · 1-4 handles · F frame · Ctrl+Z undo";
         int midL = this.leftX + this.leftW + 6;
         int midR = this.rightX - 6;
         if (this.font.width(hint) <= midR - midL) {
@@ -299,6 +302,22 @@ public final class HologramCreatorScreen extends Screen {
                 hit.tooltip = "Open the advanced editor in your browser";
             x += widths[i] + 2;
         }
+
+        // Second row: the 3D handle mode (keys 1-4), the same gizmo the full editor has.
+        HologramGizmo.Mode[] modes = HologramGizmo.Mode.values();
+        int gw = 0;
+        for (HologramGizmo.Mode m : modes)
+            gw += this.font.width(m.label) + 12 + 2;
+        int gx = Math.max(midL, (midL + midR - gw) / 2);
+        for (int i = 0; i < modes.length; i++) {
+            HologramGizmo.Mode m = modes[i];
+            int bw = this.font.width(m.label) + 12;
+            Hit hit = button(g, mx, my, gx, 22, bw, 15, m.label, this.editor.creatorGizmoMode() == m, true,
+                    () -> this.editor.creatorSetGizmoMode(m));
+            hit.tooltip = m == HologramGizmo.Mode.OFF ? "Hide the handles (4)"
+                    : m.label + " handles on the selected layer (" + (m.ordinal() + 1) + ")";
+            gx += bw + 2;
+        }
     }
 
     // ---------------------------------------------------------------- left: layers + looks
@@ -330,6 +349,25 @@ public final class HologramCreatorScreen extends Screen {
         iconButton(g, mx, my, bx, y - 3, 14, 13, "+", true,
                 "Browse blocks, mobs and particles (replace this layer or add one)", () -> this.editor.creatorOpenPicker(this));
         y += 14;
+
+        // The whole hologram as one thing to move, turn and resize (the Studio's root).
+        boolean rootSel = this.editor.creatorRootSelected();
+        boolean rootHover = mx >= x + 2 && mx < x + w - 2 && my >= y && my < y + 15;
+        if (rootSel) {
+            g.fill(x + 2, y, x + w - 2, y + 15, ACCENT_BG);
+            g.fill(x + 2, y, x + 4, y + 15, ACCENT);
+        } else if (rootHover) {
+            g.fill(x + 2, y, x + w - 2, y + 15, 0x18FFFFFF);
+        }
+        g.drawString(this.font, "◈", x + 7, y + 4, rootSel ? ACCENT : MUTED, false);
+        g.drawString(this.font, "Whole hologram", x + 18, y + 4, rootSel ? TEXT : MUTED, false);
+        Hit rootHit = hit(x + 2, y, w - 4, 15);
+        rootHit.tooltip = "Move, turn and resize every layer together";
+        rootHit.click = () -> {
+            this.editor.creatorSelectRoot();
+            this.expanded = -1;
+        };
+        y += 17;
 
         // Layer list gets at most ~45% of the panel; the looks below are the other half of this panel's job.
         int listMax = Math.max(ROW * 3, (bottom - top) * 45 / 100);
@@ -367,7 +405,12 @@ public final class HologramCreatorScreen extends Screen {
             String chip = fx + " fx";
             int cw = this.font.width(chip) + 4;
             // The name stops short of the fx chip, or of the scrollbar when there is no chip.
-            int nameRight = fx > 0 ? x + w - 8 - cw - 3 : x + w - (maxScroll > 0 ? 9 : 6);
+            // The selected row trades its fx chip for the move-up / move-down pair.
+            boolean showMove = selected && layers.size() > 1;
+            if (showMove)
+                fx = 0;
+            int nameRight = showMove ? x + w - 8 - 24 - 3
+                    : fx > 0 ? x + w - 8 - cw - 3 : x + w - (maxScroll > 0 ? 9 : 6);
             String fullName = layer.shortName();
             String name = ellipsize(fullName, nameRight - (x + 36));
             g.drawString(this.font, name, x + 36, ry + 4, layer.visible() ? TEXT : MUTED, false);
@@ -384,6 +427,14 @@ public final class HologramCreatorScreen extends Screen {
                 this.expanded = -1;
                 this.hsvSource = -1;
             };
+            if (showMove) {
+                // After the row's own hit: later hits win, so these buttons stay clickable on top of it.
+                int mvX = x + w - 8 - 23;
+                iconButton(g, mx, my, mvX, ry + 1, 11, 13, "▲", li > 0, "Move layer up",
+                        () -> this.editor.creatorMoveLayer(li, -1));
+                iconButton(g, mx, my, mvX + 12, ry + 1, 11, 13, "▼", li < layers.size() - 1, "Move layer down",
+                        () -> this.editor.creatorMoveLayer(li, 1));
+            }
         }
         g.disableScissor();
         this.hitClipTop = Integer.MIN_VALUE;
@@ -469,7 +520,8 @@ public final class HologramCreatorScreen extends Screen {
         List<HologramLayer> layers = this.editor.creatorLayers();
         int sel = this.editor.creatorSelectedLayer();
         HologramLayer layer = sel >= 0 && sel < layers.size() ? layers.get(sel) : null;
-        String title = layer == null ? "No layer" : layer.shortName();
+        boolean root = this.editor.creatorRootSelected();
+        String title = root ? "Whole hologram" : layer == null ? "No layer" : layer.shortName();
         g.drawString(this.font, this.font.plainSubstrByWidth(title, w - 16), x + 8, top + 6, TEXT, false);
 
         // footer
@@ -502,7 +554,7 @@ public final class HologramCreatorScreen extends Screen {
                 Math.max(0, this.rightContentH - viewH));
 
         this.hexVisible = false;
-        if (layer == null) {
+        if (layer == null && !root) {
             this.rightContentH = 0;
             return;
         }
@@ -514,11 +566,27 @@ public final class HologramCreatorScreen extends Screen {
         int y = startY;
         int cx = x + 8;
         int cw = w - 16 - (maxScroll > 0 ? 4 : 0);
+
+        if (root) {
+            // The root has no FX of its own; reading creatorEffects here would also switch the target to a layer.
+            y = renderRoot(g, mx, my, cx, y, cw);
+            g.disableScissor();
+            this.hitClipTop = Integer.MIN_VALUE;
+            this.hitClipBottom = Integer.MAX_VALUE;
+            this.rightContentH = y - startY + 4;
+            if (maxScroll > 0)
+                scrollbar(g, x + w - 5, clipTop, viewH, this.rightScroll, maxScroll);
+            return;
+        }
+
         List<HologramEffect> effects = this.editor.creatorEffects();
 
         y = section(g, mx, my, Section.SHAPE, "SHAPE", cx, y, cw);
         if (!collapsed.contains(Section.SHAPE))
             y = renderShape(g, mx, my, layer, sel, cx, y, cw, clipTop, clipBottom);
+        y = section(g, mx, my, Section.PLACE, "PLACE", cx, y, cw);
+        if (!collapsed.contains(Section.PLACE))
+            y = renderPlace(g, mx, my, cx, y, cw);
         y = section(g, mx, my, Section.COLOUR, "COLOUR", cx, y, cw);
         if (!collapsed.contains(Section.COLOUR))
             y = renderColour(g, mx, my, effects, cx, y, cw, clipTop, clipBottom);
@@ -625,6 +693,60 @@ public final class HologramCreatorScreen extends Screen {
             this.editor.creatorPushUndo();
             this.editor.creatorUpdateLayer(sel, l -> l.withVisible(!l.visible()));
         });
+        return y + ROW + 2;
+    }
+
+    // ---- place: position and rotation as numbers (the same values the gizmo drags) ----
+
+    private static final int[] PLACE_COLOURS = { 0xFFFF5566, 0xFF66E877, 0xFF5599FF, ACCENT, ACCENT, ACCENT };
+    private static final String[] PLACE_LABELS = { "X", "Y", "Z", "Yaw", "Pitch", "Roll" };
+
+    /** Offset X/Y/Z and yaw/pitch/roll of the current target, plus a Zero chip. Drag, or scroll (Shift fine, Ctrl coarse). */
+    private int renderPlace(GuiGraphics g, int mx, int my, int x, int y, int w) {
+        for (int i = 0; i < 6; i++) {
+            final int idx = i;
+            boolean angle = i >= 3;
+            float min = angle ? -180.0F : -16.0F;
+            float max = angle ? 180.0F : 16.0F;
+            float step = angle ? 5.0F : 0.25F;
+            float v = this.editor.creatorPlace(i);
+            String text = angle ? String.format(Locale.ROOT, "%.0f°", v) : String.format(Locale.ROOT, "%.2f", v);
+            y = slider(g, mx, my, x, y, w, PLACE_LABELS[i], text, (v - min) / (max - min), PLACE_COLOURS[i], true,
+                    d -> this.editor.creatorSetPlace(idx, Mth.clamp(round(min + (float) d * (max - min), step), min, max)),
+                    d -> this.editor.creatorSetPlace(idx,
+                            Mth.clamp(this.editor.creatorPlace(idx) + (float) d * wheelStep(step), min, max)),
+                    (angle ? "Degrees" : "Blocks") + ". Drag or scroll. Shift = fine, Ctrl = coarse. "
+                            + "The 3D handles move the same values.");
+        }
+        boolean can = this.editor.creatorCanZero();
+        chip(g, mx, my, x, y, w, "Zero position", false, () -> {
+            if (can)
+                this.editor.creatorZeroPlace();
+        }).tooltip = "Put the offset back at 0, 0, 0";
+        return y + ROW + 2;
+    }
+
+    /** What the Studio calls the root: every layer at once. Position, turn, size, how far away it shows. */
+    private int renderRoot(GuiGraphics g, int mx, int my, int x, int y, int w) {
+        g.drawString(this.font, this.font.plainSubstrByWidth("Moves every layer together.", w), x, y + 1, FAINT, false);
+        y += 13;
+        y = renderPlace(g, mx, my, x, y, w);
+        float scale = this.editor.creatorTargetScale();
+        y = slider(g, mx, my, x, y, w, "Size", String.format(Locale.ROOT, "%.2f×", scale),
+                (scale - 0.25F) / 7.75F, ACCENT, true,
+                v -> this.editor.creatorSetTargetScale(round(0.25F + (float) v * 7.75F, 0.05F)),
+                d -> this.editor.creatorSetTargetScale(Mth.clamp(this.editor.creatorTargetScale() + (float) d * wheelStep(0.05F), 0.25F, 8.0F)),
+                "Drag or scroll. Shift = fine, Ctrl = coarse.");
+        int range = this.editor.creatorRange();
+        int maxRange = this.editor.creatorMaxRange();
+        y = slider(g, mx, my, x, y, w, "Range", range + " m", (range - 8.0F) / Math.max(1.0F, maxRange - 8.0F), ACCENT, true,
+                v -> this.editor.creatorSetRange(Math.round((8.0F + (float) v * (maxRange - 8)) / 8.0F) * 8),
+                d -> this.editor.creatorSetRange(range + (int) Math.signum(d) * 8),
+                "How far away the hologram is still drawn (server cap " + maxRange + " m).");
+        boolean front = HologramClient.previewAnchored();
+        chip(g, mx, my, x, y, w, "In-front preview: " + (front ? "On" : "Off"), front,
+                () -> HologramClient.setPreviewAnchored(!HologramClient.previewAnchored()))
+                .tooltip = "Draw the edited hologram a few blocks in front of you, for when the real one is out of view.";
         return y + ROW + 2;
     }
 
@@ -1251,6 +1373,8 @@ public final class HologramCreatorScreen extends Screen {
         }
         if (insidePanels(mx, my))
             return true;
+        if (button == 0 && this.editor.creatorGizmoBegin(mx, my, this.width, this.height))
+            return true;
         if (button == 0 || button == 1) {
             this.orbiting = true;
             return true;
@@ -1266,6 +1390,10 @@ public final class HologramCreatorScreen extends Screen {
     public boolean mouseDragged(double mx, double my, int button, double dx, double dy) {
         if (this.activeDrag != null) {
             this.activeDrag.at(mx, my);
+            return true;
+        }
+        if (this.editor.creatorGizmoDragging()) {
+            this.editor.creatorGizmoDrag(mx, my);
             return true;
         }
         if (this.orbiting && HologramCamera.isActive()) {
@@ -1299,6 +1427,10 @@ public final class HologramCreatorScreen extends Screen {
         this.activeDrag = null;
         this.orbiting = false;
         this.panning = false;
+        if (this.editor.creatorGizmoDragging()) {
+            this.editor.creatorGizmoEnd();
+            return true;
+        }
         return super.mouseReleased(mx, my, button);
     }
 
@@ -1340,6 +1472,14 @@ public final class HologramCreatorScreen extends Screen {
             }
             return super.keyPressed(key, scan, mods);
         }
+        if (key == GLFW.GLFW_KEY_ESCAPE && this.editor.creatorGizmoDragging()) {
+            this.editor.creatorGizmoCancel();
+            return true;
+        }
+        if (key >= GLFW.GLFW_KEY_1 && key <= GLFW.GLFW_KEY_4) {
+            this.editor.creatorSetGizmoMode(HologramGizmo.Mode.values()[key - GLFW.GLFW_KEY_1]);
+            return true;
+        }
         if (key == GLFW.GLFW_KEY_Z && hasControlDown()) {
             if (hasShiftDown())
                 this.editor.redo();
@@ -1373,7 +1513,7 @@ public final class HologramCreatorScreen extends Screen {
     private boolean insidePanels(double mx, double my) {
         boolean left = mx >= this.leftX && mx < this.leftX + this.leftW && my >= this.panelTop && my < this.panelBottom;
         boolean right = mx >= this.rightX && mx < this.rightX + this.rightW && my >= this.panelTop && my < this.panelBottom;
-        boolean topBar = my < 22 && mx > this.leftX + this.leftW && mx < this.rightX;
+        boolean topBar = my < 39 && mx > this.leftX + this.leftW && mx < this.rightX;
         return left || right || topBar;
     }
 
@@ -1708,6 +1848,31 @@ public final class HologramCreatorScreen extends Screen {
             }
         }
         return false;
+    }
+
+    /** Dev checks: read and write the target through the bridge (it is package-private). */
+    public String devGizmoMode() {
+        return String.valueOf(this.editor.creatorGizmoMode());
+    }
+
+    public boolean devRootSelected() {
+        return this.editor.creatorRootSelected();
+    }
+
+    public float devPlace(int i) {
+        return this.editor.creatorPlace(i);
+    }
+
+    public void devSetPlace(int i, float v) {
+        this.editor.creatorSetPlace(i, v);
+    }
+
+    public float devTargetScale() {
+        return this.editor.creatorTargetScale();
+    }
+
+    public void devSetTargetScale(float v) {
+        this.editor.creatorSetTargetScale(v);
     }
 
     /** Dev checks: free width between the two panels. */
