@@ -114,6 +114,9 @@ quality-of-life features sharing a jar, among them:
     light, no ticking. The editor exposes the block's own blockstate properties, so every variant is reachable,
     plus scale/rotation/spin/hover/glow/render distance. See
     [Holograms](#holograms-hologram-holograms-hologramitem-hologramclient-hologramrenderer-hologramscreen).
+26. **Music-reactive holograms** — client-side analysis, server-capped data; `client/audio/*` + `hologram/HologramAudioMod`.
+    Hologram values follow jukebox, music or (opt-in) system audio levels. See
+    [Music-reactive holograms](#music-reactive-holograms-clientaudio-hologramhologramaudiomod).
 
 **Every parent mod is optional.** The mod must load and behave correctly with either, both, or
 neither installed. This is the single most important invariant in the codebase — see
@@ -1128,8 +1131,20 @@ per-position BE tags), saved under `structure` instead of `blockEntity`, and the
 (32 / 4096 / 256 KB), enforced on grab **and** on every editor/web save. `client/HologramStructureMesh` caches
 neighbour-culled VBOs per render type, rebuilt on content or light change, freed on removal and resource reload; SCANLINE
 and GRADIENT need per-vertex colour and fall back to uncached emission. `-Dfoxstweaks.hologram.uncachedStructure=true`
-forces the naive path for comparison (16³ mixed: ~100 µs cached vs ~2,700 µs). Registrar `"3"`. Dev check
-`runHologramStructureCheck` (`run-hologram-structure/`). Not verified: shader packs, fluids, modded BE models.
+forces the naive path for comparison (16³ mixed: ~100 µs cached vs ~2,700 µs). Dev check
+`runHologramStructureCheck` (`run-hologram-structure/`). Not verified: shader packs, modded BE models.
+
+**Fluids** (1.44.0). Fluids never go through block models, so they compile separately into the same per-render-type
+VBOs: `BlockRenderDispatcher#renderLiquid` over `StructureBlockGetter` (outside the structure is air, biome tint from
+the hologram's `anchorPos`, which is part of the cache key), with `TranslatingFluidConsumer` undoing
+`LiquidBlockRenderer`'s section-relative `(pos & 15)` coordinates. Water goes to `RenderType.translucent()`, lava to
+`solid()`, so atlas animation runs without rebuilds. Translucent VBOs keep `MeshData.SortState` and re-upload only the
+index buffer when the camera moves more than 0.5 blocks in structure space. The uncached path (SCANLINE/GRADIENT,
+forced) and standalone BLOCK layers emit through `PoseFluidConsumer` into `RenderTypeHelper.getEntityRenderType(..., false)`
+(writing `OverlayTexture.NO_OVERLAY`), so `TintedBuffer` multiplies biome tint by the hologram FX. A waterlogged block's
+water spreads into air, so test scenes must wall it in. `runHologramStructureCheck` compares a 9x5x5 water/lava/kelp/
+waterlogged scene against the real build (99% water / 98% lava pixel overlap) and benchmarks a half-water 16³ (~65 µs,
+0 rebuilds). Not verified: shader packs on fluids, modded fluid renderers, fluid faces at the structure boundary.
 
 **Web companion** (`client/web/*`, `client/HologramWebBridge`, `web/`, protocol in `docs/hologram-web-protocol.md`): a client-only
 HTTP + WebSocket server on 127.0.0.1, a new port and 192-bit token per session, Host and Origin checked, 1 MB frames,
@@ -1137,9 +1152,105 @@ rate limited, dies with the editor. The game stays the viewport and the authorit
 `HologramWebJson` validates like any packet, and NBT never comes from the browser - a layer refers to its data by an
 opaque key from what the session sent (a structure layer without its key is rejected). The Preact/Vite app's build output
 is committed under `assets/foxstweaks/web/`: after changing `web/src`, run `npm ci && npm run build` in `web/` and commit
-both. Dev check `runHologramWebCheck` (`run-hologram-web/`) speaks the real protocol over a socket. Planned next:
-timeline/keyframes, image layers with an asset store, streamed frame sequences (server ffmpeg or browser WebCodecs),
-WaterMedia when installed, audio.
+both. Dev check `runHologramWebCheck` (`run-hologram-web/`) speaks the real protocol over a socket. Protocol versions:
+2 timeline, 3 image layers and assets, 4 audio modulations and the meter (`HologramWebSession.PROTOCOL` and
+`web/src/protocol.ts` must match). Planned next: WaterMedia when installed, audio tracks.
+
+**Edit sessions** (`hologram/HologramEditSessions`). The save/delete/preview distance gate in `HologramNetwork.handle` is
+`BASE_LIMIT` (`REACH + 8` = 14) with no session, and `max(BASE_LIMIT, ServerConfig.hologramsEditRange())` while the
+player has that hologram id open in that dimension. A session starts in `openEditor` or on the first PREVIEW from within
+`BASE_LIMIT`; it ends on SAVE, DELETE and CANCEL (a refused SAVE or DELETE too, since the client closes the editor
+anyway), on logout, dimension change, server stop, and after `IDLE_TICKS` (10 min) with no accepted packet. A new editor
+path must call `openEditor`, or the player is held to 14 blocks again. A refused non-PREVIEW save sends a chat line.
+**Text fit:** `HologramCreatorScreen` records fits (`TextFit`, `devFits()`) and `HologramCreatorCheck.assertFits` asserts
+them; GUI 3/4 checks must set a 1920x1080 window (854x480 caps the GUI scale at 2) and assert the real scale.
+**Names:** `HologramBlockNames.disambiguate` is the one place duplicate block names get "(wall)" or "(path)" (picker and
+`HologramWebRegistries`). `HologramSearch.rank` and `rank` in `web/src/browser.tsx` must stay equivalent.
+
+**Timeline (1.44.0).** `HologramSpec.timeline` (`hologram/HologramTimeline`, NBT key `timeline`) holds tracks that target
+ROOT, a group id or a layer **uid** (`HologramLayer.uid`, `[A-Za-z0-9_-]{1,24}`; the spec gives missing or repeated uids a
+fresh `lN`). Effect tracks address an effect by index; `web/src/anim.ts` shifts them on reorder and delete. A key's easing
+shapes the segment that leaves it; CUBIC is CSS cubic-bezier (x clamped 0..1, y -2..3). `HologramTimelineEval` is pure and
+allocation-free per frame; it binds track slots once per spec instance (cached on the timeline object, not part of
+equality), and the renderer reads keyed values as *replacements* for the static base, then adds `HologramAnim.motion` on
+top. Do not fold motion into the timeline or the reverse. The clock is `client/HologramTimelinePlayer`: game time, frozen
+by the editor Pause, restarted by the start trigger. The web `playhead` message overrides it for the editor's hologram
+only and is never saved. Caps (`hologramTimelineMaxTracks`/`MaxKeys`) are enforced in `HologramWebJson.readTimeline` and
+`HologramNetwork.timelineProblem` (every save path). Registrar "4". `HologramRenderer.devTraceId`/`DEV_TRACE` exist only
+for `runHologramWebCheck`'s composition assert. Not verified in a real browser: the dock UI, graph editor, auto-key.
+
+**Assets** (`hologram/asset/*`, `client/asset/HologramAssets`, details in `hologram/asset/README.md`). Stored as
+`<world>/foxstweaks/assets/index.json` plus immutable `blobs/<sha256>`; a blob is a canonical FTAS bundle (PNG frames +
+millisecond delays), so the hash dedupes. PNG/JPEG/GIF uploads are validated (magic, dimensions before decode, pixel and
+frame budgets), downscaled and re-encoded on the server. `foxstweaks:asset` payload (own optional registrar "2"):
+30,000-byte sequenced chunks (serverbound packets are capped at 32 KB), lazy downloads, one upload per player per second,
+40 packets/s, 30 s expiry. File system errors are logged and sent to the client only as "Asset storage error" (their
+message carries absolute server paths). `Holograms` retains/releases assets on save and removal; release never deletes.
+Client: hash-verified 200 MiB disk LRU, 32 MiB compressed in RAM, `HologramAssets.texture(hash, seconds)` returns null
+while loading and reuses one `DynamicTexture` per asset. SERVER section `assets`. Dev check `runHologramAssetCheck`
+(`run-hologram-asset/`). Not verified: non-op multiplayer, cache eviction under stress; ImageIO normalisation runs on the
+server thread and can stall an upload tick.
+
+**Video conversion** (`media/*`, plain Java, no Minecraft classes except `MediaConfig`, so `build.bat mediaSelfTest` runs
+it in a bare JVM against a real ffmpeg). `FfmpegLocator`: `mediaFfmpegPath` (exe, folder or bare name), then PATH, then
+common install folders; a candidate counts only after `ffmpeg -version` answers within 5 s, and the answer is cached.
+`VideoConverter.convert` sniffs the container (mp4, EBML, GIF, AVI), runs ffmpeg from an argument list (never a shell)
+with `-t`, `fps`, `scale` and `-frames:v` caps, polls the temp folder for the byte cap (`-fs` caps each image2 file, not
+the total), kills the process tree on timeout, and moves frames out only on full success. One conversion at a time, queue
+of 4. Server section `media` (`mediaFfmpegEnabled`, `mediaFfmpegPath`, `mediaConvertTimeoutSeconds`). Only mp4 is
+exercised by the self test; rotation metadata is untested.
+
+**Image layers (1.44.0).** `HologramLayer.Kind.IMAGE`: the id is the asset's hash, and the settings are string props
+parsed and clamped by `hologram/HologramImage` (`w`, `h` where 0 keeps the aspect ratio, `billboard` FIXED/FACE/FACE_Y,
+`sides`, `play`, `speed`, `start`); the layer's `fullbright` flag means emissive. `HologramRenderer` draws one textured
+quad per layer from `HologramAssets.texture(hash, t)`, with `t` from the timeline's clip time when there is a timeline
+(`mediaClock`), so a web `playhead` scrubs animations. Every save path runs `HologramNetwork.imageProblem` (every hash in
+the library, at most `hologramImageMaxLayers`). Web protocol 3 adds `assetCaps`, `assets`, `assetThumb` and chunked
+`upload*` messages (`client/web/HologramWebAssets`); the browser never talks to the server directly, and scripts must wait
+a second between uploads. Dev check `runHologramImageCheck` (`run-hologram-image/`): PNG, GIF and frame-bundle uploads
+through the real protocol, NBT round trip, screenshots at two times (GIF changes, PNG does not), billboard after a camera
+move, timeline scale, caps, 48-hologram benchmark (~5.9 µs each). The mp4 step is skipped when rig has no ffmpeg. Not
+verified: the Images tab and WebCodecs in a real browser, non-op uploads, shader packs, dedicated servers.
+
+**Entity life (1.44.0).** `client/HologramEntityLife` samples animation fields without calling `tick()` or `aiStep()`:
+walk/run from the hologram clock, FLY/SWIM set ground/water/swimming flags and wing/tail/tentacle fields, and public
+`AnimationState` fields (idle, fly, roar, sniff, croak, roll-up, sit) are restarted at the clock-derived age. Entity
+instances are per owner and layer, never shared (shared instances made one layer's pose leak into another). Interpolation
+endpoints (`xo`, `oFlap`, `...O`) must come from the clock too, or backward seeks and tick boundaries jump; reset the
+axolotl's model history before sampling. `offered(id)` decides which mob-specific choices the editors show. The access
+transformer widens the fields it writes. Dev check `runHologramEntityAnimCheck` (`run-hologram-entity-anim/`) verifies
+real model poses, backward seeks, tick boundaries and instance isolation; the mob matrix is in
+`docs/hologram-entity-animations.md`. Not verified: GeckoLib/AzureLib mobs.
+
+### Music-reactive holograms (`client/audio/*`, `hologram/HologramAudioMod`)
+
+**Tap**: mixins on the sound engine feed streamed (`AnalysingAudioStream`) and static (`StaticSoundCache`) buffers into
+`AudioTap`, a ring buffer per playing sound with its position and category (RECORDS = the Jukebox/Note Blocks slider, so
+any mod playing through vanilla's sound engine in that category counts; MUSIC). Nothing is copied or analysed unless a
+visible hologram or an open audio screen asked for that source this frame; `runHologramAudioCheck` asserts the idle path
+(no analyse calls, no copy, capture idle).
+
+**Analyser** (`AudioAnalyser`): 1024-point FFT, Hann window, 60 Hz hops -> level, bass, mid, high, plus a beat from
+spectral flux with an adaptive threshold, all auto-gained to 0..1. **System audio** (`SystemAudio`): WASAPI loopback
+(`WasapiCapture`) with OpenAL capture as the fallback. Off by default, per player in `config/foxstweaks-audio.json`
+(device, on/off, listen at player or hologram); only the five levels ever exist, nothing is recorded or sent.
+`devUseFake` swaps in a synthetic backend for checks.
+
+**Modulation** (`HologramAudioMod`, evaluated by `HologramAudioEval`): `value += amount x signal` with attack/release
+envelopes, an optional beat step and a clamp; several on one value add up. Effect modulations live on the
+`HologramEffect`; root/group/layer modulations are timeline audio links. Presets (`HologramAudioMod.Preset`) only touch
+the params they use, so applying one twice changes nothing; FLASH_BEAT and GLOW both drive brightness, so the later one
+wins. Server caps `hologramAudioMaxPerValue` (4) and `hologramAudioMaxPerHologram` (64), enforced on editor and web saves.
+Web protocol 4 adds the modulation fields and a `meter` message (20 Hz, levels only).
+
+**Not covered**: mods that play sound outside vanilla's `SoundEngine` (WaterMedia/VLC, Simple Voice Chat); only system
+audio hears them. A SPIN with both a trigger and an audio link keeps the trigger's clock.
+
+**Dev check**: `build.bat runHologramAudioCheck` (game dir `run-hologram-audio/`, no extra mods): analyser bands on
+generated tones, a 120 BPM click track, the live path through the fake backend, presets, NBT/web round trips, caps, the
+Creator/Studio/panel/settings UI, server save, the over-cap refusal and the lost-device status with Retry. Controls are
+laid out per frame, so a check can click a control only one frame after it appears. Rig has no audio device: a real
+jukebox and real system audio are verified only by hand.
 
 ### Search box assist (`client/search/*`, `mixin/EditBoxSearchAssistMixin`)
 

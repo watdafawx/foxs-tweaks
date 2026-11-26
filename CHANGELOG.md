@@ -1,5 +1,27 @@
 # Changelog
 
+## 1.44.0
+
+- **Holograms: image layers.** A layer can now be a picture: PNG (with transparency), JPEG, animated GIF, WebP or a short video. Upload them from the web editor's new **Images** tab (button or drag and drop, with progress) into the world's asset library, where anyone editing a hologram can reuse them.
+  - Each image layer sets its width (height follows the picture), facing (fixed panel, always facing the camera, or turning about Y only), single- or double-sided, emissive, and for animations playback (loop, once, ping-pong), speed and start time.
+  - Video is converted by the server when it has ffmpeg (server config section `media`: `mediaFfmpegEnabled`, `mediaFfmpegPath`, `mediaConvertTimeoutSeconds`), and otherwise in the browser (WebCodecs). Frames are capped at 256 px, 15 fps and 10 s.
+  - Storage limits live in the new server config section `assets` (2 MB per file, 200 MB per world, 100 assets per player by default). Only operators may upload unless `assetUploadEveryone` is on. `hologramImageMaxLayers` (8) caps image layers per hologram.
+  - `/foxstweaks asset list|info|delete`; delete refuses an asset a hologram still uses unless you add `force`.
+- **Holograms: timeline and keyframes (web editor).** The web editor's new Timeline dock animates the hologram, a group or a layer: offset, rotation, scale, visibility, tint (blended in OKLab) or an effect's strength, with linear, hold, ease or bezier keys and a graph editor. Clips run 0.5-120 s and loop, ping-pong or play once, and can wait for a start trigger (day, night, rain, a record playing, a mob dying...). Dragging the playhead scrubs the hologram in game without saving, Space plays, Auto-key keys whatever you change. Motion effects still play on top of the keyed pose, and image animations follow the timeline. The Studio and the Creator show a summary and keep the timeline when you save. Server caps: `hologramTimelineMaxTracks` (64), `hologramTimelineMaxKeys` (2048).
+- **Holograms: music-reactive.** Holograms can react to jukeboxes (anything playing in the Jukebox/Note Blocks volume category, not only vanilla jukeboxes), game music, or, if you switch it on, whatever your PC plays.
+  - Any effect value (strength, speed, offset, hue) and any hologram, group or layer value (position, rotation, scale, visibility, brightness, playback rate) can follow the level, bass, mid, high or beat, with smoothing, a beat step and a clamp. Several can stack on one value.
+  - The Creator has a **Music** section with four presets (Pulse to the bass, Flash on the beat, Dance, Glow with the music); every Studio and Creator stack row has a **♪** button; the ♪ panel shows a live meter. The web editor has the same fields.
+  - `/foxstweaks audio` opens the audio settings: system audio on/off, device picker with a level meter, listen at player or at the hologram.
+  - System audio is off by default and set per player. Nothing is recorded or sent anywhere: the sound is turned into five levels on your PC and thrown away.
+  - Sound from mods that play outside Minecraft's sound engine (WaterMedia/VLC, Simple Voice Chat) is only heard through system audio.
+  - Server caps: `hologramAudioMaxPerValue` (4), `hologramAudioMaxPerHologram` (64).
+- **Holograms: entities come alive.** Entity layers can walk, run, fly (bee, parrot, bat, chicken, phantom, allay...), swim (fish, squid, axolotl, frog, guardian...) and play some of their own vanilla animations: warden roar and sniff, sniffer sniff, frog croak, armadillo curl, sitting and resting. Every entity layer animates on its own, from the hologram's clock, so scrubbing works and nothing runs AI. The editors only offer what that mob can do.
+- **Holograms: fluids.** Structures grabbed from the world, and single-block layers, now show water, lava, kelp, seagrass and waterlogged blocks, with the same face culling, flow and biome tint as the world, animated textures, and every colour effect. Water is translucent and sorted to the camera. A half-water 16x16x16 structure still draws in ~0.07 ms.
+- **Holograms: editing from farther away.** Save, Delete and live preview now work from up to 64 blocks away while the editor is open (server option `holograms.hologramsEditRange`, 14-512). With no editor open the limit stays 14 blocks. A refused save now says so in chat and names the limit, instead of silently dropping the change.
+- **Holograms: editor fixes.** Creator and Studio text fits at GUI 3 and 4 (the empty-stack hint wraps, long layer names are shortened with the full name in the tooltip, the "+ Save" tile is padded, the timeline label shortens). In the block browser an exact name match ranks first ("oak stairs" lists Oak Stairs first), and wall variants of signs and banners get a "(wall)" tag.
+- **Holograms: web editor fixes.** It works in windows narrower than 720 px, no longer logs a favicon error, and once the session has ended it hides Undo/Redo/Cancel/Save and locks the page.
+- Network version for holograms is now 4 and the web companion speaks protocol 4: a client and server must both be on 1.44.0 to edit holograms (joining still works either way).
+
 ## 1.43.0
 
 - **Holograms: Creator, a simple editor.** The Hologram Wand now opens the Creator by default: layers on the left, and on the right Shape (size, glow), Colour, Look FX, Motion and Reveal. The full editor is one click away (**Studio ›**, and **< Simple** to come back), and your choice is remembered.
