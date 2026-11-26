@@ -167,7 +167,7 @@ public final class HologramModelCheck {
         Path dir = Minecraft.getInstance().gameDirectory.toPath().resolve("real");
         List<Path> files = new ArrayList<>();
         try (var s = Files.list(dir)) {
-            s.filter(p -> p.toString().matches("(?i).*\\.(glb|gltf|bbmodel)$")).sorted().forEach(files::add);
+            s.filter(p -> p.toString().matches("(?i).*\\.(glb|gltf|bbmodel|json)$")).sorted().forEach(files::add);
         } catch (IOException e) {
             return; // none given
         }

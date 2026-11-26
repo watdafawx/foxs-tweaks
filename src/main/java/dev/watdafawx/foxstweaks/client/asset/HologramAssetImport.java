@@ -129,7 +129,7 @@ public final class HologramAssetImport {
     /** A glTF binary, a Blockbench project, or a file with one of those extensions. */
     static boolean isModel(String name, byte[] b) {
         String lower = name.toLowerCase(Locale.ROOT);
-        if (lower.endsWith(".glb") || lower.endsWith(".gltf") || lower.endsWith(".bbmodel"))
+        if (lower.endsWith(".glb") || lower.endsWith(".gltf") || lower.endsWith(".bbmodel") || lower.endsWith(".json"))
             return true;
         return dev.watdafawx.foxstweaks.hologram.model.GlbReader.looksLikeGlb(b)
                 || dev.watdafawx.foxstweaks.hologram.model.BlockbenchReader.looksLikeBbmodel(b);

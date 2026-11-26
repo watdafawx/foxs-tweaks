@@ -1310,7 +1310,8 @@ refcounted by `AssetNetwork.imageUses`. The stored blob is **FTM1** (`ModelData`
   `from/to - cube origin`; an unrotated, unanimated cube merges into its group node. Euler order is ZYX
   (`ModelPose.eulerZyx`); animation Euler is baked to quaternion keys (extra keys for turns over 60° per segment).
   Face corners: u runs along the viewer's right seen from outside; up TL = (from.x, from.z), down TL = (from.x, to.z).
-  Catmull-Rom/Bezier play as linear. **The Euler order and face orientation were derived, not compared with a real
+  A vanilla block-model `.json` (no outliner) is rewritten to that shape by `adaptVanilla` and drawn untextured (its textures are
+  resource names). Catmull-Rom/Bezier play as linear. **The Euler order and face orientation were derived, not compared with a real
   Blockbench render.**
 - **`ModelPose`**: `evaluate(anim, time)` then `pose(node, prim, outPos, outNrm)` (rigid or skinned), `bounds`, `wrap`.
 - **Layer**: `HologramModelSettings` (`h` height in blocks, 0 = native; `anim` name; `play`; `speed`; `start`) in the

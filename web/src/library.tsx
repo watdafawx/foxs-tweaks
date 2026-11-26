@@ -8,7 +8,7 @@ import { addLayer } from './browser';
 import { isModelFile, uploadFile, webCodecsAvailable, type TrimRequest } from './upload';
 import type { Range } from './fit';
 
-const ACCEPT = 'image/png,image/jpeg,image/gif,image/webp,image/avif,image/bmp,video/*,.glb,.gltf,.bbmodel';
+const ACCEPT = 'image/png,image/jpeg,image/gif,image/webp,image/avif,image/bmp,video/*,.glb,.gltf,.bbmodel,.json';
 
 /** The server keeps at most this many 3D model layers in one hologram. */
 export const MAX_MODEL_LAYERS = 4;

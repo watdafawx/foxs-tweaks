@@ -65,7 +65,54 @@ public final class BlockbenchReader {
         }
     }
 
+    /**
+     * A vanilla block model ({@code elements} with {@code rotation: {angle, axis, origin}}, no outliner, no uuids) is
+     * rewritten into the Blockbench shape in place. Its textures are resource names, not pixels, so it is drawn plain.
+     */
+    private void adaptVanilla() {
+        if (this.root.has("outliner") || !this.root.has("elements") || !this.root.get("elements").isJsonArray())
+            return;
+        JsonArray outliner = new JsonArray();
+        int n = 0;
+        for (JsonElement e : this.root.getAsJsonArray("elements")) {
+            if (!e.isJsonObject())
+                continue;
+            JsonObject o = e.getAsJsonObject();
+            String uuid = "v" + n++;
+            o.addProperty("uuid", uuid);
+            o.addProperty("type", "cube");
+            JsonArray origin = new JsonArray();
+            JsonArray rot = new JsonArray();
+            float[] ro = { 8, 8, 8 };
+            float[] r = { 0, 0, 0 };
+            if (o.has("rotation") && o.get("rotation").isJsonObject()) {
+                JsonObject vr = o.getAsJsonObject("rotation");
+                if (vr.has("origin") && vr.get("origin").isJsonArray() && vr.getAsJsonArray("origin").size() == 3)
+                    for (int i = 0; i < 3; i++)
+                        ro[i] = vr.getAsJsonArray("origin").get(i).getAsFloat();
+                float angle = vr.has("angle") ? vr.get("angle").getAsFloat() : 0;
+                String axis = vr.has("axis") ? vr.get("axis").getAsString() : "y";
+                r[axis.equals("x") ? 0 : axis.equals("y") ? 1 : 2] = angle;
+            }
+            for (int i = 0; i < 3; i++) {
+                origin.add(ro[i]);
+                rot.add(r[i]);
+            }
+            o.add("origin", origin);
+            o.add("rotation", rot);
+            // Vanilla face textures are "#name" references: drop them, the faces are drawn untextured.
+            if (o.has("faces") && o.get("faces").isJsonObject())
+                for (var f : o.getAsJsonObject("faces").entrySet())
+                    if (f.getValue().isJsonObject())
+                        f.getValue().getAsJsonObject().remove("texture");
+            outliner.add(uuid);
+        }
+        this.root.add("outliner", outliner);
+        this.root.remove("textures");
+    }
+
     private void build() throws IOException {
+        adaptVanilla();
         JsonObject res = this.root.has("resolution") ? this.root.getAsJsonObject("resolution") : null;
         if (res != null) {
             this.resW = Math.max(1, res.get("width").getAsInt());
@@ -236,7 +283,8 @@ public final class BlockbenchReader {
             if (face == null)
                 continue;
             int tex = textureIndex(face);
-            if (tex < 0)
+            // A model with no embedded texture at all (vanilla block JSON) is drawn untextured instead of dropped.
+            if (tex < 0 && !this.model.textures.isEmpty())
                 continue;
             float[] uv;
             if (face.has("uv") && face.get("uv").isJsonArray() && face.getAsJsonArray("uv").size() == 4) {
@@ -249,8 +297,9 @@ public final class BlockbenchReader {
                 continue;
             }
             int rotation = face.has("rotation") ? ((face.get("rotation").getAsInt() / 90) % 4 + 4) % 4 : 0;
-            float tw = Math.max(1, this.textureSize.length > tex * 2 ? this.textureSize[tex * 2] : this.resW);
-            float th = Math.max(1, this.textureSize.length > tex * 2 ? this.textureSize[tex * 2 + 1] : this.resH);
+            boolean sized = tex >= 0 && this.textureSize.length > tex * 2;
+            float tw = Math.max(1, sized ? this.textureSize[tex * 2] : this.resW);
+            float th = Math.max(1, sized ? this.textureSize[tex * 2 + 1] : this.resH);
             float[][] cuv = {
                     { uv[0] / tw, uv[1] / th }, { uv[2] / tw, uv[1] / th }, { uv[2] / tw, uv[3] / th }, { uv[0] / tw, uv[3] / th } };
             ModelData.Prim p = prim(node, tex);

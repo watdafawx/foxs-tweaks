@@ -121,7 +121,7 @@ interface Prepared {
 
 /** A glTF binary or a Blockbench project: sent as it is, the game reads and checks it. */
 export function isModelFile(file: File): boolean {
-  return /\.(glb|gltf|bbmodel)$/i.test(file.name);
+  return /\.(glb|gltf|bbmodel|json)$/i.test(file.name);
 }
 
 async function prepare(file: File, caps: AssetCaps, choose?: TrimChooser): Promise<Prepared | null> {
