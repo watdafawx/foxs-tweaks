@@ -133,6 +133,7 @@
   "foxstweaks.configuration.botanyPotsSource": "Botany Pots Source",
   "foxstweaks.configuration.apotspawnerSource": "Apotheosis Spawner Source",
   "foxstweaks.configuration.apotspawnerOwnXpFluid": "Apotheosis Spawner Own XP Fluid",
+  "foxstweaks.configuration.tavernsLocateWaitMs": "Taverns & Adventurers Locate Wait (ms)",
   "foxstweaks.configuration.apotspawnerDropMissingItems": "Apotheosis Spawner Drop Missing Items",
   "foxstweaks.configuration.hostileNetworksSource": "Hostile Networks Source",
   "foxstweaks.configuration.extraHnnSource": "Extra HNN Source",

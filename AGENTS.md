@@ -1585,3 +1585,13 @@ Toggle: `chickensRadiationKeepLoot`. Against Modern Chickens 2.7.8.
 `debugLogLootRolls` (default 0) logs a stack trace for the first N loot rolls of any `RandomizableContainer`,
 with the player (if any) and level type - the tool that found this. State lives in `LootRollLog` because an
 interface mixin may not declare fields (Mixin rejects it with `InvalidInterfaceMixinException`).
+
+### Taverns & Adventurers rumor locate (`mixin/AdventurersGuildRumorLocateMixin`)
+
+`RumorService.locate(ServerLevel, List, BlockPos)` (every rumor, dungeon and map path ends there) calls
+`ChunkGenerator#findNearestMapStructure` on the server thread; DrunkGamblers crashed three times on 2026-11-26 with the
+watchdog parked in `StructureCheck.tryLoadFromStorage` / ReTerraForged `CellSampler`. The mixin `@WrapOperation`s that one
+call: one daemon worker thread runs it, the tick waits `tavernsLocateWaitMs` (4000), a timeout returns null (the mod then
+tries another rumor) and a search still running makes later ones return null at once. The mod is closed source: decompiled with
+`javap -c` from 0.4.5. `require = 0`, so an update that moves the call just drops the fix. **Built, not run against the real
+mod yet**: drop 1.47.2 on the server and look for the `structure search near ... giving up` warning.

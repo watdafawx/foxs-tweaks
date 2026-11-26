@@ -1,5 +1,9 @@
 # Changelog
 
+## 1.47.2
+
+- **Taverns & Adventurers: rumor lookups can no longer freeze the server.** Its rumor and dungeon-map searches ran a structure search on the server thread, which on a big pack hung for a minute and tripped the watchdog (server crashes on DrunkGamblers). The search now runs on a helper thread and the tick waits at most `tavernsLocateWaitMs` (default 4000 ms, 0 = off) before treating it as "nothing found". New config key in the **performance** section; paths unchanged since it is a new key.
+
 ## 1.47.1
 
 - **Web editor: animated WebP now animates in every browser.** Browsers without `ImageDecoder` (Firefox) used to keep only the first frame. The page now reads the WebP's frames itself (`web/src/webp.ts`), composites them with their blend and dispose rules, and sends the same frame bundle as for a GIF. Chrome and Edge still use `ImageDecoder`. Nothing changes on the server.

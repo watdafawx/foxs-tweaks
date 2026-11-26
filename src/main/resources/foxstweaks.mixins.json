@@ -6,6 +6,7 @@
   "mixins": [
     "ApothMobEventsTierMixin",
     "ApothSurfaceTypeTierMixin",
+    "AdventurersGuildRumorLocateMixin",
     "ApotSpawnerKillMixin",
     "ApotSpawnerMissingItemsMixin",
     "ApotSpawnerXpFluidMixin",

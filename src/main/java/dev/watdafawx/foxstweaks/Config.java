@@ -583,6 +583,16 @@ public final class Config {
                     "Server-side. Does nothing without ApotSpawner.")
             .define("apotspawnerDropMissingItems", true);
 
+    public static final ModConfigSpec.IntValue TAVERNS_LOCATE_WAIT_MS = BUILDER
+            .comment(
+                    "Taverns & Adventurers looks up rumors and dungeon maps with a structure search on the server",
+                    "thread. On a large pack that search can hang for a minute and the watchdog kills the server.",
+                    "The search now runs on a helper thread and the tick waits this many milliseconds for it; a",
+                    "search that is not done by then counts as \"nothing found\". 0 = off (the mod's own behaviour).",
+                    "",
+                    "Server-side. Does nothing without Taverns & Adventurers.")
+            .defineInRange("tavernsLocateWaitMs", 4000, 0, 60000);
+
     public static final ModConfigSpec.BooleanValue HOSTILE_NETWORKS_SOURCE = BUILDER
             .comment(
                     "Feed Ars Nouveau's Vitalic Sourcelink from Hostile Neural Networks' simulation chamber:",
