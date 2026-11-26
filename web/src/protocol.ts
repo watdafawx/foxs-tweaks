@@ -151,7 +151,7 @@ export interface PropDef {
 export interface Registries {
   properties: { name: string; values: string[] }[];
   blocks: BlockDef[];
-  entities: { id: string; name: string }[];
+  entities: { id: string; name: string; animations?: string[] }[];
   particles: string[];
   effects: EffectDef[];
   triggers: { name: string; label: string; pulse: boolean }[];

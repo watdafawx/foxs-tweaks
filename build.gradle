@@ -163,6 +163,12 @@ neoForge {
             systemProperty 'foxstweaks.hologramAssetCheck', 'true'
         }
 
+        hologramEntityAnimCheck {
+            client()
+            gameDirectory = file('run-hologram-entity-anim')
+            systemProperty 'foxstweaks.hologramEntityAnimCheck', 'true'
+        }
+
         hologramCheck {
             client()
             gameDirectory = file('run-hologram')

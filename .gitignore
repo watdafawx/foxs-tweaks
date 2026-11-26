@@ -31,3 +31,5 @@ run-hologram-qa/
 run-config/
 
 /run-hologram-asset/
+
+/run-hologram-entity-anim/

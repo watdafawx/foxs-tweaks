@@ -75,10 +75,6 @@ public final class HologramCreatorScreen extends Screen {
             HologramEffect.Type.ORBIT, HologramEffect.Type.SLIDE, HologramEffect.Type.BREATHE,
             HologramEffect.Type.HEARTBEAT, HologramEffect.Type.FLIP, HologramEffect.Type.BOUNCE
     };
-    private static final HologramEffect.Type[] ENTITY_TILES = {
-            HologramEffect.Type.WALK, HologramEffect.Type.ATTACK, HologramEffect.Type.HURT,
-            HologramEffect.Type.DEATH, HologramEffect.Type.SNEAK
-    };
     private static final String[] REVEALS = { "Rise", "Pop", "Unfold", "Spin", "Drop", "Glitch" };
 
     private enum Section { SHAPE, COLOUR, FX, MOTION, STACK, REVEAL }
@@ -517,7 +513,7 @@ public final class HologramCreatorScreen extends Screen {
         if (!collapsed.contains(Section.MOTION)) {
             y = renderTiles(g, mx, my, effects, MOTION_TILES, cx, y, cw, 5, false);
             if (layer.kind() == HologramLayer.Kind.ENTITY)
-                y = renderTiles(g, mx, my, effects, ENTITY_TILES, cx, y, cw, 5, false);
+                y = renderTiles(g, mx, my, effects, HologramEntityLife.offered(layer.id()).toArray(HologramEffect.Type[]::new), cx, y, cw, 5, false);
         }
         y = section(g, mx, my, Section.STACK, "STACK  " + stackCount(effects) + "/" + HologramSpec.MAX_EFFECTS, cx, y, cw);
         if (!collapsed.contains(Section.STACK))
@@ -1116,6 +1112,7 @@ public final class HologramCreatorScreen extends Screen {
             case HURT -> "✖";
             case DEATH -> "☠";
             case SNEAK -> "↘";
+            case RUN, FLY, SWIM, REST, ROAR, SNIFF, CROAK, ROLL -> type.shortName();
         };
     }
 

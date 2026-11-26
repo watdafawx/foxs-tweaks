@@ -1054,15 +1054,18 @@ public class HologramScreen extends Screen {
 
         // Row 3: entity animations, only where an entity can be drawn.
         if (entityTarget) {
-            List<HologramEffect.Type> ents = HologramEffect.Type.entityTypes();
-            int eW = (rw - (ents.size() - 1) * 2) / ents.size();
+            List<HologramEffect.Type> ents = this.targetKind == TargetKind.GROUP
+                    ? this.layers.stream().filter(l -> l.kind() == HologramLayer.Kind.ENTITY && l.groupId().equals(this.selectedGroupId))
+                            .flatMap(l -> HologramEntityLife.offered(l.id()).stream()).distinct().toList()
+                    : HologramEntityLife.offered(currentLayer().id());
+            int eW = (rw - (perRow - 1) * 2) / perRow;
             for (int i = 0; i < ents.size(); i++) {
                 HologramEffect.Type type = ents.get(i);
                 boolean has = indexOfEffect(list, type) >= 0;
-                this.flatBtns.add(new FlatBtn(rx + i * (eW + 2), y, eW, 15, type.shortName(), has, false,
+                this.flatBtns.add(new FlatBtn(rx + (i % perRow) * (eW + 2), y + (i / perRow) * 17, eW, 15, type.shortName(), has, false,
                         has || list.size() < MAX_EFFECTS, () -> toggleEffect(type)));
             }
-            y += 17;
+            y += ((ents.size() + perRow - 1) / perRow) * 17;
         }
         y += 3;
 
