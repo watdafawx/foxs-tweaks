@@ -4,11 +4,13 @@ import com.google.gson.JsonArray;
 import com.google.gson.JsonElement;
 import com.google.gson.JsonObject;
 import com.google.gson.JsonPrimitive;
+import dev.watdafawx.foxstweaks.ServerConfig;
 import dev.watdafawx.foxstweaks.hologram.HologramEffect;
 import dev.watdafawx.foxstweaks.hologram.HologramGroup;
 import dev.watdafawx.foxstweaks.hologram.HologramLayer;
 import dev.watdafawx.foxstweaks.hologram.HologramSpec;
 import dev.watdafawx.foxstweaks.hologram.HologramStates;
+import dev.watdafawx.foxstweaks.hologram.HologramTimeline;
 import dev.watdafawx.foxstweaks.hologram.Holograms;
 import net.minecraft.core.particles.SimpleParticleType;
 import net.minecraft.core.registries.BuiltInRegistries;
@@ -91,6 +93,7 @@ final class HologramWebJson {
         JsonArray layers = new JsonArray();
         for (HologramLayer l : spec.layers()) {
             JsonObject j = new JsonObject();
+            j.addProperty("uid", l.uid());
             j.addProperty("kind", l.kind().name());
             j.addProperty("id", l.id());
             JsonObject props = new JsonObject();
@@ -119,7 +122,48 @@ final class HologramWebJson {
             layers.add(j);
         }
         o.add("layers", layers);
+        if (spec.timeline() != null)
+            o.add("timeline", timeline(spec.timeline()));
         return o;
+    }
+
+    static JsonObject timeline(HologramTimeline tl) {
+        JsonObject t = new JsonObject();
+        t.addProperty("length", tl.length());
+        t.addProperty("mode", tl.mode().name());
+        t.addProperty("start", tl.start().name());
+        JsonArray tracks = new JsonArray();
+        for (HologramTimeline.Track tr : tl.tracks()) {
+            JsonObject j = new JsonObject();
+            j.addProperty("target", tr.target().name());
+            j.addProperty("id", tr.id());
+            j.addProperty("prop", tr.prop().name());
+            if (tr.prop() == HologramTimeline.Prop.EFFECT)
+                j.addProperty("effect", tr.effect());
+            JsonArray keys = new JsonArray();
+            for (HologramTimeline.Key k : tr.keys()) {
+                JsonObject kj = new JsonObject();
+                kj.addProperty("t", k.time());
+                if (tr.prop() == HologramTimeline.Prop.TINT)
+                    kj.addProperty("v", (int) k.value());
+                else
+                    kj.addProperty("v", k.value());
+                kj.addProperty("ease", k.ease().name());
+                if (k.ease() == HologramTimeline.Ease.CUBIC) {
+                    JsonArray b = new JsonArray();
+                    b.add(k.x1());
+                    b.add(k.y1());
+                    b.add(k.x2());
+                    b.add(k.y2());
+                    kj.add("bezier", b);
+                }
+                keys.add(kj);
+            }
+            j.add("keys", keys);
+            tracks.add(j);
+        }
+        t.add("tracks", tracks);
+        return t;
     }
 
     private static void transform(JsonObject j, float x, float y, float z, float yaw, float pitch, float roll, float scale) {
@@ -209,8 +253,14 @@ final class HologramWebJson {
         if (layersJson.isEmpty())
             throw new Invalid("a hologram needs at least one layer");
         List<HologramLayer> layers = new ArrayList<>();
+        Set<String> layerUids = new HashSet<>();
         for (JsonElement el : layersJson) {
             JsonObject l = asObj(el, "layer");
+            String uid = l.has("uid") && !l.get("uid").isJsonNull() ? str(l, "uid", 24) : "";
+            if (!uid.isEmpty() && !GROUP_ID.matcher(uid).matches())
+                throw new Invalid("bad layer uid '" + uid + "'");
+            if (!uid.isEmpty() && !layerUids.add(uid))
+                throw new Invalid("duplicate layer uid '" + uid + "'");
             HologramLayer.Kind kind;
             try {
                 kind = HologramLayer.Kind.valueOf(str(l, "kind", 16));
@@ -276,11 +326,101 @@ final class HologramWebJson {
                     num(l, "spin", 0, -360, 360), axis(l, "spinAxis"),
                     num(l, "hover", 0, 0, 4), num(l, "hoverPeriod", 4, 0.5F, 120),
                     bool(l, "fullbright", false), readEffects(l),
-                    num(l, "particleRate", 10, 1, 40), num(l, "particleSpeed", 0.01F, -0.5F, 0.5F)));
+                    num(l, "particleRate", 10, 1, 40), num(l, "particleSpeed", 0.01F, -0.5F, 0.5F), uid));
         }
 
+        HologramTimeline timeline = o.has("timeline") && !o.get("timeline").isJsonNull()
+                ? readTimeline(asObj(o.get("timeline"), "timeline"), groups, layers)
+                : null;
+
         return new HologramSpec(base.id(), base.pos(), off[0], off[1], off[2], rot[0], rot[1], rot[2], scale,
-                base.enabled(), renderDistance, base.owner(), base.ownerName(), radius, seconds, style, groups, layers);
+                base.enabled(), renderDistance, base.owner(), base.ownerName(), radius, seconds, style, groups, layers,
+                timeline);
+    }
+
+    /**
+     * Strict: an unknown enum, a track whose target is not in this spec, an effect index past the target's effect
+     * list, two tracks animating the same thing, or more tracks/keys than the server allows are all refused, so
+     * the browser hears about it instead of the save quietly dropping work.
+     */
+    static HologramTimeline readTimeline(JsonObject t, List<HologramGroup> groups, List<HologramLayer> layers)
+            throws Invalid {
+        float length = num(t, "length", 4.0F, HologramTimeline.MIN_LENGTH, HologramTimeline.MAX_LENGTH);
+        HologramTimeline.Mode mode = enumOf(HologramTimeline.Mode.class, t, "mode", HologramTimeline.Mode.LOOP);
+        HologramEffect.Trigger start = enumOf(HologramEffect.Trigger.class, t, "start", HologramEffect.Trigger.ALWAYS);
+        JsonArray tracksJson = arr(t, "tracks", HologramTimeline.HARD_MAX_TRACKS);
+        List<HologramTimeline.Track> tracks = new ArrayList<>();
+        Set<String> seen = new HashSet<>();
+        int keyTotal = 0;
+        for (JsonElement el : tracksJson) {
+            JsonObject j = asObj(el, "track");
+            HologramTimeline.TargetKind target = enumOf(HologramTimeline.TargetKind.class, j, "target", null);
+            HologramTimeline.Prop prop = enumOf(HologramTimeline.Prop.class, j, "prop", null);
+            if (target == null || prop == null)
+                throw new Invalid("track needs a target and a prop");
+            String id = target == HologramTimeline.TargetKind.ROOT ? "" : str(j, "id", 24);
+            List<HologramEffect> fx = null;
+            if (target == HologramTimeline.TargetKind.GROUP) {
+                HologramGroup g = groups.stream().filter(x -> x.id().equals(id)).findFirst().orElse(null);
+                if (g == null)
+                    throw new Invalid("track refers to missing group '" + id + "'");
+                fx = g.effects();
+            } else if (target == HologramTimeline.TargetKind.LAYER) {
+                HologramLayer l = layers.stream().filter(x -> x.uid().equals(id)).findFirst().orElse(null);
+                if (l == null)
+                    throw new Invalid("track refers to missing layer '" + id + "'");
+                fx = l.effects();
+            }
+            int effect = 0;
+            if (prop == HologramTimeline.Prop.EFFECT) {
+                if (fx == null)
+                    throw new Invalid("the root has no effects to animate");
+                effect = Math.round(num(j, "effect", 0, 0, HologramSpec.MAX_EFFECTS - 1));
+                if (effect >= fx.size())
+                    throw new Invalid("track animates effect #" + effect + " but '" + id + "' has " + fx.size());
+            }
+            if (!seen.add(target + ":" + id + ":" + prop + ":" + effect))
+                throw new Invalid("two tracks animate " + target.name().toLowerCase(java.util.Locale.ROOT)
+                        + (id.isEmpty() ? "" : " '" + id + "'") + " " + prop);
+            JsonArray keysJson = arr(j, "keys", HologramTimeline.HARD_MAX_KEYS);
+            keyTotal += keysJson.size();
+            if (keyTotal > HologramTimeline.HARD_MAX_KEYS)
+                throw new Invalid("too many keyframes");
+            List<HologramTimeline.Key> keys = new ArrayList<>(keysJson.size());
+            for (JsonElement kel : keysJson) {
+                JsonObject k = asObj(kel, "key");
+                float time = num(k, "t", 0, 0, length);
+                float value = num(k, "v", 0, prop.min(), prop.max());
+                HologramTimeline.Ease ease = enumOf(HologramTimeline.Ease.class, k, "ease", HologramTimeline.Ease.LINEAR);
+                if (ease == HologramTimeline.Ease.CUBIC) {
+                    if (!k.has("bezier") || !k.get("bezier").isJsonArray() || k.getAsJsonArray("bezier").size() != 4)
+                        throw new Invalid("a cubic key needs bezier [x1, y1, x2, y2]");
+                    JsonArray b = k.getAsJsonArray("bezier");
+                    keys.add(HologramTimeline.Key.cubic(time, value, clampNum(b.get(0), "bezier", 0, 1),
+                            clampNum(b.get(1), "bezier", -2, 3), clampNum(b.get(2), "bezier", 0, 1),
+                            clampNum(b.get(3), "bezier", -2, 3)));
+                } else {
+                    keys.add(HologramTimeline.Key.of(time, value, ease));
+                }
+            }
+            tracks.add(new HologramTimeline.Track(target, id, prop, effect, keys));
+        }
+        HologramTimeline tl = new HologramTimeline(length, mode, start, tracks);
+        String caps = tl.checkCaps(ServerConfig.hologramTimelineMaxTracks(), ServerConfig.hologramTimelineMaxKeys());
+        if (caps != null)
+            throw new Invalid(caps);
+        return tl;
+    }
+
+    private static <E extends Enum<E>> E enumOf(Class<E> type, JsonObject o, String key, E def) throws Invalid {
+        if (!o.has(key) || o.get(key).isJsonNull())
+            return def;
+        String raw = str(o, key, 24);
+        try {
+            return Enum.valueOf(type, raw);
+        } catch (IllegalArgumentException e) {
+            throw new Invalid("unknown " + key + " '" + raw + "'");
+        }
     }
 
     private static List<HologramEffect> readEffects(JsonObject parent) throws Invalid {

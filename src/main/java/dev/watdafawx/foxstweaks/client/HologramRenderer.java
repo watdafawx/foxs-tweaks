@@ -10,6 +10,10 @@ import dev.watdafawx.foxstweaks.hologram.HologramLayer;
 import dev.watdafawx.foxstweaks.hologram.HologramSpec;
 import dev.watdafawx.foxstweaks.hologram.HologramStates;
 import dev.watdafawx.foxstweaks.hologram.HologramStructure;
+import dev.watdafawx.foxstweaks.hologram.HologramTimeline;
+import dev.watdafawx.foxstweaks.hologram.HologramTimeline.Prop;
+import dev.watdafawx.foxstweaks.hologram.HologramTimeline.TargetKind;
+import dev.watdafawx.foxstweaks.hologram.HologramTimelineEval;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.renderer.LevelRenderer;
 import net.minecraft.client.renderer.MultiBufferSource;
@@ -33,6 +37,10 @@ import java.util.List;
  * animation & FX) -> first-class layers (independent transform, animation, fullbright & FX).
  */
 public final class HologramRenderer {
+
+    /** Keyed effect strengths per effect index, reused every draw (render thread only). */
+    private static final float[] GROUP_FX = new float[HologramSpec.MAX_EFFECTS];
+    private static final float[] LAYER_FX = new float[HologramSpec.MAX_EFFECTS];
 
     private static int lastDrawn;
     private static int drawnBlockEntities;
@@ -166,6 +174,12 @@ public final class HologramRenderer {
             if (camera.distanceToSqr(center) > cap * cap)
                 continue;
 
+            if (spec.timeline() != null) {
+                // Keyed offsets and scales can carry content outside the static box.
+                float pad = HologramTimelineEval.cullPad(spec.timeline()) * Math.max(1.0F, spec.scale());
+                if (pad > 0.0F)
+                    box = box.inflate(pad);
+            }
             if (event.getFrustum() != null && !event.getFrustum().isVisible(box))
                 continue;
 
@@ -229,32 +243,87 @@ public final class HologramRenderer {
         HologramTriggers.beginFrame();
         HologramAnim.RevealPose reveal = HologramAnim.revealPose(spec.appearStyle(), appear, seconds);
 
-        pose.pushPose();
-        pose.translate(origin.x + 0.5 - camera.x + reveal.glitchX(),
-                origin.y - camera.y + reveal.dy(),
-                origin.z + 0.5 - camera.z);
-        pose.mulPose(Axis.YP.rotationDegrees(spec.yaw() + reveal.spinY()));
-        pose.mulPose(Axis.XP.rotationDegrees(spec.pitch()));
-        pose.mulPose(Axis.ZP.rotationDegrees(spec.roll()));
-        pose.scale(spec.scale() * reveal.sx(), spec.scale() * reveal.sy(), spec.scale() * reveal.sz());
-
         List<HologramLayer> layers = spec.layers();
+        List<HologramGroup> groups = spec.groups();
+
+        // Timeline: keyed values replace the static base (offset, rotation, scale); effects still add on top.
+        HologramTimeline tl = spec.timeline();
+        float rYaw = spec.yaw();
+        float rPitch = spec.pitch();
+        float rRoll = spec.roll();
+        float rScale = spec.scale();
+        double rdx = 0.0;
+        double rdy = 0.0;
+        double rdz = 0.0;
+        int rootTint = 0xFFFFFF;
+        if (tl != null) {
+            HologramTimelineEval.evaluate(tl, groups, layers, HologramTimelinePlayer.time(spec, tl, partialTick));
+            if (HologramTimelineEval.animates(tl, TargetKind.ROOT, 0)) {
+                if (HologramTimelineEval.or(HologramTimelineEval.root(tl, Prop.VISIBLE), 1.0F) < 0.5F)
+                    return;
+                rdx = HologramTimelineEval.or(HologramTimelineEval.root(tl, Prop.OFFSET_X), spec.offsetX()) - spec.offsetX();
+                rdy = HologramTimelineEval.or(HologramTimelineEval.root(tl, Prop.OFFSET_Y), spec.offsetY()) - spec.offsetY();
+                rdz = HologramTimelineEval.or(HologramTimelineEval.root(tl, Prop.OFFSET_Z), spec.offsetZ()) - spec.offsetZ();
+                rYaw = HologramTimelineEval.or(HologramTimelineEval.root(tl, Prop.ROT_Y), rYaw);
+                rPitch = HologramTimelineEval.or(HologramTimelineEval.root(tl, Prop.ROT_X), rPitch);
+                rRoll = HologramTimelineEval.or(HologramTimelineEval.root(tl, Prop.ROT_Z), rRoll);
+                rScale = HologramTimelineEval.or(HologramTimelineEval.root(tl, Prop.SCALE), rScale);
+                float tint = HologramTimelineEval.root(tl, Prop.TINT);
+                if (!Float.isNaN(tint))
+                    rootTint = (int) tint;
+            }
+        }
+        buffer = TintedBuffer.tint(buffer, rootTint);
+
+        pose.pushPose();
+        pose.translate(origin.x + rdx + 0.5 - camera.x + reveal.glitchX(),
+                origin.y + rdy - camera.y + reveal.dy(),
+                origin.z + rdz + 0.5 - camera.z);
+        pose.mulPose(Axis.YP.rotationDegrees(rYaw + reveal.spinY()));
+        pose.mulPose(Axis.XP.rotationDegrees(rPitch));
+        pose.mulPose(Axis.ZP.rotationDegrees(rRoll));
+        pose.scale(rScale * reveal.sx(), rScale * reveal.sy(), rScale * reveal.sz());
 
         // 1. Draw ungrouped (independent) layers directly in root frame
         for (int i = 0; i < layers.size(); i++) {
             HologramLayer layer = layers.get(i);
             if (!layer.groupId().isEmpty())
                 continue;
-            drawLayer(pose, buffer, spec, null, layer, i, worldLight, seconds, partialTick);
+            drawLayer(pose, buffer, spec, null, List.of(), layer, i, worldLight, seconds, partialTick, rootTint);
         }
 
         // 2. Draw each group once, pushing its shared transform/animation/FX frame around its member layers
-        List<HologramGroup> groups = spec.groups();
         for (int g = 0; g < groups.size(); g++) {
             HologramGroup group = groups.get(g);
             if (!group.visible())
                 continue;
-            List<HologramEffect> gEffects = HologramTriggers.resolve(group.effects(), spec, seconds);
+            boolean gAnim = tl != null && HologramTimelineEval.animates(tl, TargetKind.GROUP, g);
+            float gOffXBase = group.offsetX();
+            float gOffYBase = group.offsetY();
+            float gOffZBase = group.offsetZ();
+            float gYaw = group.yaw();
+            float gPitch = group.pitch();
+            float gRoll = group.roll();
+            float gScale = group.scale();
+            int gTint = 0xFFFFFF;
+            float[] gKeyed = null;
+            if (gAnim) {
+                if (HologramTimelineEval.or(HologramTimelineEval.group(tl, g, Prop.VISIBLE), 1.0F) < 0.5F)
+                    continue;
+                gOffXBase = HologramTimelineEval.or(HologramTimelineEval.group(tl, g, Prop.OFFSET_X), gOffXBase);
+                gOffYBase = HologramTimelineEval.or(HologramTimelineEval.group(tl, g, Prop.OFFSET_Y), gOffYBase);
+                gOffZBase = HologramTimelineEval.or(HologramTimelineEval.group(tl, g, Prop.OFFSET_Z), gOffZBase);
+                gYaw = HologramTimelineEval.or(HologramTimelineEval.group(tl, g, Prop.ROT_Y), gYaw);
+                gPitch = HologramTimelineEval.or(HologramTimelineEval.group(tl, g, Prop.ROT_X), gPitch);
+                gRoll = HologramTimelineEval.or(HologramTimelineEval.group(tl, g, Prop.ROT_Z), gRoll);
+                gScale = HologramTimelineEval.or(HologramTimelineEval.group(tl, g, Prop.SCALE), gScale);
+                float tint = HologramTimelineEval.group(tl, g, Prop.TINT);
+                if (!Float.isNaN(tint))
+                    gTint = (int) tint;
+                if (HologramTimelineEval.effects(tl, TargetKind.GROUP, g, GROUP_FX))
+                    gKeyed = GROUP_FX;
+            }
+            List<HologramEffect> gEffects = HologramTriggers.resolve(group.effects(), spec, seconds, gKeyed);
             if (HologramAnim.flickerHidden(gEffects, seconds))
                 continue;
 
@@ -264,30 +333,31 @@ public final class HologramRenderer {
             float gGlitchZ = HologramAnim.glitchOffsetZ(gEffects, seconds);
             float gJitter = HologramAnim.tremorDegrees(gEffects, seconds);
             float gSpin = spinAngle(group.spin(), seconds);
-            float gAngleY = group.yaw() + (group.spinAxis() == HologramSpec.AXIS_Y ? gSpin : 0.0F) + gJitter;
-            float gAngleX = group.pitch() + (group.spinAxis() == HologramSpec.AXIS_X ? gSpin : 0.0F) + gJitter * 0.7F;
-            float gAngleZ = group.roll() + (group.spinAxis() == HologramSpec.AXIS_Z ? gSpin : 0.0F) - gJitter * 0.5F;
+            float gAngleY = gYaw + (group.spinAxis() == HologramSpec.AXIS_Y ? gSpin : 0.0F) + gJitter;
+            float gAngleX = gPitch + (group.spinAxis() == HologramSpec.AXIS_X ? gSpin : 0.0F) + gJitter * 0.7F;
+            float gAngleZ = gRoll + (group.spinAxis() == HologramSpec.AXIS_Z ? gSpin : 0.0F) - gJitter * 0.5F;
             float gWobbleY = HologramAnim.wobbleScaleY(gEffects, seconds);
             float gWobbleXZ = HologramAnim.wobbleScaleXZ(gEffects, seconds);
             HologramAnim.Motion gm = HologramAnim.motion(gEffects, seconds);
 
             pose.pushPose();
-            pose.translate(group.offsetX() + gGlitchX + gm.dx(), group.offsetY() + gHover + gJump + gm.dy(),
-                    group.offsetZ() + gGlitchZ + gm.dz());
+            pose.translate(gOffXBase + gGlitchX + gm.dx(), gOffYBase + gHover + gJump + gm.dy(),
+                    gOffZBase + gGlitchZ + gm.dz());
             pose.mulPose(Axis.YP.rotationDegrees(gAngleY + gm.ry()));
             pose.mulPose(Axis.XP.rotationDegrees(gAngleX + gm.rx()));
             pose.mulPose(Axis.ZP.rotationDegrees(gAngleZ + gm.rz()));
-            pose.scale(group.scale() * gWobbleXZ * gm.scale(), group.scale() * gWobbleY * gm.scale(),
-                    group.scale() * gWobbleXZ * gm.scale());
+            pose.scale(gScale * gWobbleXZ * gm.scale(), gScale * gWobbleY * gm.scale(),
+                    gScale * gWobbleXZ * gm.scale());
 
-            MultiBufferSource groupOut = TintedBuffer.wrap(buffer, gEffects, seconds);
+            MultiBufferSource groupOut = TintedBuffer.wrap(TintedBuffer.tint(buffer, gTint), gEffects, seconds);
             int groupLight = group.fullbright() ? 0xF000F0 : worldLight;
+            int inherited = TintedBuffer.multiply(rootTint, gTint);
 
             for (int i = 0; i < layers.size(); i++) {
                 HologramLayer layer = layers.get(i);
                 if (!group.id().equals(layer.groupId()))
                     continue;
-                drawLayer(pose, groupOut, spec, group, layer, i, groupLight, seconds, partialTick);
+                drawLayer(pose, groupOut, spec, group, gEffects, layer, i, groupLight, seconds, partialTick, inherited);
             }
             pose.popPose();
         }
@@ -296,21 +366,54 @@ public final class HologramRenderer {
         for (int i = 0; i < layers.size(); i++) {
             HologramLayer layer = layers.get(i);
             if (!layer.groupId().isEmpty() && spec.groupById(layer.groupId()) == null)
-                drawLayer(pose, buffer, spec, null, layer, i, worldLight, seconds, partialTick);
+                drawLayer(pose, buffer, spec, null, List.of(), layer, i, worldLight, seconds, partialTick, rootTint);
         }
 
         pose.popPose();
     }
 
+    /**
+     * @param gEffects  the group's effects as resolved for this frame (empty without a group)
+     * @param inherited packed RGB tint the parents' timeline keys put on {@code parentBuffer} already; only the
+     *                  cached structure path, which bypasses the buffer, needs to multiply it in itself
+     */
     private static void drawLayer(PoseStack pose, MultiBufferSource parentBuffer, HologramSpec spec,
-                                  @Nullable HologramGroup group, HologramLayer layer, int layerIndex,
-                                  int parentLight, double seconds, float partialTick) {
+                                  @Nullable HologramGroup group, List<HologramEffect> gEffects, HologramLayer layer,
+                                  int layerIndex, int parentLight, double seconds, float partialTick, int inherited) {
         if (!layer.visible() || layer.kind() == HologramLayer.Kind.PARTICLE)
             return;
         if (!HologramClient.passesSolo(spec.id(), layerIndex, layer))
             return;
 
-        List<HologramEffect> effects = HologramTriggers.resolve(layer.effects(), spec, seconds);
+        HologramTimeline tl = spec.timeline();
+        boolean lAnim = tl != null && HologramTimelineEval.animates(tl, TargetKind.LAYER, layerIndex);
+        float baseX = layer.offsetX();
+        float baseY = layer.offsetY();
+        float baseZ = layer.offsetZ();
+        float baseYaw = layer.yaw();
+        float basePitch = layer.pitch();
+        float baseRoll = layer.roll();
+        float baseScale = layer.scale();
+        int lTint = 0xFFFFFF;
+        float[] lKeyed = null;
+        if (lAnim) {
+            if (HologramTimelineEval.or(HologramTimelineEval.layer(tl, layerIndex, Prop.VISIBLE), 1.0F) < 0.5F)
+                return;
+            baseX = HologramTimelineEval.or(HologramTimelineEval.layer(tl, layerIndex, Prop.OFFSET_X), baseX);
+            baseY = HologramTimelineEval.or(HologramTimelineEval.layer(tl, layerIndex, Prop.OFFSET_Y), baseY);
+            baseZ = HologramTimelineEval.or(HologramTimelineEval.layer(tl, layerIndex, Prop.OFFSET_Z), baseZ);
+            baseYaw = HologramTimelineEval.or(HologramTimelineEval.layer(tl, layerIndex, Prop.ROT_Y), baseYaw);
+            basePitch = HologramTimelineEval.or(HologramTimelineEval.layer(tl, layerIndex, Prop.ROT_X), basePitch);
+            baseRoll = HologramTimelineEval.or(HologramTimelineEval.layer(tl, layerIndex, Prop.ROT_Z), baseRoll);
+            baseScale = HologramTimelineEval.or(HologramTimelineEval.layer(tl, layerIndex, Prop.SCALE), baseScale);
+            float tint = HologramTimelineEval.layer(tl, layerIndex, Prop.TINT);
+            if (!Float.isNaN(tint))
+                lTint = (int) tint;
+            if (HologramTimelineEval.effects(tl, TargetKind.LAYER, layerIndex, LAYER_FX))
+                lKeyed = LAYER_FX;
+        }
+
+        List<HologramEffect> effects = HologramTriggers.resolve(layer.effects(), spec, seconds, lKeyed);
         if (HologramAnim.flickerHidden(effects, seconds))
             return;
 
@@ -320,24 +423,26 @@ public final class HologramRenderer {
         float lGlitchZ = HologramAnim.glitchOffsetZ(effects, seconds);
         float lJitter = HologramAnim.tremorDegrees(effects, seconds);
         float lSpin = spinAngle(layer.spin(), seconds);
-        float lAngleY = layer.yaw() + (layer.spinAxis() == HologramSpec.AXIS_Y ? lSpin : 0.0F) + lJitter;
-        float lAngleX = layer.pitch() + (layer.spinAxis() == HologramSpec.AXIS_X ? lSpin : 0.0F) + lJitter * 0.7F;
-        float lAngleZ = layer.roll() + (layer.spinAxis() == HologramSpec.AXIS_Z ? lSpin : 0.0F) - lJitter * 0.5F;
+        float lAngleY = baseYaw + (layer.spinAxis() == HologramSpec.AXIS_Y ? lSpin : 0.0F) + lJitter;
+        float lAngleX = basePitch + (layer.spinAxis() == HologramSpec.AXIS_X ? lSpin : 0.0F) + lJitter * 0.7F;
+        float lAngleZ = baseRoll + (layer.spinAxis() == HologramSpec.AXIS_Z ? lSpin : 0.0F) - lJitter * 0.5F;
         float lWobbleY = HologramAnim.wobbleScaleY(effects, seconds);
         float lWobbleXZ = HologramAnim.wobbleScaleXZ(effects, seconds);
         HologramAnim.Motion lm = HologramAnim.motion(effects, seconds);
         lAngleY += lm.ry();
         lAngleX += lm.rx();
         lAngleZ += lm.rz();
-        float offX = layer.offsetX() + lGlitchX + lm.dx();
-        float offY = layer.offsetY() + lHover + lJump + lm.dy();
-        float offZ = layer.offsetZ() + lGlitchZ + lm.dz();
+        float offX = baseX + lGlitchX + lm.dx();
+        float offY = baseY + lHover + lJump + lm.dy();
+        float offZ = baseZ + lGlitchZ + lm.dz();
 
-        float sx = layer.scale() * lWobbleXZ * lm.scale();
-        float sy = layer.scale() * lWobbleY * lm.scale();
-        float sz = layer.scale() * lWobbleXZ * lm.scale();
+        float sx = baseScale * lWobbleXZ * lm.scale();
+        float sy = baseScale * lWobbleY * lm.scale();
+        float sz = baseScale * lWobbleXZ * lm.scale();
         if (sy <= 0.01F)
             return;
+        parentBuffer = TintedBuffer.tint(parentBuffer, lTint);
+        int totalTint = TintedBuffer.multiply(inherited, lTint);
 
         // GRADIENT ramps over the layer's own height: measured through the current pose, so the parent's
         // transform and scale are included. Entities are about a body tall, blocks one block, structures their H.
@@ -384,8 +489,6 @@ public final class HologramRenderer {
                 if (compiled == null)
                     return;
 
-                List<HologramEffect> gEffects = group == null ? List.of()
-                        : HologramTriggers.resolve(group.effects(), spec, seconds);
                 boolean useUncached = forceUncachedStructure
                         || TintedBuffer.hasPerVertexFx(effects)
                         || TintedBuffer.hasPerVertexFx(gEffects);
@@ -422,7 +525,8 @@ public final class HologramRenderer {
                         pose.popPose();
                     }
                 } else {
-                    float[] rgb = { 1.0F, 1.0F, 1.0F };
+                    float[] rgb = { (totalTint >> 16 & 0xFF) / 255.0F, (totalTint >> 8 & 0xFF) / 255.0F,
+                            (totalTint & 0xFF) / 255.0F };
                     if (!gEffects.isEmpty())
                         TintedBuffer.applyUniformColor(gEffects, seconds, rgb);
                     if (!effects.isEmpty())
@@ -452,8 +556,7 @@ public final class HologramRenderer {
                 var entity = HologramEntities.get(layer, 0.0, 0.0, 0.0, 0.0F, (float) seconds);
                 if (entity == null)
                     return;
-                HologramEntities.applyAnimations(entity, effects,
-                        group == null ? List.of() : HologramTriggers.resolve(group.effects(), spec, seconds), seconds);
+                HologramEntities.applyAnimations(entity, effects, gEffects, seconds);
                 pose.pushPose();
                 pose.translate(offX, offY, offZ);
                 pose.mulPose(Axis.YP.rotationDegrees(lAngleY));

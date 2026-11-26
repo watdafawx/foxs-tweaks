@@ -23,7 +23,7 @@ public final class HologramNetwork {
     }
 
     public static void register(RegisterPayloadHandlersEvent event) {
-        var registrar = event.registrar("3").optional();
+        var registrar = event.registrar("4").optional();
 
         registrar.playToClient(HologramSyncPayload.TYPE, HologramSyncPayload.CODEC, (payload, context) ->
                 context.enqueueWork(() -> {
@@ -106,7 +106,7 @@ public final class HologramNetwork {
         }
 
         HologramSpec incoming = HologramSpec.fromTag(payload.spec());
-        if (incoming == null || !validStructures(incoming))
+        if (incoming == null || !validStructures(incoming) || timelineProblem(incoming) != null)
             return;
 
         HologramSpec sanitized = incoming.at(stored.id(), stored.pos(), stored.owner(), stored.ownerName())
@@ -133,7 +133,7 @@ public final class HologramNetwork {
 
         ServerLevel level = player.serverLevel();
         HologramSpec style = HologramSpec.fromTag(tag);
-        if (style == null || style.layers().isEmpty() || !validStructures(style))
+        if (style == null || style.layers().isEmpty() || !validStructures(style) || timelineProblem(style) != null)
             return;
         if (Holograms.capacityLeft(level) <= 0)
             return;
@@ -168,6 +168,14 @@ public final class HologramNetwork {
                 return false;
         }
         return true;
+    }
+
+    /** Null when the spec's timeline (if any) fits the server's caps; otherwise why not. */
+    @javax.annotation.Nullable
+    public static String timelineProblem(HologramSpec spec) {
+        HologramTimeline tl = spec.timeline();
+        return tl == null ? null
+                : tl.checkCaps(ServerConfig.hologramTimelineMaxTracks(), ServerConfig.hologramTimelineMaxKeys());
     }
 
     @javax.annotation.Nullable

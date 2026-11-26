@@ -337,6 +337,7 @@ public final class HologramClient {
         HologramBlockEntities.clear();
         HologramStructureMesh.clear();
         HologramPickerPreview.clear();
+        HologramTimelinePlayer.clear();
         HologramClient.lastAppearNanos = 0L;
     }
 

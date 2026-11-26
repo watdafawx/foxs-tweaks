@@ -47,6 +47,26 @@ final class TintedBuffer implements MultiBufferSource {
         return wrap(delegate, effects, seconds, 0.0F, 1.0F);
     }
 
+    /** Plain colour multiply by packed {@code rgb} (a keyed timeline tint); white returns {@code delegate}. */
+    static MultiBufferSource tint(MultiBufferSource delegate, int rgb) {
+        if ((rgb & 0xFFFFFF) == 0xFFFFFF)
+            return delegate;
+        return new TintedBuffer(delegate, (rgb >> 16 & 0xFF) / 255.0F, (rgb >> 8 & 0xFF) / 255.0F,
+                (rgb & 0xFF) / 255.0F, 0.0F, 0.0F, null);
+    }
+
+    /** Channel-wise product of two packed RGB colours. */
+    static int multiply(int a, int b) {
+        if ((a & 0xFFFFFF) == 0xFFFFFF)
+            return b & 0xFFFFFF;
+        if ((b & 0xFFFFFF) == 0xFFFFFF)
+            return a & 0xFFFFFF;
+        int r = ((a >> 16 & 0xFF) * (b >> 16 & 0xFF) + 127) / 255;
+        int g = ((a >> 8 & 0xFF) * (b >> 8 & 0xFF) + 127) / 255;
+        int bl = ((a & 0xFF) * (b & 0xFF) + 127) / 255;
+        return (r << 16) | (g << 8) | bl;
+    }
+
     /** True when any per-vertex Y-dependent FX (SCANLINE or GRADIENT) is present in {@code effects}. */
     static boolean hasPerVertexFx(List<HologramEffect> effects) {
         for (int i = 0; i < effects.size(); i++) {

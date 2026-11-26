@@ -41,7 +41,8 @@ public record HologramLayer(
         boolean fullbright,
         List<HologramEffect> effects,
         float particleRate,
-        float particleSpeed
+        float particleSpeed,
+        String uid
 ) {
     public enum Kind {
         BLOCK,
@@ -74,6 +75,25 @@ public record HologramLayer(
                 : List.copyOf(effects);
         particleRate = Mth.clamp(particleRate, 1.0F, 40.0F);
         particleSpeed = Mth.clamp(particleSpeed, -0.5F, 0.5F);
+        uid = uid == null || !UID.matcher(uid).matches() ? "" : uid;
+    }
+
+    /** Stable id the timeline addresses a layer by; "" until the owning {@link HologramSpec} assigns one. */
+    public static final java.util.regex.Pattern UID = java.util.regex.Pattern.compile("[A-Za-z0-9_-]{1,24}");
+
+    /** The pre-timeline shape: no uid yet, the spec assigns one. */
+    public HologramLayer(Kind kind, String id, Map<String, String> props, CompoundTag data, String groupId,
+                         boolean visible, float offsetX, float offsetY, float offsetZ, float yaw, float pitch,
+                         float roll, float scale, float spin, int spinAxis, float hover, float hoverPeriod,
+                         boolean fullbright, List<HologramEffect> effects, float particleRate, float particleSpeed) {
+        this(kind, id, props, data, groupId, visible, offsetX, offsetY, offsetZ, yaw, pitch, roll, scale,
+                spin, spinAxis, hover, hoverPeriod, fullbright, effects, particleRate, particleSpeed, "");
+    }
+
+    public HologramLayer withUid(String uid) {
+        return new HologramLayer(kind, id, props, data, groupId, visible,
+                offsetX, offsetY, offsetZ, yaw, pitch, roll, scale,
+                spin, spinAxis, hover, hoverPeriod, fullbright, effects, particleRate, particleSpeed, uid);
     }
 
     public static HologramLayer block(String blockId, Map<String, String> props, CompoundTag data) {
@@ -117,73 +137,73 @@ public record HologramLayer(
     public HologramLayer withProps(Map<String, String> props) {
         return new HologramLayer(kind, id, props, data, groupId, visible,
                 offsetX, offsetY, offsetZ, yaw, pitch, roll, scale,
-                spin, spinAxis, hover, hoverPeriod, fullbright, effects, particleRate, particleSpeed);
+                spin, spinAxis, hover, hoverPeriod, fullbright, effects, particleRate, particleSpeed, uid);
     }
 
     public HologramLayer withData(CompoundTag data) {
         return new HologramLayer(kind, id, props, data, groupId, visible,
                 offsetX, offsetY, offsetZ, yaw, pitch, roll, scale,
-                spin, spinAxis, hover, hoverPeriod, fullbright, effects, particleRate, particleSpeed);
+                spin, spinAxis, hover, hoverPeriod, fullbright, effects, particleRate, particleSpeed, uid);
     }
 
     public HologramLayer withGroupId(String groupId) {
         return new HologramLayer(kind, id, props, data, groupId, visible,
                 offsetX, offsetY, offsetZ, yaw, pitch, roll, scale,
-                spin, spinAxis, hover, hoverPeriod, fullbright, effects, particleRate, particleSpeed);
+                spin, spinAxis, hover, hoverPeriod, fullbright, effects, particleRate, particleSpeed, uid);
     }
 
     public HologramLayer withVisible(boolean visible) {
         return new HologramLayer(kind, id, props, data, groupId, visible,
                 offsetX, offsetY, offsetZ, yaw, pitch, roll, scale,
-                spin, spinAxis, hover, hoverPeriod, fullbright, effects, particleRate, particleSpeed);
+                spin, spinAxis, hover, hoverPeriod, fullbright, effects, particleRate, particleSpeed, uid);
     }
 
     public HologramLayer withOffset(float x, float y, float z) {
         return new HologramLayer(kind, id, props, data, groupId, visible,
                 x, y, z, yaw, pitch, roll, scale,
-                spin, spinAxis, hover, hoverPeriod, fullbright, effects, particleRate, particleSpeed);
+                spin, spinAxis, hover, hoverPeriod, fullbright, effects, particleRate, particleSpeed, uid);
     }
 
     public HologramLayer withRotation(float yaw, float pitch, float roll) {
         return new HologramLayer(kind, id, props, data, groupId, visible,
                 offsetX, offsetY, offsetZ, yaw, pitch, roll, scale,
-                spin, spinAxis, hover, hoverPeriod, fullbright, effects, particleRate, particleSpeed);
+                spin, spinAxis, hover, hoverPeriod, fullbright, effects, particleRate, particleSpeed, uid);
     }
 
     public HologramLayer withScale(float scale) {
         return new HologramLayer(kind, id, props, data, groupId, visible,
                 offsetX, offsetY, offsetZ, yaw, pitch, roll, scale,
-                spin, spinAxis, hover, hoverPeriod, fullbright, effects, particleRate, particleSpeed);
+                spin, spinAxis, hover, hoverPeriod, fullbright, effects, particleRate, particleSpeed, uid);
     }
 
     public HologramLayer withSpin(float spin, int spinAxis) {
         return new HologramLayer(kind, id, props, data, groupId, visible,
                 offsetX, offsetY, offsetZ, yaw, pitch, roll, scale,
-                spin, spinAxis, hover, hoverPeriod, fullbright, effects, particleRate, particleSpeed);
+                spin, spinAxis, hover, hoverPeriod, fullbright, effects, particleRate, particleSpeed, uid);
     }
 
     public HologramLayer withHover(float hover, float hoverPeriod) {
         return new HologramLayer(kind, id, props, data, groupId, visible,
                 offsetX, offsetY, offsetZ, yaw, pitch, roll, scale,
-                spin, spinAxis, hover, hoverPeriod, fullbright, effects, particleRate, particleSpeed);
+                spin, spinAxis, hover, hoverPeriod, fullbright, effects, particleRate, particleSpeed, uid);
     }
 
     public HologramLayer withFullbright(boolean fullbright) {
         return new HologramLayer(kind, id, props, data, groupId, visible,
                 offsetX, offsetY, offsetZ, yaw, pitch, roll, scale,
-                spin, spinAxis, hover, hoverPeriod, fullbright, effects, particleRate, particleSpeed);
+                spin, spinAxis, hover, hoverPeriod, fullbright, effects, particleRate, particleSpeed, uid);
     }
 
     public HologramLayer withEffects(List<HologramEffect> effects) {
         return new HologramLayer(kind, id, props, data, groupId, visible,
                 offsetX, offsetY, offsetZ, yaw, pitch, roll, scale,
-                spin, spinAxis, hover, hoverPeriod, fullbright, effects, particleRate, particleSpeed);
+                spin, spinAxis, hover, hoverPeriod, fullbright, effects, particleRate, particleSpeed, uid);
     }
 
     public HologramLayer withParticle(float rate, float speed) {
         return new HologramLayer(kind, id, props, data, groupId, visible,
                 offsetX, offsetY, offsetZ, yaw, pitch, roll, scale,
-                spin, spinAxis, hover, hoverPeriod, fullbright, effects, rate, speed);
+                spin, spinAxis, hover, hoverPeriod, fullbright, effects, rate, speed, uid);
     }
 
     public boolean resolvable() {
@@ -261,6 +281,8 @@ public record HologramLayer(
             tag.putBoolean("fullbright", true);
         if (!this.effects.isEmpty())
             tag.put("effects", HologramEffect.listToTag(this.effects));
+        if (!this.uid.isEmpty())
+            tag.putString("uid", this.uid);
         if (this.kind == Kind.PARTICLE) {
             tag.putFloat("rate", this.particleRate);
             tag.putFloat("speed", this.particleSpeed);
@@ -316,7 +338,7 @@ public record HologramLayer(
                     tag.getFloat("yaw"), tag.getFloat("pitch"), tag.getFloat("roll"),
                     scale, tag.getFloat("spin"), tag.getByte("spinAxis"),
                     tag.getFloat("hover"), hoverPeriod, tag.getBoolean("fullbright"),
-                    effects, rate, speed));
+                    effects, rate, speed, tag.getString("uid")));
         }
         return layers;
     }
