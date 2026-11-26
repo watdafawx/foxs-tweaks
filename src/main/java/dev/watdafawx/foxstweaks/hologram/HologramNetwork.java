@@ -78,8 +78,18 @@ public final class HologramNetwork {
         double distSq = Math.min(
                 player.distanceToSqr(Vec3.atCenterOf(stored.pos())),
                 player.distanceToSqr(stored.box().getCenter()));
-        if (distSq > square(Holograms.REACH + 8.0))
+        if (distSq > square(Holograms.REACH + 8.0)) {
+            // Live previews stream constantly while editing; only a real save/delete is worth saying out loud.
+            if (payload.action() != HologramActionPayload.Action.PREVIEW) {
+                int away = (int) Math.sqrt(distSq);
+                int limit = (int) (Holograms.REACH + 8.0);
+                LOG.warn("Hologram {} from {} refused ({}): player is {} blocks away, limit {}", stored.id(),
+                        player.getGameProfile().getName(), payload.action(), away, limit);
+                player.displayClientMessage(net.minecraft.network.chat.Component.literal(
+                        "Hologram change not saved: you were " + away + " blocks away (limit " + limit + ")"), false);
+            }
             return;
+        }
 
         if (payload.action() == HologramActionPayload.Action.DELETE) {
             Holograms.remove(level, id);
@@ -107,8 +117,18 @@ public final class HologramNetwork {
         }
 
         HologramSpec incoming = HologramSpec.fromTag(payload.spec());
-        if (incoming == null || !validStructures(incoming) || timelineProblem(incoming) != null)
+        String timelineProblem = incoming == null ? null : timelineProblem(incoming);
+        if (incoming == null || !validStructures(incoming) || timelineProblem != null) {
+            // Silent before: a refused save looked like Done working while the change vanished.
+            String reason = incoming == null ? "spec could not be read"
+                    : timelineProblem != null ? timelineProblem : "structure layer over the configured limits";
+            if (payload.action() != HologramActionPayload.Action.PREVIEW) {
+                LOG.warn("Hologram {} from {} refused: {}", stored.id(), player.getGameProfile().getName(), reason);
+                player.displayClientMessage(net.minecraft.network.chat.Component.literal(
+                        "Hologram change not saved: the data was refused by the server limits"), false);
+            }
             return;
+        }
 
         HologramSpec sanitized = incoming.at(stored.id(), stored.pos(), stored.owner(), stored.ownerName())
                 .withRenderDistance(Math.min(incoming.renderDistance(), ServerConfig.hologramsMaxRenderDistance()));
@@ -153,6 +173,8 @@ public final class HologramNetwork {
         level.playSound(null, pos, SoundEvents.AMETHYST_BLOCK_CHIME, SoundSource.BLOCKS, 0.7F, 1.2F);
         openEditor(player, created);
     }
+
+    private static final org.slf4j.Logger LOG = com.mojang.logging.LogUtils.getLogger();
 
     /** Editor packets are untrusted too: grabbing isn't the only way to submit layer data. */
     private static boolean validStructures(HologramSpec spec) {

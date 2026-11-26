@@ -148,6 +148,10 @@ public class FoxsTweaks {
         if (FMLEnvironment.dist.isClient() && !FMLEnvironment.production && Boolean.getBoolean("foxstweaks.hologramWebCheck"))
             dev.watdafawx.foxstweaks.client.dev.HologramWebCheck.install();
 
+        // Dev-only interactive QA driver (qa-cmd.txt); `build.bat runHologramQa` sets the property.
+        if (FMLEnvironment.dist.isClient() && !FMLEnvironment.production && Boolean.getBoolean("foxstweaks.hologramQa"))
+            dev.watdafawx.foxstweaks.client.dev.HologramQaDev.install();
+
         // Dev-only end-to-end check of hologram grab mode; `build.bat runHologramGrabCheck` sets the property.
         if (FMLEnvironment.dist.isClient() && !FMLEnvironment.production && Boolean.getBoolean("foxstweaks.hologramGrabCheck"))
             dev.watdafawx.foxstweaks.client.dev.HologramGrabCheck.install();

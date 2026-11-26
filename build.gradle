@@ -185,6 +185,14 @@ neoForge {
             systemProperty 'foxstweaks.hologramWebCheck', 'true'
         }
 
+        // Dev-only interactive QA driver (client/dev/HologramQaDev): flat world, then runs one-line commands from
+        // run-hologram-qa/qa-cmd.txt until told to quit. Put iris/sodium in run-hologram-qa/mods for shader QA.
+        hologramQa {
+            client()
+            gameDirectory = file('run-hologram-qa')
+            systemProperty 'foxstweaks.hologramQa', 'true'
+        }
+
         // Dev-only end-to-end check of hologram Grab Mode & entity NBT rendering (client/dev/HologramGrabCheck).
         // Report + screenshots land in run-hologram-grab/.
         hologramGrabCheck {

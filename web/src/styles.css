@@ -1484,6 +1484,38 @@ kbd {
   }
 }
 
+/* Below this the three columns no longer fit (the inspector and Save fell off the right edge):
+   stack the panels and let the page scroll instead. */
+@media (max-width: 720px) {
+  body {
+    overflow: auto;
+  }
+  .app {
+    height: auto;
+    min-height: 100%;
+  }
+  .topbar {
+    flex-wrap: wrap;
+    gap: 8px;
+    padding: 6px 12px;
+  }
+  .workspace {
+    grid-template-columns: minmax(0, 1fr);
+    grid-template-rows: auto;
+    grid-template-areas:
+      'left'
+      'center'
+      'right'
+      'time';
+  }
+  .left,
+  .center,
+  .right {
+    max-height: 70vh;
+    min-height: 200px;
+  }
+}
+
 ::-webkit-scrollbar {
   width: 10px;
   height: 10px;
