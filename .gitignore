@@ -28,3 +28,5 @@ run-hologram-creator/
 run-hologram-picker/
 run-hologram-web/
 run-config/
+
+/run-hologram-asset/

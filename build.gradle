@@ -157,6 +157,12 @@ neoForge {
         // Dev-only end-to-end check of holograms (client/dev/HologramCheck): creates, edits through the
         // real editor, saves and deletes, then covers ae2:controller if AE2 is present.
         // Report + screenshot land in run-hologram/.
+        hologramAssetCheck {
+            client()
+            gameDirectory = file('run-hologram-asset')
+            systemProperty 'foxstweaks.hologramAssetCheck', 'true'
+        }
+
         hologramCheck {
             client()
             gameDirectory = file('run-hologram')
