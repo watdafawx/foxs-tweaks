@@ -59,6 +59,8 @@ public final class HologramCreatorCheck {
     private static String hologramId = "";
     private static HologramScreen editor;
     private static int looksBefore;
+    private static int layersBefore;
+    private static Path droppedFile;
 
     public static void install() {
         NeoForge.EVENT_BUS.addListener(HologramCreatorCheck::onTick);
@@ -332,6 +334,56 @@ public final class HologramCreatorCheck {
                     "roll=" + creator().devPlace(5) + " x=" + creator().devPlace(0));
         });
         add(2, () -> guiScale(2));
+
+        // ---- Pictures: a dropped file uploads, shows in the library, and a click adds an image layer ----
+        add(2, () -> {
+            try {
+                Path png = Minecraft.getInstance().gameDirectory.toPath().resolve("foxstweaks-creator-check.png");
+                try (com.mojang.blaze3d.platform.NativeImage img = new com.mojang.blaze3d.platform.NativeImage(32, 32, false)) {
+                    for (int x = 0; x < 32; x++)
+                        for (int y = 0; y < 32; y++)
+                            img.setPixelRGBA(x, y, (x / 8 + y / 8) % 2 == 0 ? 0xFF2040FF : 0xFFFFFFFF);
+                    img.writeToFile(png);
+                }
+                droppedFile = png;
+            } catch (IOException e) {
+                check("test picture written", false, e.toString());
+            }
+            layersBefore = creator().devLayerCount();
+            click("Pictures", 0);
+            check("Pictures button opens the library",
+                    Minecraft.getInstance().screen instanceof dev.watdafawx.foxstweaks.client.HologramAssetScreen,
+                    String.valueOf(Minecraft.getInstance().screen));
+        });
+        add(30, () -> {
+            var s = (dev.watdafawx.foxstweaks.client.HologramAssetScreen) Minecraft.getInstance().screen;
+            check("library listing arrives", s != null && !s.devLoading(), "loading");
+            if (s != null)
+                s.onFilesDrop(List.of(droppedFile));
+        });
+        add(80, () -> {
+            var s = (dev.watdafawx.foxstweaks.client.HologramAssetScreen) Minecraft.getInstance().screen;
+            check("dropped picture uploads", s != null && s.devAssetCount() >= 1,
+                    s == null ? "no screen" : "count=" + s.devAssetCount() + " status=" + s.devStatus());
+        });
+        add(20, () -> shot("creator-s2-pictures.png"));
+        add(2, () -> guiScale(3));
+        add(14, () -> shot("creator-s3-pictures.png"));
+        add(2, () -> guiScale(2));
+        add(4, () -> {
+            var s = (dev.watdafawx.foxstweaks.client.HologramAssetScreen) Minecraft.getInstance().screen;
+            check("click adds the picture", s != null && s.devPickFirst(), "no tile");
+        });
+        add(6, () -> {
+            check("back in the Creator", creator() != null, String.valueOf(Minecraft.getInstance().screen));
+            if (creator() != null) {
+                check("an image layer was added", creator().devLayerCount() == layersBefore + 1, "layers=" + creator().devLayerCount());
+            }
+            try {
+                Files.deleteIfExists(droppedFile);
+            } catch (IOException ignored) {
+            }
+        });
 
         // ---- Studio and back: same instance, same edits ----
         add(6, () -> {

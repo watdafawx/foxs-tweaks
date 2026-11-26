@@ -4,6 +4,7 @@
 
 - **Simple (Creator) hologram editor now has the 3D handles.** Move, Rotate and Scale arrows/rings appear on the selected layer, dragged with the left mouse button like in the full editor. Mode buttons sit in a second row under the top bar; keys 1-4 switch (Move, Rotate, Scale, Off); Esc during a drag undoes it. Same gizmo code as the full editor, so the maths is identical.
 - **Simple editor: exact position and whole-hologram controls.** New collapsed **PLACE** section (X/Y/Z, yaw/pitch/roll sliders + Zero position; drag or scroll, Shift fine, Ctrl coarse) moves the same values as the handles. New **Whole hologram** row at the top of the layer list selects the root: place, Size, render Range and In-front preview for every layer at once, with the handles acting on it. Selected layer rows get ▲/▼ buttons to reorder. Not yet in the simple editor: groups, layer copy/paste, solo, blockstate properties.
+- **Pictures in game.** The simple editor has a new ▣ button in the layer header that opens the world's picture library as a grid; click one to add it as an image layer. Add new pictures without the web editor: drag a file onto the game window, or type a file path or an http(s) address and press Upload. Same server checks and size limits as the web upload (no automatic shrinking, so an oversized file is refused with the reason; use the web editor for that).
 
 ## 1.47.2
 

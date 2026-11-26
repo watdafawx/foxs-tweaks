@@ -348,6 +348,9 @@ public final class HologramCreatorScreen extends Screen {
         bx -= 16;
         iconButton(g, mx, my, bx, y - 3, 14, 13, "+", true,
                 "Browse blocks, mobs and particles (replace this layer or add one)", () -> this.editor.creatorOpenPicker(this));
+        bx -= 16;
+        iconButton(g, mx, my, bx, y - 3, 14, 13, "▣", layers.size() < HologramLayer.MAX_LAYERS,
+                "Pictures: add an image, GIF or video from this world's library, or upload one", this::openPictures);
         y += 14;
 
         // The whole hologram as one thing to move, turn and resize (the Studio's root).
@@ -1850,6 +1853,22 @@ public final class HologramCreatorScreen extends Screen {
         return false;
     }
 
+    private void openPictures() {
+        openPictures(null);
+    }
+
+    private void openPictures(String firstImport) {
+        if (this.minecraft != null)
+            this.minecraft.setScreen(new HologramAssetScreen(this.editor, this, firstImport));
+    }
+
+    /** A file dragged onto the window: open the picture library and upload it. */
+    @Override
+    public void onFilesDrop(java.util.List<java.nio.file.Path> files) {
+        if (!files.isEmpty() && this.editor.creatorLayers().size() < HologramLayer.MAX_LAYERS)
+            openPictures(files.get(0).toString());
+    }
+
     /** Dev checks: read and write the target through the bridge (it is package-private). */
     public String devGizmoMode() {
         return String.valueOf(this.editor.creatorGizmoMode());
@@ -1873,6 +1892,10 @@ public final class HologramCreatorScreen extends Screen {
 
     public void devSetTargetScale(float v) {
         this.editor.creatorSetTargetScale(v);
+    }
+
+    public int devLayerCount() {
+        return this.editor.creatorLayers().size();
     }
 
     /** Dev checks: free width between the two panels. */
