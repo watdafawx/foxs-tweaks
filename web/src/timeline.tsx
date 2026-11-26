@@ -20,7 +20,7 @@ import {
   trackKey,
 } from './anim';
 import { layerName } from './outliner';
-import { PH, REG, S, edit, goLive, newGesture, scrubTo, toast, togglePlay, useApp, usePlayhead } from './store';
+import { PH, REG, S, edit, goLive, newGesture, notify, scrubTo, toast, togglePlay, useApp, usePlayhead } from './store';
 import { ColorField, NumField, SelectField, Toggle } from './ui';
 
 // ---------------------------------------------------------------- module state (survives re-renders)
@@ -1177,7 +1177,7 @@ export function timelineKey(e: KeyboardEvent): boolean {
   }
   if (e.key === 'Escape') {
     selected = new Set();
-    S.spec && edit(() => {}, 'noop-' + newGesture());
+    notify();
     return true;
   }
   if (mod && key === 'c') {

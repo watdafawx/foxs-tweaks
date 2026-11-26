@@ -259,8 +259,10 @@ final class HologramWebJson {
             String uid = l.has("uid") && !l.get("uid").isJsonNull() ? str(l, "uid", 24) : "";
             if (!uid.isEmpty() && !GROUP_ID.matcher(uid).matches())
                 throw new Invalid("bad layer uid '" + uid + "'");
+            // A repeated uid (a layer copied as JSON, a v1 page duplicating one) is not an error: the first layer
+            // keeps it, so tracks stay where they were, and the spec gives the copy a fresh one.
             if (!uid.isEmpty() && !layerUids.add(uid))
-                throw new Invalid("duplicate layer uid '" + uid + "'");
+                uid = "";
             HologramLayer.Kind kind;
             try {
                 kind = HologramLayer.Kind.valueOf(str(l, "kind", 16));

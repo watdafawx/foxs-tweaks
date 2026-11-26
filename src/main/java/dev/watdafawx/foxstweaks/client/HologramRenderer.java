@@ -45,6 +45,9 @@ public final class HologramRenderer {
     private static int lastDrawn;
     private static int drawnBlockEntities;
     private static long lastPassNanos;
+    /** Dev check only: when set, layer 0 of this hologram records {keyed base yaw, motion yaw, final yaw, legacy spin + tremor}. */
+    public static volatile String devTraceId;
+    public static final float[] DEV_TRACE = new float[4];
     private static long lastAnimNanos;
     private static double animSeconds;
     private static final Matrix4f lastView = new Matrix4f();
@@ -432,6 +435,12 @@ public final class HologramRenderer {
         lAngleY += lm.ry();
         lAngleX += lm.rx();
         lAngleZ += lm.rz();
+        if (devTraceId != null && layerIndex == 0 && devTraceId.equals(spec.id())) {
+            DEV_TRACE[0] = baseYaw;
+            DEV_TRACE[1] = lm.ry();
+            DEV_TRACE[2] = lAngleY;
+            DEV_TRACE[3] = (layer.spinAxis() == HologramSpec.AXIS_Y ? lSpin : 0.0F) + lJitter;
+        }
         float offX = baseX + lGlitchX + lm.dx();
         float offY = baseY + lHover + lJump + lm.dy();
         float offZ = baseZ + lGlitchZ + lm.dz();
