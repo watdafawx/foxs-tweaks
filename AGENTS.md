@@ -1153,8 +1153,21 @@ rate limited, dies with the editor. The game stays the viewport and the authorit
 opaque key from what the session sent (a structure layer without its key is rejected). The Preact/Vite app's build output
 is committed under `assets/foxstweaks/web/`: after changing `web/src`, run `npm ci && npm run build` in `web/` and commit
 both. Dev check `runHologramWebCheck` (`run-hologram-web/`) speaks the real protocol over a socket. Protocol versions:
-2 timeline, 3 image layers and assets, 4 audio modulations and the meter (`HologramWebSession.PROTOCOL` and
+2 timeline, 3 image layers and assets, 4 audio modulations and the meter, 5 icons (`HologramWebSession.PROTOCOL` and
 `web/src/protocol.ts` must match). Planned next: WaterMedia when installed, audio tracks.
+
+**Icons (protocol 5).** `client/web/HologramWebIcons` draws the content browser's, outliner's and inspector's pictures:
+`icons {kind, ids}` -> one PNG sheet (64 px cells, 16 columns) + id -> cell map, request/answer like `assetThumb`, no
+streaming. Blocks and entities render on the render thread (`RenderFrameEvent.Post`, so never during the world pass) into a
+`TextureTarget` the size of the sheet, one viewport per cell, one read-back per request, 32 blocks / 6 entities per frame
+under a 4 ms cap; PNG encoding runs on a worker thread. Entities reuse `HologramPickerPreview.drawEntityUnclipped`: the
+picker's own `drawEntityIcon` scissors through `GuiGraphics.enableScissor`, which converts with the window's GUI scale and is
+wrong off-screen. Particles are a CPU copy of the first sprite frame (no GL) from the `TextureManager`'s particle atlas, not `Minecraft#getTextureAtlas`, which does not know it. `RenderTarget#clear` ends with `unbindWrite`, so `bindWrite` must come after it or the first frame's icons land in the window and the sheet cells stay blank. A failed type is logged once and mapped to
+`-1`, which the page shows as the old letter badge. The page side is `web/src/icons.tsx` (`Icon`: one `IntersectionObserver`,
+only on-screen tiles ask) + the cache and 120 ms debounced batching in `store.ts`; a page older than 5 never asks. Dev check:
+`runHologramWebCheck` requests diamond block, chest, pig, flame and more over the socket, decodes each sheet and asserts size,
+transparent background and colours; it writes `run-hologram-web/web-icons-{block,entity,particle}.png`. Not verified:
+shader packs (Iris may treat the off-screen target oddly), modded entity renderers.
 
 **Edit sessions** (`hologram/HologramEditSessions`). The save/delete/preview distance gate in `HologramNetwork.handle` is
 `BASE_LIMIT` (`REACH + 8` = 14) with no session, and `max(BASE_LIMIT, ServerConfig.hologramsEditRange())` while the

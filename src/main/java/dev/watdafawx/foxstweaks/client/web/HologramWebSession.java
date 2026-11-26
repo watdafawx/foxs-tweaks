@@ -51,8 +51,11 @@ import java.util.Objects;
 public final class HologramWebSession {
     private static final Logger LOG = LogUtils.getLogger();
 
-    /** 2: layer uids, the timeline, and the preview-only playhead message. 3: image layers and assets. 4: audio modulations and the meter. */
-    public static final int PROTOCOL = 4;
+    /**
+     * 2: layer uids, the timeline, and the preview-only playhead message. 3: image layers and assets. 4: audio
+     * modulations and the meter. 5: block, entity and particle icons rendered by the game ({@link HologramWebIcons}).
+     */
+    public static final int PROTOCOL = 5;
     /** Ticks with no screen at all (and no grab mode) after which the editor is treated as gone. */
     private static final int ORPHAN_TICKS = 100;
     private static final int MAX_DATA_KEYS = 128;
@@ -71,6 +74,7 @@ public final class HologramWebSession {
     private final WebEditor editor;
     private final WebServer server;
     private final HologramWebAssets assets = new HologramWebAssets((c, o) -> c.send(o.toString()));
+    private final HologramWebIcons icons = new HologramWebIcons();
     private boolean ended;
     private String endReason = "closed";
 
@@ -107,6 +111,7 @@ public final class HologramWebSession {
         NeoForge.EVENT_BUS.addListener(HologramWebSession::onTick);
         NeoForge.EVENT_BUS.addListener(HologramWebSession::onLogout);
         NeoForge.EVENT_BUS.addListener(HologramWebSession::onShutdown);
+        NeoForge.EVENT_BUS.addListener(HologramWebIcons::onRenderFrame);
         NeoForge.EVENT_BUS.addListener(HologramWebSession::onRegisterClientCommands);
     }
 
@@ -161,6 +166,7 @@ public final class HologramWebSession {
         this.ended = true;
         this.endReason = reason;
         this.assets.close();
+        this.icons.close();
         HologramTimelinePlayer.clearPlayhead();
         JsonObject closed = new JsonObject();
         closed.addProperty("type", "closed");
@@ -170,6 +176,10 @@ public final class HologramWebSession {
         LOG.info("Hologram web editor stopped ({})", reason);
         if (current == this)
             current = null;
+    }
+
+    HologramWebIcons icons() {
+        return this.icons;
     }
 
     public WebEditor editor() {
@@ -368,6 +378,7 @@ public final class HologramWebSession {
         caps.addProperty("maxKeys", ServerConfig.hologramTimelineMaxKeys());
         hello.add("timelineCaps", caps);
         hello.add("assetCaps", HologramWebAssets.capabilities());
+        hello.add("iconCaps", HologramWebIcons.capabilities());
         c.send(hello.toString());
 
         String spec = specJson();
@@ -419,7 +430,7 @@ public final class HologramWebSession {
             case "hello" -> {
             }
             default -> {
-                if (!this.assets.handle(c, type, msg, seq))
+                if (!this.assets.handle(c, type, msg, seq) && !this.icons.handle(c, type, msg, seq, this::error))
                     error(c, seq, "unknown", "unknown message type '" + truncate(type) + "'");
             }
         }

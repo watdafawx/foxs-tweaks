@@ -5,6 +5,7 @@ import { useMemo, useState } from 'preact/hooks';
 import type { Kind, Layer } from './protocol';
 import { S, edit, select } from './store';
 import { KIND_BADGE } from './outliner';
+import { Icon } from './icons';
 import { AssetLibrary, imageCapReached, imageHeight } from './library';
 
 interface Item {
@@ -193,7 +194,7 @@ function RegistryList({ kind }: { kind: Kind }) {
               onDblClick={() => !full && addLayer(kind, it.id)}
               title={it.id}
             >
-              <span class={`kind kind-${kind.toLowerCase()}`}>{KIND_BADGE[kind]}</span>
+              <Icon kind={kind} id={it.id} px={24} badge={KIND_BADGE[kind]} />
               <span class="item-name">{it.name}</span>
               <span class="item-id mono">{it.id}</span>
               {it.extra && <span class="chip">{it.extra}</span>}

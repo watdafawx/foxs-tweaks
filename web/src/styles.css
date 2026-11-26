@@ -1755,3 +1755,10 @@ kbd {
   margin: 0 4px;
   cursor: help;
 }
+
+/* An icon the game drew (protocol 5): a cell of its sheet, scaled by the component. */
+.kind-icon {
+  display: inline-block;
+  flex-shrink: 0;
+  background-repeat: no-repeat;
+}

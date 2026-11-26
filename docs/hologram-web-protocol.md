@@ -1,11 +1,11 @@
-# Hologram web editor protocol (version 3)
+# Hologram web editor protocol (version 5)
 
 The web editor is a second client of the in-game hologram editor. The game stays in charge: it owns the
 preview, undo history and saving, and it validates everything the browser sends. The browser only proposes
 whole specs and asks for actions.
 
 Code: `client/web/` (`WebServer`, `WebSocketConnection`, `HologramWebSession`, `HologramWebJson`,
-`HologramWebRegistries`, `HologramWebAssets`), `client/HologramWebBridge` (adapter to `HologramScreen`), browser app in `web/`.
+`HologramWebRegistries`, `HologramWebAssets`, `HologramWebIcons`), `client/HologramWebBridge` (adapter to `HologramScreen`), browser app in `web/`.
 
 ## Session
 
@@ -55,18 +55,23 @@ image layer's `props` as it got them, and it never sends asset messages.
 **Version 4** (1.44.0) adds audio modulations (effect `audio`, timeline `audio`) and the `meter` message. A version 2 or 3 page
 that sends back what it was given keeps them; one that rebuilds effects from scratch drops them.
 
+**Version 5** (after 1.44.2) adds `iconCaps` in `hello` and the `icons` message: block, entity and particle icons drawn by the game
+(see [Icons](#icons)). A version 2-4 page works unchanged; it never asks for icons and keeps its letter badges. A version 5
+page against an older game finds no `iconCaps` and does the same.
+
 ### Game -> browser
 
 | type | fields | when |
 |---|---|---|
-| `hello` | `protocol` (4), `mod`, `modVersion`, `minecraft`, `hologram` (id), `registries`, `timelineCaps` (`maxTracks`, `maxKeys`: this server's caps), `assetCaps` (v3, see [Assets](#assets)) | on connect |
+| `hello` | `protocol` (5), `mod`, `modVersion`, `minecraft`, `hologram` (id), `registries`, `timelineCaps` (`maxTracks`, `maxKeys`: this server's caps), `assetCaps` (v3, see [Assets](#assets)), `iconCaps` (v5, see [Icons](#icons)) | on connect |
 | `state` | `rev`, `ack`, `canUndo`, `canRedo`, `spec` | on connect, after every handled message, and whenever the spec changes in game |
 | `selection` | `kind` (`root`/`group`/`layer`), `layer`, `group`, `soloLayer`, `soloGroup` | on connect and when it changes |
-| `error` | `seq`, `code` (`invalid` incl. malformed JSON, `unknown` type, `rate`, `internal`; v3: `upload`, `assetThumb`), `message` | a message was refused |
+| `error` | `seq`, `code` (`invalid` incl. malformed JSON, `unknown` type, `rate`, `internal`; v3: `upload`, `assetThumb`; v5: `icons`), `message` | a message was refused |
 | `pong` | `seq` | answer to `ping` |
 | `playhead` | `seq`, `mode`, `time` | answer to `playhead` (no `state` follows: nothing in the spec changed) |
 | `assets` | v3: one library page, or `error` | answer to `assets` |
 | `assetThumb` | v3: `id`, `data` (`data:image/png;base64,...`) | answer to `assetThumb` |
+| `icons` | v5: `seq`, `kind`, `size`, `cols`, `width`, `height`, `cells`, `sheet` | answer to `icons`, once every icon of the request is drawn |
 | `uploadStarted`, `uploadAck`, `uploadProgress`, `uploadDone` | v3, see [Uploads](#uploads) | during an upload |
 | `meter` | v4: `source`, `level`, `bass`, `mid`, `high`, `beat` (each 0..1, 3 decimals), `system` (system audio status text) | once per client tick (20 Hz) while this connection asked for it; never carries samples |
 | `closed` | `reason` (`saved`, `cancelled`, `editor closed`, `left the world`, `game closed`, `replaced`, ...) | session ends |
@@ -95,6 +100,7 @@ Every message may carry `seq` (increasing integer); the game echoes it as `ack`.
 | `ping` | | `pong` |
 | `assets` | v3: `offset` | one page of this world's asset library |
 | `assetThumb` | v3: `id` | a small PNG of the asset's first frame |
+| `icons` | v5: `kind`, `ids` | draws icons for those ids, see [Icons](#icons). Carries a `seq` for matching the answer, but never holds back a `state` |
 | `upload`, `uploadChunk`, `uploadCancel` | v3, see [Uploads](#uploads) | uploads a file to the library |
 | `meter` | v4: `on` (bool), `source` (`AUTO`/`JUKEBOX`/`MUSIC`/`SYSTEM`, optional) | starts or stops the level stream for this connection. Sent without `seq` by the page, since nothing in the spec changes. Asking for it keeps the game's analysis awake (as an open audio panel in game does) |
 | `playhead` | `mode` (`play`/`pause`/`live`), `time` (0..600 s) | preview only, never saved: `pause` draws this hologram's timeline at `min(length, time)`; `play` runs it from `time` on real time in the clip's play mode; `live` hands the clock back to the game. Dropped when the session ends |
@@ -170,6 +176,34 @@ every value (`HologramImage#normalize`):
 An animation runs on the hologram's clock: the timeline's clip time when the hologram has a timeline (so the
 `playhead` message scrubs it too), otherwise game time. The timeline animates image layers like any other layer
 (offset, rotation, scale, visible, tint, effects).
+
+## Icons
+
+v5. The page shows the blocks, entities and particles of its lists with real pictures instead of letter badges. The game
+draws them (the page cannot: it has no textures, models or entity renderers); nothing is streamed, an icon is drawn
+once per request and the page keeps it for the session.
+
+`hello.iconCaps`: `available`, `size` (px per cell, 64), `maxIds` (per request, 256), `maxCols` (16) and `kinds`
+(`BLOCK`, `ENTITY`, `PARTICLE`). Absent on a game older than protocol 5.
+
+**Request.** `icons {seq, kind, ids}`: up to `maxIds` registry ids of one kind (duplicates and malformed ids are
+dropped). The page asks for what is on screen (it batches 64 and debounces scrolling) and never asks twice for an id it
+has an answer for. A connection may have 4 requests waiting; the 5th is refused with `error {code: "icons"}` and the page
+asks again later. Requests are answered in order, one after another.
+
+**Answer.** `icons {seq, kind, size, cols, width, height, cells, sheet}`:
+
+- `sheet` is a PNG data URL, `width` x `height` px, a grid of `cols` columns of `size` px cells, filled left to right,
+  top to bottom, transparent background. It is absent when nothing could be drawn.
+- `cells` maps every requested id to its cell index, or `-1` when the game cannot draw it (unknown id, a block with no
+  item, an entity or particle that failed or has no sprite, no world loaded). The page keeps its letter badge for `-1`.
+- Cell `n` is at column `n % cols`, row `n / cols`.
+
+**What is drawn.** Blocks: the block's item as the inventory draws it. Entities: the entity as the in-game picker draws it
+(a three-quarter view, scaled to fit), the first time the type is drawn this takes longer than an item. Particles: the first
+frame of the particle's first sprite from the particle atlas, scaled up without smoothing. Blocks and entities are rendered
+on the game's render thread into an off-screen target after each frame, a few per frame under a ~4 ms cap, so a page of 240
+icons arrives over several frames and never stalls one. The game logs a type that fails to draw once.
 
 ## Validation
 
