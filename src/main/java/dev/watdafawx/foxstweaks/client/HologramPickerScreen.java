@@ -94,7 +94,12 @@ public class HologramPickerScreen extends Screen {
     }
 
     private record Entry(HologramLayer.Kind kind, String id, String name, String ns, @Nullable Block block,
-                         @Nullable EntityType<?> type, ItemStack icon, String lower) {
+                         @Nullable EntityType<?> type, ItemStack icon, String lower,
+                         @Nullable ResourceLocation mobEffect) {
+        Entry(HologramLayer.Kind kind, String id, String name, String ns, @Nullable Block block,
+              @Nullable EntityType<?> type, ItemStack icon, String lower) {
+            this(kind, id, name, ns, block, type, icon, lower, null);
+        }
     }
 
     private interface Drag {
@@ -139,6 +144,7 @@ public class HologramPickerScreen extends Screen {
     private static List<Entry> BLOCKS;
     private static List<Entry> MOBS;
     private static List<Entry> PARTICLES;
+    private static List<Entry> EFFECTS;
     private static List<Block> BLOCK_LIST;
     private static final Map<String, Entry> INDEX = new HashMap<>();
     private static final Map<Block, Integer> SHAPE_FLAGS = new HashMap<>();
@@ -156,6 +162,7 @@ public class HologramPickerScreen extends Screen {
 
     // ---- view state
     private HologramLayer.Kind kind;
+    private boolean effectTab;
     private Collection collection = Collection.ALL;
     @Nullable
     private String modFilter;
@@ -274,14 +281,23 @@ public class HologramPickerScreen extends Screen {
 
         List<Entry> particles = new ArrayList<>();
         for (var entry : BuiltInRegistries.PARTICLE_TYPE.entrySet()) {
-            if (!(entry.getValue() instanceof SimpleParticleType))
-                continue;
             ResourceLocation key = entry.getKey().location();
+            if (!HologramParticles.isSupported(key, entry.getValue()))
+                continue;
             String name = key.getPath().replace('_', ' ');
             particles.add(new Entry(HologramLayer.Kind.PARTICLE, key.toString(), name, key.getNamespace(), null, null,
                     ItemStack.EMPTY, name.toLowerCase(Locale.ROOT)));
         }
         particles.sort(Comparator.comparing(Entry::id));
+
+        List<Entry> effects = new ArrayList<>();
+        for (var entry : BuiltInRegistries.MOB_EFFECT.entrySet()) {
+            ResourceLocation key = entry.getKey().location();
+            String name = entry.getValue().getDisplayName().getString();
+            effects.add(new Entry(HologramLayer.Kind.ENTITY, key.toString(), name, key.getNamespace(), null, null,
+                    ItemStack.EMPTY, name.toLowerCase(Locale.ROOT), key));
+        }
+        effects.sort(Comparator.comparing(Entry::name, String.CASE_INSENSITIVE_ORDER));
 
         for (List<Entry> list : List.of(blocks, mobs, particles)) {
             for (Entry e : list)
@@ -290,6 +306,7 @@ public class HologramPickerScreen extends Screen {
         BLOCK_LIST = List.copyOf(blockList);
         MOBS = List.copyOf(mobs);
         PARTICLES = List.copyOf(particles);
+        EFFECTS = List.copyOf(effects);
         BLOCKS = List.copyOf(blocks);
     }
 
@@ -435,7 +452,7 @@ public class HologramPickerScreen extends Screen {
     }
 
     private void updateHint() {
-        String hint = switch (this.kind) {
+        String hint = this.effectTab ? "search status effects (@mod)..." : switch (this.kind) {
             case ENTITY -> "search mobs (@mod $tag)...";
             case PARTICLE -> "search particles (@mod)...";
             default -> "search blocks (@mod #tip $tag)...";
@@ -446,6 +463,8 @@ public class HologramPickerScreen extends Screen {
     // ================================================================ filtering
 
     private List<Entry> baseList() {
+        if (this.effectTab)
+            return EFFECTS == null ? List.of() : EFFECTS;
         switch (this.collection) {
             case FAVOURITES:
                 return byIds(HologramPickerFavorites.favourites(this.kind));
@@ -559,9 +578,26 @@ public class HologramPickerScreen extends Screen {
 
     // ================================================================ state changes
 
-    private void setKind(HologramLayer.Kind next) {
-        if (next == this.kind)
+    private void setEffectTab() {
+        if (this.effectTab)
             return;
+        this.effectTab = true;
+        this.kind = HologramLayer.Kind.ENTITY;
+        this.modFilter = null;
+        this.hue = null;
+        this.shapeMask = 0;
+        this.scroll = 0;
+        this.rightScroll = 0;
+        this.dropdownOpen = false;
+        this.selected = null;
+        updateHint();
+        refilter(true);
+    }
+
+    private void setKind(HologramLayer.Kind next) {
+        if (!this.effectTab && next == this.kind)
+            return;
+        this.effectTab = false;
         this.kind = next;
         this.modFilter = null;
         this.hue = null;
@@ -686,6 +722,22 @@ public class HologramPickerScreen extends Screen {
         boolean forceNew = asNew || this.current == null;
         if (forceNew && this.editorLayerCount >= HologramLayer.MAX_LAYERS)
             return;
+        if (entry.mobEffect() != null) {
+            Map<String, String> chosen = new LinkedHashMap<>();
+            String targetEntity;
+            if (!forceNew && this.current != null && this.current.kind() == HologramLayer.Kind.ENTITY) {
+                targetEntity = this.current.id();
+                chosen.putAll(this.current.props());
+                chosen.put("effect", entry.id());
+            } else {
+                targetEntity = "minecraft:armor_stand";
+                chosen.put("effect", entry.id());
+                chosen.put("invisible", "true");
+            }
+            this.editor.applyPickerChoice(HologramLayer.Kind.ENTITY, targetEntity, chosen, forceNew);
+            this.minecraft.setScreen(this.returnTo);
+            return;
+        }
         HologramPickerFavorites.addRecent(entry.kind(), entry.id());
         Map<String, String> chosen = entry.kind() == HologramLayer.Kind.BLOCK
                 ? new LinkedHashMap<>(this.props) : Map.of();
@@ -949,9 +1001,12 @@ public class HologramPickerScreen extends Screen {
         for (int i = 0; i < kinds.length; i++) {
             HologramLayer.Kind k = kinds[i];
             String count = String.valueOf(all(k).size());
-            row(g, mx, my, x + 4, y, w - 8, names[i], count, this.kind == k, "tab:" + k.name(), () -> setKind(k));
+            row(g, mx, my, x + 4, y, w - 8, names[i], count, !this.effectTab && this.kind == k, "tab:" + k.name(), () -> setKind(k));
             y += 16;
         }
+        row(g, mx, my, x + 4, y, w - 8, "Effects", String.valueOf(EFFECTS == null ? 0 : EFFECTS.size()),
+                this.effectTab, "tab:EFFECTS", this::setEffectTab);
+        y += 16;
 
         y += 6;
         g.drawString(this.font, "COLLECTIONS", x + 8, y, DIMMED, false);
@@ -1183,7 +1238,13 @@ public class HologramPickerScreen extends Screen {
         switch (e.kind()) {
             case BLOCK -> drawStack(g, e.icon(), x + 4, y + 2);
             case ENTITY -> {
-                if (!e.icon().isEmpty()) {
+                if (e.mobEffect() != null) {
+                    var holder = BuiltInRegistries.MOB_EFFECT.getHolder(e.mobEffect()).orElse(null);
+                    if (holder != null && this.minecraft != null) {
+                        var sprite = this.minecraft.getMobEffectTextures().get(holder);
+                        g.blit(x + 5, y + 3, 0, 18, 18, sprite);
+                    }
+                } else if (!e.icon().isEmpty()) {
                     drawStack(g, e.icon(), x + 4, y + 2);
                 } else {
                     String letters = e.name().length() >= 2 ? e.name().substring(0, 2) : e.name();
@@ -1339,6 +1400,15 @@ public class HologramPickerScreen extends Screen {
                     drawBlock3d(g, state, e.block(), x + w / 2.0F, y + h / 2.0F, size * 0.58F, this.yaw, this.pitch);
             }
             case ENTITY -> {
+                if (e.mobEffect() != null) {
+                    var holder = BuiltInRegistries.MOB_EFFECT.getHolder(e.mobEffect()).orElse(null);
+                    if (holder != null && this.minecraft != null) {
+                        var sprite = this.minecraft.getMobEffectTextures().get(holder);
+                        int ps = Math.min(size, 54);
+                        g.blit(x + (w - ps) / 2, y + (h - ps) / 2, 0, ps, ps, sprite);
+                    }
+                    break;
+                }
                 // A little inside the box: wide models (squids, dragons) otherwise touch the scissor edge.
                 int fit = Math.round(size * 0.86F);
                 int ex = x + (w - fit) / 2;

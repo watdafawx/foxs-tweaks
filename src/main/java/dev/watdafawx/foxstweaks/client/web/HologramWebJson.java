@@ -345,9 +345,16 @@ final class HologramWebJson {
                 case ENTITY -> {
                     if (!BuiltInRegistries.ENTITY_TYPE.containsKey(key))
                         throw new Invalid("unknown entity '" + id + "'");
+                    if (l.has("props") && l.get("props").isJsonObject()) {
+                        JsonObject p = l.getAsJsonObject("props");
+                        if (p.has("effect"))
+                            props.put("effect", asStr(p.get("effect"), "entity effect", 128));
+                        if (p.has("invisible"))
+                            props.put("invisible", asStr(p.get("invisible"), "entity invisible", 8));
+                    }
                 }
                 case PARTICLE -> {
-                    if (!(BuiltInRegistries.PARTICLE_TYPE.getOptional(key).orElse(null) instanceof SimpleParticleType))
+                    if (!BuiltInRegistries.PARTICLE_TYPE.containsKey(key))
                         throw new Invalid("unknown or unsupported particle '" + id + "'");
                 }
                 case IMAGE, MODEL -> {

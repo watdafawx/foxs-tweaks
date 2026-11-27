@@ -111,7 +111,7 @@ final class HologramWebRegistries {
 
         JsonArray particles = new JsonArray();
         BuiltInRegistries.PARTICLE_TYPE.entrySet().stream()
-                .filter(e -> e.getValue() instanceof SimpleParticleType)
+                .filter(e -> dev.watdafawx.foxstweaks.client.HologramParticles.isSupported(e.getKey().location(), e.getValue()))
                 .map(e -> e.getKey().location().toString())
                 .sorted()
                 .forEach(particles::add);

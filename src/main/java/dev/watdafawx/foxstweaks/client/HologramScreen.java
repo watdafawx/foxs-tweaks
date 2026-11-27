@@ -2063,7 +2063,7 @@ public class HologramScreen extends Screen {
     private static List<String> allParticles() {
         if (ALL_PARTICLES == null) {
             ALL_PARTICLES = BuiltInRegistries.PARTICLE_TYPE.entrySet().stream()
-                    .filter(entry -> entry.getValue() instanceof SimpleParticleType)
+                    .filter(entry -> HologramParticles.isSupported(entry.getKey().location(), entry.getValue()))
                     .map(entry -> entry.getKey().location().toString())
                     .sorted().toList();
         }

@@ -32,49 +32,70 @@ import java.util.Set;
 public final class HologramEntities {
     private static final CompoundTag EMPTY_DATA = new CompoundTag();
 
-    private record Entry(String id, CompoundTag data, Entity entity) {}
+    private record Entry(String id, CompoundTag data, Map<String, String> props, Entity entity) {}
 
     private static final Map<Object, Entry> CACHE = new java.util.LinkedHashMap<>(256, 0.75F, true);
     private static final Set<Entity> FAILED_INSTANCES = Collections.newSetFromMap(new IdentityHashMap<>());
 
     @Nullable
     public static Entity get(HologramLayer layer, double x, double y, double z, float yawDegrees, float seconds) {
-        return get(layer, layer.id(), layer.data(), x, y, z, yawDegrees, seconds);
+        return get(layer, layer.id(), layer.data(), layer.props(), x, y, z, yawDegrees, seconds);
     }
 
     /** World layers use owner + layer uid, so duplicated holograms never share animation controllers. */
     @Nullable
     public static Entity get(String owner, HologramLayer layer, double x, double y, double z, float yawDegrees, float seconds) {
-        return get(owner + ":" + layer.uid(), layer.id(), layer.data(), x, y, z, yawDegrees, seconds);
+        return get(owner + ":" + layer.uid(), layer.id(), layer.data(), layer.props(), x, y, z, yawDegrees, seconds);
     }
 
     @Nullable
     public static Entity getById(String id, double x, double y, double z, float yawDegrees, float seconds) {
-        return get(id, id, EMPTY_DATA, x, y, z, yawDegrees, seconds);
+        return get(id, id, EMPTY_DATA, Map.of(), x, y, z, yawDegrees, seconds);
     }
 
     @Nullable
-    private static Entity get(Object key, String id, CompoundTag data, double x, double y, double z, float yaw, float seconds) {
+    private static Entity get(Object key, String id, CompoundTag data, Map<String, String> props,
+                              double x, double y, double z, float yaw, float seconds) {
         Entry entry = CACHE.get(key);
-        if (entry == null || !entry.id().equals(id) || !entry.data().equals(data)) {
+        if (entry == null || !entry.id().equals(id) || !entry.data().equals(data) || !entry.props().equals(props)) {
             if (entry != null)
                 FAILED_INSTANCES.remove(entry.entity());
 
             Entity entity = createEntity(id);
             if (entity != null && !data.isEmpty())
                 applyCapturedData(entity, data);
+            if (entity != null && !props.isEmpty())
+                applyEntityProps(entity, props);
 
             if (CACHE.size() >= 256) {
                 Object oldest = CACHE.keySet().iterator().next();
                 FAILED_INSTANCES.remove(CACHE.remove(oldest).entity());
             }
-            entry = new Entry(id, data.copy(), entity);
+            entry = new Entry(id, data.copy(), Map.copyOf(props), entity);
             CACHE.put(key, entry);
         }
         if (entry.entity() == null || FAILED_INSTANCES.contains(entry.entity()))
             return null;
 
         return prepareFrame(entry.entity(), x, y, z, yaw, seconds);
+    }
+
+    private static void applyEntityProps(Entity entity, Map<String, String> props) {
+        if ("true".equalsIgnoreCase(props.get("invisible")))
+            entity.setInvisible(true);
+        String effectRaw = props.get("effect");
+        if (effectRaw != null && !effectRaw.isEmpty() && entity instanceof LivingEntity living) {
+            ResourceLocation loc = ResourceLocation.tryParse(effectRaw);
+            if (loc != null) {
+                BuiltInRegistries.MOB_EFFECT.getHolder(loc).ifPresent(holder -> {
+                    try {
+                        living.forceAddEffect(new net.minecraft.world.effect.MobEffectInstance(
+                                holder, 20 * 60 * 60, 0, false, true, true), null);
+                    } catch (Throwable ignored) {
+                    }
+                });
+            }
+        }
     }
 
     @Nullable
@@ -238,7 +259,7 @@ public final class HologramEntities {
         Entry entry = CACHE.get(id);
         if (entry != null) {
             FAILED_INSTANCES.remove(entry.entity());
-            CACHE.put(id, new Entry(id, entry.data(), null));
+            CACHE.put(id, new Entry(id, entry.data(), entry.props(), null));
         }
     }
 

@@ -1,5 +1,10 @@
 # Changelog
 
+## 1.53.0
+
+- **Parameterized modded & vanilla particles in holograms.** The Particle picker now unlocks parameterized `ParticleType`s (vanilla `dust`, `dust_color_transition`, `entity_effect`, `block`, `item`, plus modded spell/attack particles from Relics, Cataclysm, Iron's Spellbooks, Ars Nouveau, etc.) using default or layer-tinted options.
+- **Status Effect (`MobEffect`) overlays & auras in the Hologram Picker.** New **Effects** tab listing every registered `MobEffect` with its icon: adding one creates a standalone invisible-body aura (so status-effect visuals like spinning stun stars or purple fire can float on their own or attach to a player), and replacing on an existing mob layer applies the effect directly onto that mob.
+
 ## 1.52.1
 
 - **Hologram Picker (right-click air with the Hologram Wand or press the new Open Hologram Picker key).** Lists holograms attached to you at the top (even when hidden in first person) and nearby holograms within 32 m sorted by distance, with a search box, a **Nearby 32m / All in dim** toggle, and one-click **Edit**, **Attach / Detach**, and 2-click **Del** actions.

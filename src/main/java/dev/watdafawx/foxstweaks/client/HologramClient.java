@@ -266,7 +266,15 @@ public final class HologramClient {
                 var key = ResourceLocation.tryParse(layer.id());
                 if (key == null)
                     continue;
-                if (!(BuiltInRegistries.PARTICLE_TYPE.get(key) instanceof SimpleParticleType simple))
+                int tintRgb = -1;
+                for (HologramEffect fx : lFx) {
+                    if (fx.type() == HologramEffect.Type.TINT || fx.type() == HologramEffect.Type.GRADIENT) {
+                        tintRgb = fx.color();
+                        break;
+                    }
+                }
+                var particleOpt = HologramParticles.resolve(key, tintRgb);
+                if (particleOpt == null)
                     continue;
 
                 // Expected particles this tick = rate / 20.0
@@ -306,7 +314,7 @@ public final class HologramClient {
                 double vy = layer.particleSpeed();
 
                 for (int p = 0; p < count; p++) {
-                    mc.level.addParticle(simple,
+                    mc.level.addParticle(particleOpt,
                             posBuf.x + (mc.level.random.nextDouble() - 0.5) * 2.0 * spread,
                             posBuf.y + (mc.level.random.nextDouble() - 0.5) * 2.0 * spread,
                             posBuf.z + (mc.level.random.nextDouble() - 0.5) * 2.0 * spread,
