@@ -16,14 +16,19 @@ import net.minecraft.resources.ResourceLocation;
 import net.minecraft.util.Mth;
 import org.lwjgl.glfw.GLFW;
 
+import javax.annotation.Nullable;
 import java.nio.file.Path;
 import java.util.ArrayList;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Locale;
+import java.util.Set;
+import java.util.TreeSet;
 
 /**
- * The world's asset library (pictures, GIFs, converted videos, 3D models) plus keyless online CDN lookup
- * (Openverse Images/GIFs, Khronos glTF-Sample-Assets, Poly Haven CC0 3D models).
+ * The world's asset library (pictures, GIFs, converted videos, 3D models) with folders &amp; drag-and-drop,
+ * drop-a-{@code .zip} pack browser, and keyless online CDN lookup (Wallhaven, Wikimedia Commons, Openverse,
+ * Khronos glTF-Sample-Assets, Poly Haven CC0).
  *
  * <p>It owns no hologram state: it only calls {@link HologramScreen#creatorAddLayer} and goes back to its caller.
  */
@@ -32,6 +37,8 @@ public final class HologramAssetScreen extends Screen {
     private static final int PANEL_EDGE = 0xFF1E2733;
     private static final int TILE = 0xFF121A24;
     private static final int TILE_HOVER = 0xFF1B2735;
+    private static final int FOLDER_BG = 0xFF1A222E;
+    private static final int FOLDER_GOLD = 0xFFE6B450;
     private static final int ACCENT = 0xFF4CC9F0;
     private static final int TEXT = 0xFFE8EDF5;
     private static final int MUTED = 0xFF8B97A8;
@@ -46,7 +53,23 @@ public final class HologramAssetScreen extends Screen {
 
     private static final String[] TABS = { "World", "Images", "GIFs", "3D" };
 
+    /** Empty user-created folders kept across screen opens in the current session. */
+    private static final Set<String> EMPTY_FOLDERS = new LinkedHashSet<>();
+
     private record Asset(String id, String name, String type, int width, int height, int frames) {
+        String folder() {
+            int slash = this.name.indexOf('/');
+            return slash > 0 ? this.name.substring(0, slash) : "";
+        }
+
+        String displayName() {
+            int slash = this.name.indexOf('/');
+            String base = slash > 0 ? this.name.substring(slash + 1) : this.name;
+            return base.isEmpty() ? this.id.substring(0, Math.min(8, this.id.length())) : base;
+        }
+    }
+
+    private record GridItem(@Nullable String folder, boolean back, @Nullable Asset asset) {
     }
 
     private final HologramScreen editor;
@@ -56,9 +79,16 @@ public final class HologramAssetScreen extends Screen {
 
     private int activeTab = 0; // 0 = World, 1 = Images, 2 = GIFs, 3 = 3D
     private HologramPackZip.Pack activePack = null;
+    private String currentFolder = "";
+    private boolean creatingFolder = false;
     private List<HologramAssetSearch.Result> onlineResults = List.of();
     private boolean onlineLoading = false;
     private String lastOnlineKey = "";
+
+    @Nullable
+    private Asset dragAsset;
+    private double dragStartX, dragStartY;
+    private boolean dragging;
 
     private EditBox source;
     private EditBox search;
@@ -100,8 +130,8 @@ public final class HologramAssetScreen extends Screen {
         this.addRenderableWidget(this.source);
 
         int searchX = tabEndX() + 6;
-        int goW = 24;
-        int searchW = Math.max(60, this.px1 - 8 - goW - 4 - searchX);
+        int rightBtnW = 42;
+        int searchW = Math.max(54, this.px1 - 8 - rightBtnW - 4 - searchX);
         String keepSearch = this.search == null ? "" : this.search.getValue();
         this.search = new EditBox(this.font, searchX, this.py0 + 4, searchW, 14, Component.literal("Search"));
         this.search.setMaxLength(64);
@@ -136,14 +166,22 @@ public final class HologramAssetScreen extends Screen {
         return tabX(TABS.length - 1) + tabW(TABS.length - 1);
     }
 
-    private int goBtnX() {
-        return this.px1 - 8 - 24;
+    private int rightBtnX() {
+        return this.px1 - 8 - 42;
     }
 
     private void selectTab(int tab) {
         this.activePack = null;
-        if (tab == this.activeTab)
+        this.creatingFolder = false;
+        this.dragAsset = null;
+        this.dragging = false;
+        if (tab == this.activeTab) {
+            if (tab == 0 && !this.currentFolder.isEmpty()) {
+                this.currentFolder = "";
+                this.scroll = 0;
+            }
             return;
+        }
         this.activeTab = tab;
         this.scroll = 0;
         this.pendingDelete = "";
@@ -259,9 +297,88 @@ public final class HologramAssetScreen extends Screen {
             } catch (RuntimeException ignored) {
             }
         }
-        boolean started = HologramAssetImport.start(text, uploadListener(true));
+        boolean started = HologramAssetImport.start(text, this.currentFolder, uploadListener(true));
         if (!started)
             say("Another upload is still running", BAD);
+    }
+
+    private void beginCreateFolder() {
+        this.creatingFolder = true;
+        this.activePack = null;
+        this.activeTab = 0;
+        if (this.source != null) {
+            this.source.setValue("");
+            this.source.setHint(Component.literal("Folder name (Enter to create)"));
+            this.setFocused(this.source);
+            this.source.setFocused(true);
+        }
+        say("Type a folder name below and press Enter (or click Create).", ACCENT);
+    }
+
+    private void confirmCreateFolder() {
+        String raw = this.source == null ? "" : this.source.getValue();
+        String clean = HologramPackZip.cleanFolderName(raw);
+        this.creatingFolder = false;
+        if (this.source != null) {
+            this.source.setValue("");
+            this.source.setHint(Component.literal("File path or http(s) address"));
+        }
+        if (clean.isEmpty()) {
+            say("Folder name cannot be empty.", BAD);
+            return;
+        }
+        EMPTY_FOLDERS.add(clean);
+        this.currentFolder = "";
+        this.scroll = 0;
+        say("Created folder '" + clean + "'. Drag assets onto it to organize.", GOOD);
+    }
+
+    private void moveAssetToFolder(Asset asset, String targetFolder) {
+        String clean = HologramPackZip.cleanFolderName(targetFolder);
+        String base = asset.displayName();
+        String newName = clean.isEmpty() ? base : clean + "/" + base;
+        if (newName.equals(asset.name()))
+            return;
+        HologramAssets.requestRename(asset.id(), newName, err -> {
+            if (err == null) {
+                say(clean.isEmpty() ? "Moved '" + base + "' to root." : "Moved '" + base + "' into " + clean + ".", GOOD);
+                reload();
+            } else {
+                say(err, BAD);
+            }
+        });
+    }
+
+    private void deleteFolder(String folder) {
+        EMPTY_FOLDERS.remove(folder);
+        List<Asset> inside = new ArrayList<>();
+        for (Asset a : this.assets) {
+            if (folder.equals(a.folder()))
+                inside.add(a);
+        }
+        if (inside.isEmpty()) {
+            say("Removed empty folder '" + folder + "'.", GOOD);
+            return;
+        }
+        say("Moving " + inside.size() + " asset(s) from '" + folder + "' to root...", MUTED);
+        moveNextToRoot(inside, 0, folder);
+    }
+
+    private void moveNextToRoot(List<Asset> list, int idx, String folder) {
+        if (idx >= list.size()) {
+            say("Deleted folder '" + folder + "' (assets moved to root).", GOOD);
+            reload();
+            return;
+        }
+        Asset a = list.get(idx);
+        HologramAssets.requestRename(a.id(), a.displayName(), err -> {
+            if (err != null) {
+                say(err, BAD);
+                reload();
+            } else {
+                moveNextToRoot(list, idx + 1, folder);
+            }
+        });
     }
 
     private void openZipPack(Path zipPath) {
@@ -277,7 +394,7 @@ public final class HologramAssetScreen extends Screen {
                         this.scroll = 0;
                         if (this.search != null)
                             this.search.setValue("");
-                        say(pack.entries().size() + " models in " + pack.packName() + ". Click any model to import.", GOOD);
+                        say(pack.entries().size() + " models in " + pack.packName() + ". Click to import into folder.", GOOD);
                     }
                 });
             } catch (Exception e) {
@@ -380,6 +497,46 @@ public final class HologramAssetScreen extends Screen {
         return out;
     }
 
+    private int countInFolder(String folder) {
+        int n = 0;
+        for (Asset a : this.assets)
+            if (folder.equals(a.folder()))
+                n++;
+        return n;
+    }
+
+    private List<GridItem> worldGridItems() {
+        String q = this.search == null ? "" : this.search.getValue().trim().toLowerCase(Locale.ROOT);
+        List<GridItem> out = new ArrayList<>();
+        if (!q.isEmpty()) {
+            for (Asset a : visible())
+                out.add(new GridItem(null, false, a));
+            return out;
+        }
+        if (this.currentFolder.isEmpty()) {
+            Set<String> folders = new TreeSet<>(String.CASE_INSENSITIVE_ORDER);
+            folders.addAll(EMPTY_FOLDERS);
+            for (Asset a : this.assets) {
+                String f = a.folder();
+                if (!f.isEmpty())
+                    folders.add(f);
+            }
+            for (String f : folders)
+                out.add(new GridItem(f, false, null));
+            for (Asset a : this.assets) {
+                if (a.folder().isEmpty())
+                    out.add(new GridItem(null, false, a));
+            }
+        } else {
+            out.add(new GridItem(null, true, null));
+            for (Asset a : this.assets) {
+                if (this.currentFolder.equals(a.folder()))
+                    out.add(new GridItem(null, false, a));
+            }
+        }
+        return out;
+    }
+
     private int tileX(int index) {
         return this.px0 + 8 + (index % this.cols) * (CELL + GAP);
     }
@@ -389,15 +546,17 @@ public final class HologramAssetScreen extends Screen {
     }
 
     private int contentHeight() {
-        int count = this.activePack != null ? visiblePackEntries().size() : (this.activeTab == 0 ? visible().size() : this.onlineResults.size());
+        int count = this.activePack != null ? visiblePackEntries().size()
+                : (this.activeTab == 0 ? worldGridItems().size() : this.onlineResults.size());
         int rows = (count + this.cols - 1) / this.cols;
         return rows * (CELL + LABEL + GAP);
     }
 
-    private Asset tileAt(double mx, double my) {
-        if (this.activeTab != 0 || my < this.gridTop || my >= this.gridBottom)
+    @Nullable
+    private GridItem worldItemAt(double mx, double my) {
+        if (this.activeTab != 0 || this.activePack != null || my < this.gridTop || my >= this.gridBottom)
             return null;
-        List<Asset> list = visible();
+        List<GridItem> list = worldGridItems();
         for (int i = 0; i < list.size(); i++) {
             int x = tileX(i);
             int y = tileY(i);
@@ -408,7 +567,7 @@ public final class HologramAssetScreen extends Screen {
     }
 
     private HologramAssetSearch.Result onlineTileAt(double mx, double my) {
-        if (this.activeTab == 0 || my < this.gridTop || my >= this.gridBottom)
+        if (this.activeTab == 0 || this.activePack != null || my < this.gridTop || my >= this.gridBottom)
             return null;
         for (int i = 0; i < this.onlineResults.size(); i++) {
             int x = tileX(i);
@@ -423,11 +582,25 @@ public final class HologramAssetScreen extends Screen {
     public boolean mouseClicked(double mx, double my, int button) {
         if (super.mouseClicked(mx, my, button))
             return true;
-        if (button == 1 && this.activeTab == 0) {
-            Asset d = tileAt(mx, my);
+        if (button == 1 && this.activeTab == 0 && this.activePack == null) {
+            GridItem gi = worldItemAt(mx, my);
+            if (gi == null || gi.back())
+                return false;
+            if (gi.folder() != null) {
+                String key = "folder:" + gi.folder();
+                if (!key.equals(this.pendingDelete)) {
+                    this.pendingDelete = key;
+                    say("Delete folder '" + gi.folder() + "'? Right-click again (assets move to root).", BAD);
+                } else {
+                    this.pendingDelete = "";
+                    deleteFolder(gi.folder());
+                }
+                return true;
+            }
+            Asset d = gi.asset();
             if (d == null)
                 return false;
-            String label = d.name().isEmpty() ? d.id().substring(0, 8) : d.name();
+            String label = d.displayName();
             if (!d.id().equals(this.pendingDelete)) {
                 this.pendingDelete = d.id();
                 say("Delete " + label + "? Right-click it again to confirm.", BAD);
@@ -455,20 +628,26 @@ public final class HologramAssetScreen extends Screen {
                     return true;
                 }
             }
-            if (this.activeTab > 0 && mx >= goBtnX() && mx < goBtnX() + 24) {
-                triggerOnlineSearch(true);
+            if (mx >= rightBtnX() && mx < rightBtnX() + 42) {
+                if (this.activeTab > 0)
+                    triggerOnlineSearch(true);
+                else
+                    beginCreateFolder();
                 return true;
             }
         }
-        if (mx >= streamX() && mx < streamX() + 48 && my >= this.py1 - 37 && my < this.py1 - 21) {
+        if (!this.creatingFolder && mx >= streamX() && mx < streamX() + 48 && my >= this.py1 - 37 && my < this.py1 - 21) {
             startStream(this.source.getValue());
             return true;
         }
         if (mx >= uploadX() && mx < uploadX() + 48 && my >= this.py1 - 37 && my < this.py1 - 21) {
-            if (this.canUpload)
+            if (this.creatingFolder) {
+                confirmCreateFolder();
+            } else if (this.canUpload) {
                 startImport(this.source.getValue());
-            else
+            } else {
                 say("This server does not let you upload", BAD);
+            }
             return true;
         }
         if (this.activePack != null) {
@@ -484,12 +663,26 @@ public final class HologramAssetScreen extends Screen {
             return false;
         }
         if (this.activeTab == 0) {
-            Asset a = tileAt(mx, my);
-            if (a != null) {
-                if (this.editor != null)
-                    this.editor.creatorAddLayer("MODEL".equals(a.type()) ? HologramLayer.model(a.id(), 0.0F) : HologramLayer.image(a.id(), 0.0F));
-                onClose();
-                return true;
+            GridItem gi = worldItemAt(mx, my);
+            if (gi != null) {
+                if (gi.back()) {
+                    this.currentFolder = "";
+                    this.scroll = 0;
+                    return true;
+                }
+                if (gi.folder() != null) {
+                    this.currentFolder = gi.folder();
+                    this.scroll = 0;
+                    this.pendingDelete = "";
+                    return true;
+                }
+                if (gi.asset() != null) {
+                    this.dragAsset = gi.asset();
+                    this.dragStartX = mx;
+                    this.dragStartY = my;
+                    this.dragging = false;
+                    return true;
+                }
             }
         } else {
             HologramAssetSearch.Result r = onlineTileAt(mx, my);
@@ -502,6 +695,40 @@ public final class HologramAssetScreen extends Screen {
     }
 
     @Override
+    public boolean mouseDragged(double mx, double my, int button, double dx, double dy) {
+        if (button == 0 && this.dragAsset != null) {
+            if (!this.dragging && Math.hypot(mx - this.dragStartX, my - this.dragStartY) > 5.0)
+                this.dragging = true;
+            return true;
+        }
+        return super.mouseDragged(mx, my, button, dx, dy);
+    }
+
+    @Override
+    public boolean mouseReleased(double mx, double my, int button) {
+        if (button == 0 && this.dragAsset != null) {
+            Asset dropped = this.dragAsset;
+            boolean wasDrag = this.dragging;
+            this.dragAsset = null;
+            this.dragging = false;
+            if (wasDrag) {
+                GridItem target = worldItemAt(mx, my);
+                if (target != null && target.folder() != null)
+                    moveAssetToFolder(dropped, target.folder());
+                else if (target != null && target.back())
+                    moveAssetToFolder(dropped, "");
+                return true;
+            }
+            if (this.editor != null)
+                this.editor.creatorAddLayer("MODEL".equals(dropped.type())
+                        ? HologramLayer.model(dropped.id(), 0.0F) : HologramLayer.image(dropped.id(), 0.0F));
+            onClose();
+            return true;
+        }
+        return super.mouseReleased(mx, my, button);
+    }
+
+    @Override
     public boolean mouseScrolled(double mx, double my, double dx, double dy) {
         double max = Math.max(0, contentHeight() - (this.gridBottom - this.gridTop));
         this.scroll = Mth.clamp(this.scroll - dy * 24, 0, max);
@@ -510,9 +737,20 @@ public final class HologramAssetScreen extends Screen {
 
     @Override
     public boolean keyPressed(int key, int scan, int mods) {
+        if (key == GLFW.GLFW_KEY_ESCAPE && this.creatingFolder) {
+            this.creatingFolder = false;
+            if (this.source != null) {
+                this.source.setValue("");
+                this.source.setHint(Component.literal("File path or http(s) address"));
+            }
+            say("", MUTED);
+            return true;
+        }
         if (key == GLFW.GLFW_KEY_ENTER || key == GLFW.GLFW_KEY_KP_ENTER) {
             if (this.source.isFocused()) {
-                if (this.canUpload)
+                if (this.creatingFolder)
+                    confirmCreateFolder();
+                else if (this.canUpload)
                     startImport(this.source.getValue());
                 return true;
             }
@@ -553,7 +791,7 @@ public final class HologramAssetScreen extends Screen {
         for (int i = 0; i < TABS.length; i++) {
             int tx = tabX(i);
             int tw = tabW(i);
-            boolean active = i == this.activeTab;
+            boolean active = this.activePack == null && i == this.activeTab;
             boolean hov = mx >= tx && mx < tx + tw && my >= this.py0 + 3 && my < this.py0 + 19;
             g.fill(tx, this.py0 + 3, tx + tw, this.py0 + 19, active ? 0xFF1F6A86 : hov ? TILE_HOVER : TILE);
             if (active)
@@ -561,16 +799,11 @@ public final class HologramAssetScreen extends Screen {
             g.drawCenteredString(this.font, TABS[i], tx + tw / 2, this.py0 + 7, active ? TEXT : MUTED);
         }
 
-        // Go button (for online search) or world count
-        if (this.activeTab > 0) {
-            int gx = goBtnX();
-            boolean overGo = mx >= gx && mx < gx + 24 && my >= this.py0 + 4 && my < this.py0 + 18;
-            g.fill(gx, this.py0 + 4, gx + 24, this.py0 + 18, overGo ? 0xFF2A7FA0 : 0xFF1F6A86);
-            g.drawCenteredString(this.font, "Go", gx + 12, this.py0 + 7, TEXT);
-        } else {
-            String count = this.loading ? "..." : String.valueOf(this.total);
-            g.drawCenteredString(this.font, count, goBtnX() + 12, this.py0 + 7, FAINT);
-        }
+        // Top-right button: "+ Dir" on World tab, "Go" on online tabs
+        int rx = rightBtnX();
+        boolean overRight = mx >= rx && mx < rx + 42 && my >= this.py0 + 4 && my < this.py0 + 18;
+        g.fill(rx, this.py0 + 4, rx + 42, this.py0 + 18, overRight ? 0xFF2A7FA0 : 0xFF1F6A86);
+        g.drawCenteredString(this.font, this.activeTab > 0 ? "Go" : "+ Dir", rx + 21, this.py0 + 7, TEXT);
 
         g.enableScissor(this.px0 + 1, this.gridTop, this.px1 - 1, this.gridBottom);
         if (this.activePack != null) {
@@ -583,13 +816,20 @@ public final class HologramAssetScreen extends Screen {
                 drawPackTile(g, shown.get(i), tileX(i), y, shown.get(i) == hover);
             }
         } else if (this.activeTab == 0) {
-            Asset hover = tileAt(mx, my);
-            List<Asset> shown = visible();
+            GridItem hover = worldItemAt(mx, my);
+            List<GridItem> shown = worldGridItems();
             for (int i = 0; i < shown.size(); i++) {
                 int y = tileY(i);
                 if (y + CELL + LABEL < this.gridTop || y > this.gridBottom)
                     continue;
-                drawTile(g, shown.get(i), tileX(i), y, shown.get(i) == hover);
+                GridItem gi = shown.get(i);
+                boolean isHov = gi == hover;
+                if (gi.back())
+                    drawBackTile(g, tileX(i), y, isHov);
+                else if (gi.folder() != null)
+                    drawFolderTile(g, gi.folder(), tileX(i), y, isHov);
+                else if (gi.asset() != null)
+                    drawTile(g, gi.asset(), tileX(i), y, isHov);
             }
         } else {
             HologramAssetSearch.Result hover = onlineTileAt(mx, my);
@@ -606,11 +846,11 @@ public final class HologramAssetScreen extends Screen {
             if (visiblePackEntries().isEmpty())
                 g.drawCenteredString(this.font, "No models in pack match that search.", (this.px0 + this.px1) / 2, this.gridTop + 30, MUTED);
         } else if (this.activeTab == 0) {
-            if (!this.assets.isEmpty() && visible().isEmpty() && !this.loading) {
+            if (!this.assets.isEmpty() && worldGridItems().isEmpty() && !this.loading) {
                 g.drawCenteredString(this.font, "Nothing matches that search.", (this.px0 + this.px1) / 2, this.gridTop + 30, MUTED);
             }
-            if (this.assets.isEmpty() && !this.loading) {
-                String hint = "Nothing here yet. Drop a file, paste a URL,";
+            if (this.assets.isEmpty() && EMPTY_FOLDERS.isEmpty() && !this.loading) {
+                String hint = "Nothing here yet. Drop a file, .zip pack, paste a URL,";
                 String hint2 = "or switch to Images / GIFs / 3D above.";
                 g.drawCenteredString(this.font, hint, (this.px0 + this.px1) / 2, this.gridTop + 30, MUTED);
                 g.drawCenteredString(this.font, hint2, (this.px0 + this.px1) / 2, this.gridTop + 42, MUTED);
@@ -629,28 +869,68 @@ public final class HologramAssetScreen extends Screen {
             g.fill(this.px1 - 5, barY, this.px1 - 3, barY + barH, FAINT);
         }
 
-        g.drawString(this.font, this.canUpload ? "Drop image, 3D model (.glb/.gltf/.obj/.fbx/.bbmodel), or pack .zip here, or paste path/URL" : "Uploads are not allowed for you here",
-                this.px0 + 8, this.py1 - 48, MUTED, false);
+        String barLabel = this.creatingFolder ? "New folder name (press Enter or click Create; Esc cancels)"
+                : (this.canUpload ? "Drop image, 3D model (.glb/.gltf/.obj/.fbx/.bbmodel), or pack .zip" : "Uploads are not allowed for you here");
+        g.drawString(this.font, barLabel, this.px0 + 8, this.py1 - 48, this.creatingFolder ? ACCENT : MUTED, false);
         super.render(g, mx, my, partial);
-        String rawUrl = this.source == null ? "" : this.source.getValue().trim();
-        boolean validUrl = dev.watdafawx.foxstweaks.hologram.HologramNetwork.isExternalUrl(rawUrl);
-        boolean overStream = mx >= streamX() && mx < streamX() + 48 && my >= this.py1 - 37 && my < this.py1 - 21;
-        g.fill(streamX(), this.py1 - 37, streamX() + 48, this.py1 - 21,
-                !validUrl ? 0xFF1A222D : overStream ? 0xFF2E8B57 : 0xFF226B42);
-        g.drawCenteredString(this.font, "Stream", streamX() + 24, this.py1 - 33, validUrl ? TEXT : FAINT);
+        if (!this.creatingFolder) {
+            String rawUrl = this.source == null ? "" : this.source.getValue().trim();
+            boolean validUrl = dev.watdafawx.foxstweaks.hologram.HologramNetwork.isExternalUrl(rawUrl);
+            boolean overStream = mx >= streamX() && mx < streamX() + 48 && my >= this.py1 - 37 && my < this.py1 - 21;
+            g.fill(streamX(), this.py1 - 37, streamX() + 48, this.py1 - 21,
+                    !validUrl ? 0xFF1A222D : overStream ? 0xFF2E8B57 : 0xFF226B42);
+            g.drawCenteredString(this.font, "Stream", streamX() + 24, this.py1 - 33, validUrl ? TEXT : FAINT);
+        }
 
         boolean overUpload = mx >= uploadX() && mx < uploadX() + 48 && my >= this.py1 - 37 && my < this.py1 - 21;
         boolean busy = HologramAssetImport.busy();
+        boolean canClickAction = this.creatingFolder || (this.canUpload && !busy);
         g.fill(uploadX(), this.py1 - 37, uploadX() + 48, this.py1 - 21,
-                !this.canUpload || busy ? 0xFF1A222D : overUpload ? 0xFF2A7FA0 : 0xFF1F6A86);
-        g.drawCenteredString(this.font, "Upload", uploadX() + 24, this.py1 - 33, this.canUpload && !busy ? TEXT : FAINT);
+                !canClickAction ? 0xFF1A222D : overUpload ? 0xFF2A7FA0 : 0xFF1F6A86);
+        g.drawCenteredString(this.font, this.creatingFolder ? "Create" : "Upload", uploadX() + 24, this.py1 - 33,
+                canClickAction ? TEXT : FAINT);
 
         String fallbackHint = this.activeTab == 0
-                ? "Click an item to add it. Right-click twice to delete. Esc closes."
+                ? (this.currentFolder.isEmpty()
+                        ? "Click to add. Drag onto a folder to move. Right-click twice to delete."
+                        : "Folder: " + this.currentFolder + "  (drag onto '..' to move to root)")
                 : "Click to import into world. Shift+click to stream URL. Enter searches.";
         String line = this.font.plainSubstrByWidth(this.status.isEmpty() ? fallbackHint : this.status,
                 this.px1 - this.px0 - 16);
         g.drawString(this.font, line, this.px0 + 8, this.py1 - 15, this.status.isEmpty() ? FAINT : this.statusColour, false);
+
+        // Floating drag ghost
+        if (this.dragging && this.dragAsset != null) {
+            String ghost = this.dragAsset.displayName();
+            int gw = Math.min(120, this.font.width(ghost) + 10);
+            g.fill(mx + 8, my - 8, mx + 8 + gw, my + 8, 0xE01B2735);
+            g.renderOutline(mx + 8, my - 8, gw, 16, ACCENT);
+            g.drawString(this.font, this.font.plainSubstrByWidth(ghost, gw - 6), mx + 11, my - 4, TEXT, false);
+        }
+    }
+
+    private void drawFolderTile(GuiGraphics g, String folder, int x, int y, boolean hover) {
+        boolean dropHighlight = this.dragging && hover;
+        g.fill(x, y, x + CELL, y + CELL, dropHighlight ? 0xFF243B4E : hover ? TILE_HOVER : FOLDER_BG);
+        if (hover || dropHighlight)
+            g.renderOutline(x, y, CELL, CELL, dropHighlight ? GOOD : FOLDER_GOLD);
+        // Simple crisp folder tab + body graphic
+        g.fill(x + 12, y + 18, x + 28, y + 23, FOLDER_GOLD);
+        g.fill(x + 12, y + 22, x + CELL - 12, y + CELL - 16, FOLDER_GOLD);
+        g.fill(x + 14, y + 24, x + CELL - 14, y + CELL - 18, 0xFFBD8D34);
+        int cnt = countInFolder(folder);
+        g.drawString(this.font, this.font.plainSubstrByWidth(folder, CELL), x, y + CELL + 2, FOLDER_GOLD, false);
+        g.drawString(this.font, cnt + (cnt == 1 ? " item" : " items"), x, y + CELL + 11, FAINT, false);
+    }
+
+    private void drawBackTile(GuiGraphics g, int x, int y, boolean hover) {
+        boolean dropHighlight = this.dragging && hover;
+        g.fill(x, y, x + CELL, y + CELL, dropHighlight ? 0xFF243B4E : hover ? TILE_HOVER : TILE);
+        if (hover || dropHighlight)
+            g.renderOutline(x, y, CELL, CELL, dropHighlight ? GOOD : ACCENT);
+        g.drawCenteredString(this.font, "..", x + CELL / 2, y + CELL / 2 - 4, ACCENT);
+        g.drawString(this.font, "Back", x, y + CELL + 2, TEXT, false);
+        g.drawString(this.font, this.dragging ? "Drop->root" : "to root", x, y + CELL + 11, FAINT, false);
     }
 
     private void drawTile(GuiGraphics g, Asset a, int x, int y, boolean hover) {
@@ -681,8 +961,7 @@ public final class HologramAssetScreen extends Screen {
             g.fill(x + CELL - this.font.width(badge) - 5, y + 2, x + CELL - 2, y + 12, 0xAA000000);
             g.drawString(this.font, badge, x + CELL - this.font.width(badge) - 3, y + 3, ACCENT, false);
         }
-        String name = a.name().isEmpty() ? a.id().substring(0, Math.min(8, a.id().length())) : a.name();
-        g.drawString(this.font, this.font.plainSubstrByWidth(name, CELL), x, y + CELL + 2, TEXT, false);
+        g.drawString(this.font, this.font.plainSubstrByWidth(a.displayName(), CELL), x, y + CELL + 2, TEXT, false);
         g.drawString(this.font, this.font.plainSubstrByWidth(
                 model ? "model" : a.width() + "x" + a.height() + (a.type().isEmpty() ? "" : " " + a.type().toLowerCase(Locale.ROOT)), CELL),
                 x, y + CELL + 11, FAINT, false);
@@ -762,6 +1041,8 @@ public final class HologramAssetScreen extends Screen {
     public boolean devPickFirst() {
         if (visible().isEmpty())
             return false;
-        return mouseClicked(tileX(0) + 4, tileY(0) + 4, 0);
+        boolean down = mouseClicked(tileX(0) + 4, tileY(0) + 4, 0);
+        boolean up = mouseReleased(tileX(0) + 4, tileY(0) + 4, 0);
+        return down || up;
     }
 }

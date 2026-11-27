@@ -53,6 +53,10 @@ public final class HologramAssetImport {
      * dropped from a browser, or an {@code http(s)} address. Returns false when something is already in progress.
      */
     public static boolean start(String source, HologramAssets.UploadListener listener) {
+        return start(source, "", listener);
+    }
+
+    public static boolean start(String source, String folder, HologramAssets.UploadListener listener) {
         String text = source.trim();
         if (text.length() >= 2 && text.startsWith("\"") && text.endsWith("\""))
             text = text.substring(1, text.length() - 1).trim();
@@ -64,6 +68,7 @@ public final class HologramAssetImport {
             return false;
 
         String what = text;
+        String cleanFolder = HologramPackZip.cleanFolderName(folder);
         BUSY.set(true);
         Thread t = new Thread(() -> {
             Loaded loaded;
@@ -101,12 +106,13 @@ public final class HologramAssetImport {
             String fitNote = note;
             boolean bundle = sendBytes.length >= 4 && sendBytes[0] == 'F' && sendBytes[1] == 'T' && sendBytes[2] == 'A'
                     && sendBytes[3] == '1';
+            String finalName = cleanFolder.isEmpty() ? loaded.name : cleanFolder + "/" + loaded.name;
             Minecraft.getInstance().execute(() -> {
                 BUSY.set(false);
                 try {
                     if (!fitNote.isEmpty())
                         listener.progress(0, fitNote);
-                    HologramAssets.uploadBytes(loaded.name, sendBytes,
+                    HologramAssets.uploadBytes(finalName, sendBytes,
                             loaded.model ? AssetPayload.MODE_MODEL : loaded.video ? AssetPayload.MODE_VIDEO
                                     : bundle ? AssetPayload.MODE_BUNDLE : AssetPayload.MODE_IMAGE,
                             listener);

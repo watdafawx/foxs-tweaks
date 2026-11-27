@@ -1,5 +1,12 @@
 # Changelog
 
+## 1.57.0
+
+- **Folders & drag-and-drop in the Hologram Asset Library.**
+  - Importing models from a `.zip` pack now automatically organizes them into a folder named after the `.zip`. Uploading while inside an open folder also places new uploads directly into that folder.
+  - Create folders via **`+ Dir`** (top-right on the `World` tab), **drag & drop** any asset tile onto a folder to move it in (or onto **`..`** inside a folder to move back to root), and **right-click a folder twice** to delete it (safely moves its assets back to root).
+  - Folders sync across all players via the world asset index; update both client and server for moving/deleting folders.
+
 ## 1.56.0
 
 - **Live animated body/head tracking for player-attached holograms (Emotecraft / playerAnimator / PAL).** Attached holograms in **Body** or **Head** follow mode now track the player's actual rendered `PlayerModel` body and head transforms each frame, so holograms spin, lean, flip, and dance in lockstep with Emotecraft emotes, `playerAnimator`/`PAL` animations, BetterCombat, sneaking, and swimming.

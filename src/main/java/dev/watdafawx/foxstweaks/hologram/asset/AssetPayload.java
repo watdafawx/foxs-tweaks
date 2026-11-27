@@ -15,6 +15,8 @@ public record AssetPayload(int kind, int number, int total, String text, byte[] 
     public static final int PROGRESS = 6, LIST = 7, LISTING = 8;
     /** Client asks to delete asset {@code text}; {@code number} 1 = even when holograms use it. */
     public static final int DELETE = 9;
+    /** Client asks to rename/move asset: {@code text} is {@code "<id>\n<newName>"}. */
+    public static final int RENAME = 10;
     /** A frame bundle (FTAS) the browser built from a video itself; may start larger than the asset limit. */
     public static final int MODE_IMAGE = 0, MODE_VIDEO = 1, MODE_BUNDLE = 2, MODE_MODEL = 3;
     public static final Type<AssetPayload> TYPE=new Type<>(ResourceLocation.fromNamespaceAndPath("foxstweaks","asset"));

@@ -164,6 +164,24 @@ public final class AssetNetwork {
         reply(player, true, id, AssetPayload.DELETE);
     }
 
+    private static void rename(ServerPlayer player, String payload) throws IOException {
+        int sep = payload.indexOf('\n');
+        if (sep <= 0)
+            throw new IOException("Invalid rename request");
+        String id = payload.substring(0, sep);
+        String newName = payload.substring(sep + 1);
+        if (!AssetFrames.validId(id))
+            throw new IOException("Invalid asset id");
+        AssetStore s = store(player.server);
+        AssetStore.Metadata m = s.info(id);
+        if (m == null)
+            throw new IOException("That asset does not exist");
+        if (!mayDelete(player, m))
+            throw new IOException("Only operators or the uploader may move this asset");
+        s.rename(id, newName);
+        reply(player, true, id, AssetPayload.RENAME);
+    }
+
     private static void reply(ServerPlayer p, boolean ok, String message, int operation) {
         if (p.connection.hasChannel(AssetPayload.TYPE))
             PacketDistributor.sendToPlayer(p, AssetPayload.request(AssetPayload.RESULT, ok ? 1 : 0, operation, clip(message)));
@@ -211,6 +229,10 @@ public final class AssetNetwork {
             }
             if (p.kind() == AssetPayload.DELETE) {
                 delete(player, p.text(), p.number() == 1);
+                return;
+            }
+            if (p.kind() == AssetPayload.RENAME) {
+                rename(player, p.text());
                 return;
             }
 

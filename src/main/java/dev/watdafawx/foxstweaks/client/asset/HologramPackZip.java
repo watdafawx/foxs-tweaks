@@ -148,7 +148,8 @@ public final class HologramPackZip {
                     }
                 }
                 byte[] sendBytes = packed;
-                String name = uploadName;
+                String folder = cleanFolderName(pack.packName());
+                String name = folder.isEmpty() ? uploadName : folder + "/" + uploadName;
                 Minecraft.getInstance().execute(() -> {
                     try {
                         HologramAssets.uploadBytes(name, sendBytes, AssetPayload.MODE_MODEL, listener);
@@ -216,6 +217,16 @@ public final class HologramPackZip {
             });
         } catch (IOException ignored) {
         }
+    }
+
+    public static String cleanFolderName(String raw) {
+        if (raw == null)
+            return "";
+        String s = raw.trim();
+        if (s.toLowerCase(Locale.ROOT).endsWith(".zip"))
+            s = s.substring(0, s.length() - 4);
+        s = s.replace('/', '-').replace('\\', '-').replaceAll("[\\p{Cntrl}]", "").trim();
+        return s.length() > 48 ? s.substring(0, 48).trim() : s;
     }
 
     @Nullable

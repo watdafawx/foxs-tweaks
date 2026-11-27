@@ -125,6 +125,19 @@ public final class AssetStore {
         try {save();} catch(IOException e) {index.put(id,m);throw e;}
         Files.deleteIfExists(root.resolve("blobs").resolve(id));return true;
     }
+
+    public Metadata rename(String id, String newName) throws IOException {
+        Metadata m = index.get(id);
+        if (m == null) throw new IOException("Unknown asset");
+        String clean = newName.replaceAll("[\\p{Cntrl}]", "_").trim();
+        if (clean.length() > 128) clean = clean.substring(0, 128);
+        if (clean.isEmpty()) throw new IOException("Name cannot be empty");
+        Metadata next = new Metadata(m.id, m.owner, clean, m.type, m.width, m.height, m.frameCount, m.delays,
+                m.byteSize, m.created, m.references);
+        index.put(id, next);
+        try { save(); } catch (IOException e) { index.put(id, m); throw e; }
+        return next;
+    }
     private void save() throws IOException { atomic(root.resolve("index.json"),JSON.toJson(index.values()).getBytes(java.nio.charset.StandardCharsets.UTF_8)); }
     public static void atomic(Path file,byte[] data) throws IOException {
         Path temp=file.resolveSibling(file.getFileName()+".tmp");

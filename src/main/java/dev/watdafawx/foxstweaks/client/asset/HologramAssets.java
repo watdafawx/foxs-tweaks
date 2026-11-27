@@ -106,6 +106,9 @@ public final class HologramAssets {
     /** Gets null when the delete went through, else the server's reason. */
     @Nullable
     private static Consumer<String> deleteCallback;
+    /** Gets null when the rename/move went through, else the server's reason. */
+    @Nullable
+    private static Consumer<String> renameCallback;
     public static String lastResult = "";
     public static boolean lastSuccess;
 
@@ -448,6 +451,13 @@ public final class HologramAssets {
                 callback.accept(p.number() == 1 ? null : p.text());
             return;
         }
+        if (p.total() == AssetPayload.RENAME) {
+            Consumer<String> callback = renameCallback;
+            renameCallback = null;
+            if (callback != null)
+                callback.accept(p.number() == 1 ? null : p.text());
+            return;
+        }
         if (p.total() == AssetPayload.LIST) {
             Consumer<JsonObject> callback = listingCallback;
             listingCallback = null;
@@ -610,6 +620,20 @@ public final class HologramAssets {
         }
         deleteCallback = callback;
         PacketDistributor.sendToServer(AssetPayload.request(AssetPayload.DELETE, force ? 1 : 0, 0, hash));
+    }
+
+    /** Asks the server to rename or move {@code hash} into a folder ({@code "Folder/Name"} or {@code "Name"}). */
+    public static void requestRename(String hash, String newName, Consumer<String> callback) {
+        if (!available()) {
+            callback.accept("Server has no asset channel");
+            return;
+        }
+        if (renameCallback != null) {
+            callback.accept("Another move is still running");
+            return;
+        }
+        renameCallback = callback;
+        PacketDistributor.sendToServer(AssetPayload.request(AssetPayload.RENAME, 0, 0, hash + "\n" + newName));
     }
 
     /** {@code /foxstweaksc asset upload <path>}: a file under {@code foxstweaks/upload}. */
