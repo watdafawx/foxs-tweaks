@@ -95,7 +95,40 @@ public final class HologramCommand {
                                                                 .executes(ctx -> addUrl(ctx.getSource(),
                                                                         StringArgumentType.getString(ctx, "id"),
                                                                         StringArgumentType.getString(ctx, "kind"),
-                                                                        StringArgumentType.getString(ctx, "url")))))))));
+                                                                        StringArgumentType.getString(ctx, "url")))))))
+                                .then(Commands.literal("path")
+                                        .then(Commands.argument("id", StringArgumentType.word())
+                                                .suggests((ctx, builder) -> SharedSuggestionProvider.suggest(ids(ctx.getSource()), builder))
+                                                .then(Commands.literal("add")
+                                                        .executes(ctx -> pathAdd(ctx.getSource(), StringArgumentType.getString(ctx, "id"))))
+                                                .then(Commands.literal("undo")
+                                                        .executes(ctx -> pathUndo(ctx.getSource(), StringArgumentType.getString(ctx, "id"))))
+                                                .then(Commands.literal("clear")
+                                                        .executes(ctx -> pathClear(ctx.getSource(), StringArgumentType.getString(ctx, "id"))))
+                                                .then(Commands.literal("list")
+                                                        .executes(ctx -> pathList(ctx.getSource(), StringArgumentType.getString(ctx, "id"))))
+                                                .then(Commands.literal("speed")
+                                                        .then(Commands.argument("value", com.mojang.brigadier.arguments.FloatArgumentType.floatArg(
+                                                                        HologramPath.MIN_SPEED, HologramPath.MAX_SPEED))
+                                                                .executes(ctx -> pathSpeed(ctx.getSource(),
+                                                                        StringArgumentType.getString(ctx, "id"),
+                                                                        com.mojang.brigadier.arguments.FloatArgumentType.getFloat(ctx, "value")))))
+                                                .then(Commands.literal("mode")
+                                                        .then(Commands.argument("mode", StringArgumentType.word())
+                                                                .suggests((ctx, builder) -> SharedSuggestionProvider.suggest(List.of("loop", "pingpong"), builder))
+                                                                .executes(ctx -> pathMode(ctx.getSource(),
+                                                                        StringArgumentType.getString(ctx, "id"),
+                                                                        StringArgumentType.getString(ctx, "mode")))))
+                                                .then(Commands.literal("smooth")
+                                                        .then(Commands.argument("enabled", com.mojang.brigadier.arguments.BoolArgumentType.bool())
+                                                                .executes(ctx -> pathSmooth(ctx.getSource(),
+                                                                        StringArgumentType.getString(ctx, "id"),
+                                                                        com.mojang.brigadier.arguments.BoolArgumentType.getBool(ctx, "enabled")))))
+                                                .then(Commands.literal("face")
+                                                        .then(Commands.argument("enabled", com.mojang.brigadier.arguments.BoolArgumentType.bool())
+                                                                .executes(ctx -> pathFace(ctx.getSource(),
+                                                                        StringArgumentType.getString(ctx, "id"),
+                                                                        com.mojang.brigadier.arguments.BoolArgumentType.getBool(ctx, "enabled")))))))));
     }
 
     private static int add(CommandSourceStack source, String blockName) {
@@ -251,6 +284,147 @@ public final class HologramCommand {
         }
         Holograms.save(level, updated);
         source.sendSuccess(() -> Component.literal("Added URL " + (model ? "3D model" : "stream") + " layer to '" + id + "'."), true);
+        return 1;
+    }
+
+    @javax.annotation.Nullable
+    private static HologramSpec ownedSpec(CommandSourceStack source, String id) {
+        ServerLevel level = source.getLevel();
+        HologramSpec spec = Holograms.get(level, id);
+        if (spec == null) {
+            source.sendFailure(Component.literal("No hologram '" + id + "'."));
+            return null;
+        }
+        if (source.getEntity() instanceof ServerPlayer caller && !caller.hasPermissions(Commands.LEVEL_GAMEMASTERS)
+                && spec.owner() != null && !spec.owner().equals(caller.getUUID())) {
+            source.sendFailure(Component.literal("You do not own hologram '" + id + "'."));
+            return null;
+        }
+        return spec;
+    }
+
+    private static int pathAdd(CommandSourceStack source, String id) {
+        if (!(source.getEntity() instanceof ServerPlayer player)) {
+            source.sendFailure(Component.literal("Run this as a player to record a waypoint at your position."));
+            return 0;
+        }
+        HologramSpec spec = ownedSpec(source, id);
+        if (spec == null)
+            return 0;
+        HologramPath base = spec.path() != null ? spec.path() : HologramPath.empty();
+        if (base.points().size() >= HologramPath.MAX_POINTS) {
+            source.sendFailure(Component.literal("Path already has the maximum " + HologramPath.MAX_POINTS + " waypoints."));
+            return 0;
+        }
+        float rx = (float) (player.getX() - (spec.pos().getX() + 0.5));
+        float ry = (float) (player.getY() - spec.pos().getY());
+        float rz = (float) (player.getZ() - (spec.pos().getZ() + 0.5));
+        HologramPath next = base.withPoint(new HologramPath.Point(rx, ry, rz));
+        Holograms.save(source.getLevel(), spec.withPath(next));
+        source.sendSuccess(() -> Component.literal(String.format(Locale.ROOT,
+                "Added waypoint #%d to '%s' (offset %.1f, %.1f, %.1f).",
+                next.points().size(), id, rx, ry, rz)), true);
+        return 1;
+    }
+
+    private static int pathUndo(CommandSourceStack source, String id) {
+        HologramSpec spec = ownedSpec(source, id);
+        if (spec == null)
+            return 0;
+        if (spec.path() == null || spec.path().points().isEmpty()) {
+            source.sendFailure(Component.literal("Hologram '" + id + "' has no path waypoints."));
+            return 0;
+        }
+        HologramPath next = spec.path().withoutLast();
+        Holograms.save(source.getLevel(), spec.withPath(next));
+        source.sendSuccess(() -> Component.literal("Removed last waypoint from '" + id + "' ("
+                + next.points().size() + " remaining)."), true);
+        return 1;
+    }
+
+    private static int pathClear(CommandSourceStack source, String id) {
+        HologramSpec spec = ownedSpec(source, id);
+        if (spec == null)
+            return 0;
+        Holograms.save(source.getLevel(), spec.withPath(null));
+        source.sendSuccess(() -> Component.literal("Cleared path on '" + id + "'."), true);
+        return 1;
+    }
+
+    private static int pathList(CommandSourceStack source, String id) {
+        HologramSpec spec = ownedSpec(source, id);
+        if (spec == null)
+            return 0;
+        HologramPath path = spec.path();
+        if (path == null || path.points().isEmpty()) {
+            source.sendSuccess(() -> Component.literal("Hologram '" + id + "' has no path waypoints."), false);
+            return 0;
+        }
+        source.sendSuccess(() -> Component.literal(String.format(Locale.ROOT,
+                "Path for '%s': %d pts, %.1f blk/s, %s, %s, face=%s",
+                id, path.points().size(), path.speed(), path.mode().label,
+                path.smooth() ? "smooth" : "straight", path.faceMovement() ? "on" : "off")), false);
+        for (int i = 0; i < path.points().size(); i++) {
+            HologramPath.Point p = path.points().get(i);
+            int num = i + 1;
+            source.sendSuccess(() -> Component.literal(String.format(Locale.ROOT,
+                    "  #%d  (%.1f, %.1f, %.1f)", num, p.x(), p.y(), p.z())), false);
+        }
+        return path.points().size();
+    }
+
+    private static int pathSpeed(CommandSourceStack source, String id, float value) {
+        HologramSpec spec = ownedSpec(source, id);
+        if (spec == null)
+            return 0;
+        if (spec.path() == null || spec.path().points().isEmpty()) {
+            source.sendFailure(Component.literal("Add waypoints first with /foxstweaks hologram path " + id + " add."));
+            return 0;
+        }
+        HologramPath next = spec.path().withSpeed(value);
+        Holograms.save(source.getLevel(), spec.withPath(next));
+        source.sendSuccess(() -> Component.literal(String.format(Locale.ROOT,
+                "Path speed for '%s' set to %.1f blk/s.", id, next.speed())), true);
+        return 1;
+    }
+
+    private static int pathMode(CommandSourceStack source, String id, String modeRaw) {
+        HologramSpec spec = ownedSpec(source, id);
+        if (spec == null)
+            return 0;
+        if (spec.path() == null || spec.path().points().isEmpty()) {
+            source.sendFailure(Component.literal("Add waypoints first with /foxstweaks hologram path " + id + " add."));
+            return 0;
+        }
+        HologramPath.Mode mode = HologramPath.Mode.parse(modeRaw);
+        Holograms.save(source.getLevel(), spec.withPath(spec.path().withMode(mode)));
+        source.sendSuccess(() -> Component.literal("Path mode for '" + id + "' set to " + mode.label + "."), true);
+        return 1;
+    }
+
+    private static int pathSmooth(CommandSourceStack source, String id, boolean smooth) {
+        HologramSpec spec = ownedSpec(source, id);
+        if (spec == null)
+            return 0;
+        if (spec.path() == null || spec.path().points().isEmpty()) {
+            source.sendFailure(Component.literal("Add waypoints first with /foxstweaks hologram path " + id + " add."));
+            return 0;
+        }
+        Holograms.save(source.getLevel(), spec.withPath(spec.path().withSmooth(smooth)));
+        source.sendSuccess(() -> Component.literal("Path smoothing for '" + id + "' set to " + (smooth ? "smooth" : "straight") + "."), true);
+        return 1;
+    }
+
+    private static int pathFace(CommandSourceStack source, String id, boolean face) {
+        HologramSpec spec = ownedSpec(source, id);
+        if (spec == null)
+            return 0;
+        if (spec.path() == null || spec.path().points().isEmpty()) {
+            source.sendFailure(Component.literal("Add waypoints first with /foxstweaks hologram path " + id + " add."));
+            return 0;
+        }
+        Holograms.save(source.getLevel(), spec.withPath(spec.path().withFaceMovement(face)));
+        source.sendSuccess(() -> Component.literal("Path facing for '" + id + "' set to " + (face ? "on" : "off") + "."), true);
         return 1;
     }
 

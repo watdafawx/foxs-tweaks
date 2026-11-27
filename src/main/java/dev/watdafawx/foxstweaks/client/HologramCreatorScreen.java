@@ -847,6 +847,37 @@ public final class HologramCreatorScreen extends Screen {
                     attach.hideFirstPerson(), this.editor::creatorToggleAttachHideFirstPerson)
                     .tooltip = "Hide from your own first-person view so it does not block your screen.";
         }
+        y += ROW + 6;
+        var path = this.editor.creatorPath();
+        int pts = path == null ? 0 : path.points().size();
+        String pathTitle = pts == 0 ? "Path: None" : (pts == 1 ? "Path: 1 pt (need 2+)" : "Path: " + pts + " pts");
+        g.drawString(this.font, pathTitle, x, y + 1, FAINT, false);
+        y += 12;
+        int third = (w - 4) / 3;
+        chip(g, mx, my, x, y, third + 6, "+ Point", pts > 0, this.editor::creatorAddPathPoint)
+                .tooltip = "Record a waypoint at your current position (or free-fly camera). 3D models auto-walk; other assets float.";
+        chip(g, mx, my, x + third + 8, y, third - 3, "Undo", false, this.editor::creatorUndoPathPoint)
+                .tooltip = "Remove the last waypoint.";
+        chip(g, mx, my, x + third * 2 + 7, y, w - (third * 2 + 7), "Clear", false, this.editor::creatorClearPath)
+                .tooltip = "Remove all path waypoints.";
+        if (path != null && pts > 0) {
+            y += ROW + 2;
+            float spd = path.speed();
+            y = slider(g, mx, my, x, y, w, "Speed", String.format(Locale.ROOT, "%.1f b/s", spd),
+                    (spd - 0.1F) / 19.9F, ACCENT, true,
+                    v -> this.editor.creatorSetPathSpeed(round(0.1F + (float) v * 19.9F, 0.1F)),
+                    d -> this.editor.creatorSetPathSpeed(Mth.clamp(spd + (float) d * wheelStep(0.2F), 0.1F, 20.0F)),
+                    "Movement speed in blocks per second.");
+            int tw = (w - 4) / 3;
+            chip(g, mx, my, x, y, tw, path.mode().label, true, this.editor::creatorCyclePathMode)
+                    .tooltip = "Loop back to start, or Ping-Pong back and forth.";
+            chip(g, mx, my, x + tw + 2, y, tw, path.smooth() ? "Smooth" : "Straight", path.smooth(),
+                    this.editor::creatorTogglePathSmooth)
+                    .tooltip = "Smooth Catmull-Rom curve vs straight lines between waypoints.";
+            chip(g, mx, my, x + tw * 2 + 4, y, w - (tw * 2 + 4), "Face: " + (path.faceMovement() ? "On" : "Off"),
+                    path.faceMovement(), this.editor::creatorTogglePathFace)
+                    .tooltip = "Turn the hologram to face its movement direction.";
+        }
         return y + ROW + 2;
     }
 

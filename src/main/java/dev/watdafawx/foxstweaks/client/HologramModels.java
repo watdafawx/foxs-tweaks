@@ -164,6 +164,15 @@ public final class HologramModels {
      * is the layer's {@code height} setting (0 keeps its own size). While the asset loads, a faint box marks the spot.
      */
     public static void draw(PoseStack pose, MultiBufferSource out, HologramLayer layer, int light, double clock) {
+        draw(pose, out, layer, light, clock, false);
+    }
+
+    /**
+     * Same as {@link #draw(PoseStack, MultiBufferSource, HologramLayer, int, double)}, optionally auto-selecting a
+     * walk/run/move animation when {@code autoWalk} is true and no explicit animation is chosen on the layer.
+     */
+    public static void draw(PoseStack pose, MultiBufferSource out, HologramLayer layer, int light, double clock,
+                            boolean autoWalk) {
         HologramModelSettings settings = layer.model();
         Runtime r = runtime(layer.id());
         if (r == null) {
@@ -175,6 +184,8 @@ public final class HologramModels {
         }
 
         int anim = r.model.animationIndex(settings.animation());
+        if (anim < 0 && autoWalk && !r.model.animations.isEmpty())
+            anim = findWalkAnimation(r.model);
         double time = 0.0;
         if (anim >= 0)
             time = settings.time(clock, r.model.animations.get(anim).length);
@@ -219,6 +230,18 @@ public final class HologramModels {
         }
         lastTriangles = triangles;
         pose.popPose();
+    }
+
+    private static int findWalkAnimation(ModelData model) {
+        String[] prefs = { "walk", "run", "move", "swim", "fly" };
+        for (String key : prefs) {
+            for (int i = 0; i < model.animations.size(); i++) {
+                String name = model.animations.get(i).name;
+                if (name != null && name.toLowerCase(java.util.Locale.ROOT).contains(key))
+                    return i;
+            }
+        }
+        return 0;
     }
 
     private static int to255(float f) {

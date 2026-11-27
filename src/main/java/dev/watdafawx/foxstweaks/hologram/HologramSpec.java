@@ -41,7 +41,8 @@ public record HologramSpec(
         List<HologramGroup> groups,
         List<HologramLayer> layers,
         @Nullable HologramTimeline timeline,
-        @Nullable HologramAttach attach
+        @Nullable HologramAttach attach,
+        @Nullable HologramPath path
 ) {
     public static final int AXIS_Y = 0;
     public static final int AXIS_X = 1;
@@ -79,13 +80,23 @@ public record HologramSpec(
             timeline = timeline.boundTo(groups, layers);
     }
 
+    /** The pre-path shape. */
+    public HologramSpec(String id, BlockPos pos, float offsetX, float offsetY, float offsetZ, float yaw, float pitch,
+                        float roll, float scale, boolean enabled, int renderDistance, @Nullable UUID owner,
+                        String ownerName, float appearRadius, float appearSeconds, int appearStyle,
+                        List<HologramGroup> groups, List<HologramLayer> layers, @Nullable HologramTimeline timeline,
+                        @Nullable HologramAttach attach) {
+        this(id, pos, offsetX, offsetY, offsetZ, yaw, pitch, roll, scale, enabled, renderDistance, owner, ownerName,
+                appearRadius, appearSeconds, appearStyle, groups, layers, timeline, attach, null);
+    }
+
     /** The pre-attach shape. */
     public HologramSpec(String id, BlockPos pos, float offsetX, float offsetY, float offsetZ, float yaw, float pitch,
                         float roll, float scale, boolean enabled, int renderDistance, @Nullable UUID owner,
                         String ownerName, float appearRadius, float appearSeconds, int appearStyle,
                         List<HologramGroup> groups, List<HologramLayer> layers, @Nullable HologramTimeline timeline) {
         this(id, pos, offsetX, offsetY, offsetZ, yaw, pitch, roll, scale, enabled, renderDistance, owner, ownerName,
-                appearRadius, appearSeconds, appearStyle, groups, layers, timeline, null);
+                appearRadius, appearSeconds, appearStyle, groups, layers, timeline, null, null);
     }
 
     /** The pre-timeline shape. */
@@ -94,7 +105,7 @@ public record HologramSpec(
                         String ownerName, float appearRadius, float appearSeconds, int appearStyle,
                         List<HologramGroup> groups, List<HologramLayer> layers) {
         this(id, pos, offsetX, offsetY, offsetZ, yaw, pitch, roll, scale, enabled, renderDistance, owner, ownerName,
-                appearRadius, appearSeconds, appearStyle, groups, layers, null, null);
+                appearRadius, appearSeconds, appearStyle, groups, layers, null, null, null);
     }
 
     /**
@@ -139,14 +150,22 @@ public record HologramSpec(
         return new HologramSpec(this.id, this.pos, this.offsetX, this.offsetY, this.offsetZ,
                 this.yaw, this.pitch, this.roll, this.scale,
                 this.enabled, this.renderDistance, this.owner, this.ownerName,
-                this.appearRadius, this.appearSeconds, this.appearStyle, this.groups, this.layers, timeline, this.attach);
+                this.appearRadius, this.appearSeconds, this.appearStyle, this.groups, this.layers, timeline, this.attach, this.path);
     }
 
     public HologramSpec withAttach(@Nullable HologramAttach attach) {
         return new HologramSpec(this.id, this.pos, this.offsetX, this.offsetY, this.offsetZ,
                 this.yaw, this.pitch, this.roll, this.scale,
                 this.enabled, this.renderDistance, this.owner, this.ownerName,
-                this.appearRadius, this.appearSeconds, this.appearStyle, this.groups, this.layers, this.timeline, attach);
+                this.appearRadius, this.appearSeconds, this.appearStyle, this.groups, this.layers, this.timeline, attach, this.path);
+    }
+
+    public HologramSpec withPath(@Nullable HologramPath path) {
+        HologramPath clean = (path != null && !path.points().isEmpty()) ? path : null;
+        return new HologramSpec(this.id, this.pos, this.offsetX, this.offsetY, this.offsetZ,
+                this.yaw, this.pitch, this.roll, this.scale,
+                this.enabled, this.renderDistance, this.owner, this.ownerName,
+                this.appearRadius, this.appearSeconds, this.appearStyle, this.groups, this.layers, this.timeline, this.attach, clean);
     }
 
     public boolean isAttached() {
@@ -172,28 +191,28 @@ public record HologramSpec(
         return new HologramSpec(newId, newPos, this.offsetX, this.offsetY, this.offsetZ,
                 this.yaw, this.pitch, this.roll, this.scale,
                 this.enabled, this.renderDistance, newOwner, newOwnerName,
-                this.appearRadius, this.appearSeconds, this.appearStyle, this.groups, this.layers, this.timeline, this.attach);
+                this.appearRadius, this.appearSeconds, this.appearStyle, this.groups, this.layers, this.timeline, this.attach, this.path);
     }
 
     public HologramSpec withRenderDistance(int distance) {
         return new HologramSpec(this.id, this.pos, this.offsetX, this.offsetY, this.offsetZ,
                 this.yaw, this.pitch, this.roll, this.scale,
                 this.enabled, distance, this.owner, this.ownerName,
-                this.appearRadius, this.appearSeconds, this.appearStyle, this.groups, this.layers, this.timeline, this.attach);
+                this.appearRadius, this.appearSeconds, this.appearStyle, this.groups, this.layers, this.timeline, this.attach, this.path);
     }
 
     public HologramSpec withGroups(List<HologramGroup> groups) {
         return new HologramSpec(this.id, this.pos, this.offsetX, this.offsetY, this.offsetZ,
                 this.yaw, this.pitch, this.roll, this.scale,
                 this.enabled, this.renderDistance, this.owner, this.ownerName,
-                this.appearRadius, this.appearSeconds, this.appearStyle, groups, this.layers, this.timeline, this.attach);
+                this.appearRadius, this.appearSeconds, this.appearStyle, groups, this.layers, this.timeline, this.attach, this.path);
     }
 
     public HologramSpec withLayers(List<HologramLayer> layers) {
         return new HologramSpec(this.id, this.pos, this.offsetX, this.offsetY, this.offsetZ,
                 this.yaw, this.pitch, this.roll, this.scale,
                 this.enabled, this.renderDistance, this.owner, this.ownerName,
-                this.appearRadius, this.appearSeconds, this.appearStyle, this.groups, layers, this.timeline, this.attach);
+                this.appearRadius, this.appearSeconds, this.appearStyle, this.groups, layers, this.timeline, this.attach, this.path);
     }
 
     /** Replaces layer 0's props/data/effects helpers for single-layer call sites. */
@@ -421,6 +440,8 @@ public record HologramSpec(
             tag.put("timeline", this.timeline.toTag());
         if (this.attach != null)
             tag.put("attach", this.attach.toTag());
+        if (this.path != null && !this.path.points().isEmpty())
+            tag.put("path", this.path.toTag());
         return tag;
     }
 
@@ -457,10 +478,13 @@ public record HologramSpec(
             HologramAttach attach = tag.contains("attach", Tag.TAG_COMPOUND)
                     ? HologramAttach.fromTag(tag.getCompound("attach"))
                     : null;
+            HologramPath path = tag.contains("path", Tag.TAG_COMPOUND)
+                    ? HologramPath.fromTag(tag.getCompound("path"))
+                    : null;
             return new HologramSpec(id, pos, ox, oy, oz,
                     tag.getFloat("yaw"), tag.getFloat("pitch"), tag.getFloat("roll"), scale,
                     enabled, renderDist, owner, ownerName, appearRadius, appearSeconds, appearStyle,
-                    groups, layers, timeline, attach);
+                    groups, layers, timeline, attach, path);
         }
 
         // Legacy v1 migration: base block + parts[] -> unified layers (+ group if multi-part)

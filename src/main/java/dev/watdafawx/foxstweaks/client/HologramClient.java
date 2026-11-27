@@ -239,6 +239,8 @@ public final class HologramClient {
             var box = spec.box(mc.level, 1.0F);
             if (box == null)
                 continue;
+            if (spec.path() != null && spec.path().active())
+                box = spec.path().expand(box);
             var centre = box.getCenter();
             if (mc.player.distanceToSqr(centre) > (double) spec.renderDistance() * spec.renderDistance())
                 continue;
@@ -289,6 +291,10 @@ public final class HologramClient {
                     rootMat = spec.rootMatrix(mc.level, 1.0F);
                     if (rootMat == null)
                         break;
+                    if (spec.path() != null && spec.path().active()) {
+                        var ps = spec.path().sample(seconds);
+                        rootMat = new Matrix4f().translate(ps.x(), ps.y(), ps.z()).mul(rootMat);
+                    }
                 }
 
                 Matrix4f m = new Matrix4f(rootMat);

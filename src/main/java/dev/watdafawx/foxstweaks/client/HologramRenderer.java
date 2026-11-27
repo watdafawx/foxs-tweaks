@@ -10,6 +10,7 @@ import dev.watdafawx.foxstweaks.hologram.HologramEffect;
 import dev.watdafawx.foxstweaks.hologram.HologramGroup;
 import dev.watdafawx.foxstweaks.hologram.HologramImage;
 import dev.watdafawx.foxstweaks.hologram.HologramLayer;
+import dev.watdafawx.foxstweaks.hologram.HologramPath;
 import dev.watdafawx.foxstweaks.hologram.HologramSpec;
 import dev.watdafawx.foxstweaks.hologram.HologramStates;
 import dev.watdafawx.foxstweaks.hologram.HologramStructure;
@@ -189,8 +190,11 @@ public final class HologramRenderer {
             AABB box = spec.box(mc.level, partial);
             if (box == null)
                 continue;
-            Vec3 center = box.getCenter();
-            if (camera.distanceToSqr(center) > cap * cap)
+            boolean hasPath = spec.path() != null && spec.path().active();
+            if (hasPath)
+                box = spec.path().expand(box);
+            double distSq = hasPath ? distSqToBox(camera, box) : camera.distanceToSqr(box.getCenter());
+            if (distSq > cap * cap)
                 continue;
 
             if (spec.timeline() != null) {
@@ -215,6 +219,8 @@ public final class HologramRenderer {
         HologramSpec preview = HologramClient.previewSpec();
         if (preview != null && HologramClient.previewAnchored())
             drawAnchoredPreview(pose, buffer, preview, seconds, camera, mc, partial);
+        else if (preview != null && preview.path() != null && !preview.path().points().isEmpty())
+            drawPathOverlay(pose, buffer, preview, camera);
 
         buffer.endBatch();
     }
@@ -323,6 +329,17 @@ public final class HologramRenderer {
                 rootTint = ap.tint(rootTint);
             }
         }
+        HologramPath path = spec.path();
+        boolean movingOnPath = false;
+        if (path != null && path.active()) {
+            HologramPath.Sample ps = path.sample(seconds);
+            rdx += ps.x();
+            rdy += ps.y();
+            rdz += ps.z();
+            if (path.faceMovement())
+                rYaw += ps.yawDeg();
+            movingOnPath = ps.moving();
+        }
         buffer = TintedBuffer.tint(buffer, rootTint);
 
         pose.pushPose();
@@ -347,7 +364,7 @@ public final class HologramRenderer {
             HologramLayer layer = layers.get(i);
             if (!layer.groupId().isEmpty())
                 continue;
-            drawLayer(pose, buffer, spec, null, List.of(), layer, i, worldLight, seconds, partialTick, rootTint);
+            drawLayer(pose, buffer, spec, null, List.of(), layer, i, worldLight, seconds, partialTick, rootTint, movingOnPath);
         }
 
         // 2. Draw each group once, pushing its shared transform/animation/FX frame around its member layers
@@ -429,7 +446,7 @@ public final class HologramRenderer {
                 HologramLayer layer = layers.get(i);
                 if (!group.id().equals(layer.groupId()))
                     continue;
-                drawLayer(pose, groupOut, spec, group, gEffects, layer, i, groupLight, seconds, partialTick, inherited);
+                drawLayer(pose, groupOut, spec, group, gEffects, layer, i, groupLight, seconds, partialTick, inherited, movingOnPath);
             }
             pose.popPose();
         }
@@ -438,7 +455,7 @@ public final class HologramRenderer {
         for (int i = 0; i < layers.size(); i++) {
             HologramLayer layer = layers.get(i);
             if (!layer.groupId().isEmpty() && spec.groupById(layer.groupId()) == null)
-                drawLayer(pose, buffer, spec, null, List.of(), layer, i, worldLight, seconds, partialTick, rootTint);
+                drawLayer(pose, buffer, spec, null, List.of(), layer, i, worldLight, seconds, partialTick, rootTint, movingOnPath);
         }
 
         pose.popPose();
@@ -451,7 +468,8 @@ public final class HologramRenderer {
      */
     private static void drawLayer(PoseStack pose, MultiBufferSource parentBuffer, HologramSpec spec,
                                   @Nullable HologramGroup group, List<HologramEffect> gEffects, HologramLayer layer,
-                                  int layerIndex, int parentLight, double seconds, float partialTick, int inherited) {
+                                  int layerIndex, int parentLight, double seconds, float partialTick, int inherited,
+                                  boolean movingOnPath) {
         if (!layer.visible() || layer.kind() == HologramLayer.Kind.PARTICLE)
             return;
         if (!HologramClient.passesSolo(spec.id(), layerIndex, layer))
@@ -504,6 +522,10 @@ public final class HologramRenderer {
             return;
 
         float lHover = hoverOffset(layer.hover(), layer.hoverPeriod(), seconds);
+        if (movingOnPath && lHover == 0.0F && (group == null || group.hover() <= 0.0F)
+                && layer.kind() != HologramLayer.Kind.MODEL && layer.kind() != HologramLayer.Kind.ENTITY) {
+            lHover = (float) (Math.sin(seconds * 2.5) * 0.12);
+        }
         float lJump = HologramAnim.jumpOffset(effects, seconds);
         float lGlitchX = HologramAnim.glitchOffsetX(effects, seconds);
         float lGlitchZ = HologramAnim.glitchOffsetZ(effects, seconds);
@@ -698,7 +720,7 @@ public final class HologramRenderer {
                 pose.mulPose(Axis.XP.rotationDegrees(lAngleX));
                 pose.mulPose(Axis.ZP.rotationDegrees(lAngleZ));
                 pose.scale(sx, sy, sx);
-                HologramModels.draw(pose, out, layer, light, mediaClock(spec, seconds, partialTick));
+                HologramModels.draw(pose, out, layer, light, mediaClock(spec, seconds, partialTick), movingOnPath);
                 pose.popPose();
             }
             case PARTICLE -> {
@@ -852,6 +874,58 @@ public final class HologramRenderer {
         float green = deleting ? 0.3F : 0.9F;
         float blue = deleting ? 0.3F : 1.0F;
         LevelRenderer.renderLineBox(pose, buffer.getBuffer(RenderType.lines()), box, red, green, blue, 0.85F);
+        buffer.endBatch(RenderType.lines());
+    }
+
+    private static double distSqToBox(Vec3 p, AABB b) {
+        double dx = p.x < b.minX ? b.minX - p.x : (p.x > b.maxX ? p.x - b.maxX : 0.0);
+        double dy = p.y < b.minY ? b.minY - p.y : (p.y > b.maxY ? p.y - b.maxY : 0.0);
+        double dz = p.z < b.minZ ? b.minZ - p.z : (p.z > b.maxZ ? p.z - b.maxZ : 0.0);
+        return dx * dx + dy * dy + dz * dz;
+    }
+
+    private static void drawPathOverlay(PoseStack pose, MultiBufferSource.BufferSource buffer,
+                                        HologramSpec spec, Vec3 camera) {
+        HologramPath path = spec.path();
+        if (path == null || path.points().isEmpty())
+            return;
+        double baseX = spec.pos().getX() + spec.offsetX() + 0.5 - camera.x;
+        double baseY = spec.pos().getY() + spec.offsetY() - camera.y;
+        double baseZ = spec.pos().getZ() + spec.offsetZ() + 0.5 - camera.z;
+
+        VertexConsumer vc = buffer.getBuffer(RenderType.lines());
+        List<HologramPath.Point> curve = path.polyline(12);
+        PoseStack.Pose last = pose.last();
+        for (int i = 0; i + 1 < curve.size(); i++) {
+            HologramPath.Point a = curve.get(i);
+            HologramPath.Point b = curve.get(i + 1);
+            float ax = (float) (baseX + a.x()), ay = (float) (baseY + a.y() + 0.05), az = (float) (baseZ + a.z());
+            float bx = (float) (baseX + b.x()), by = (float) (baseY + b.y() + 0.05), bz = (float) (baseZ + b.z());
+            float nx = bx - ax, ny = by - ay, nz = bz - az;
+            float len = Mth.sqrt(nx * nx + ny * ny + nz * nz);
+            if (len < 1.0E-4F)
+                continue;
+            nx /= len;
+            ny /= len;
+            nz /= len;
+            vc.addVertex(last, ax, ay, az).setColor(0.25F, 0.9F, 1.0F, 0.9F).setNormal(last, nx, ny, nz);
+            vc.addVertex(last, bx, by, bz).setColor(0.25F, 0.9F, 1.0F, 0.9F).setNormal(last, nx, ny, nz);
+        }
+
+        List<HologramPath.Point> pts = path.points();
+        for (int i = 0; i < pts.size(); i++) {
+            HologramPath.Point p = pts.get(i);
+            double wx = baseX + p.x();
+            double wy = baseY + p.y();
+            double wz = baseZ + p.z();
+            float r = i == 0 ? 0.25F : (i == pts.size() - 1 ? 1.0F : 0.35F);
+            float g = i == 0 ? 1.0F : (i == pts.size() - 1 ? 0.85F : 0.9F);
+            float bl = i == 0 ? 0.45F : (i == pts.size() - 1 ? 0.25F : 1.0F);
+            LevelRenderer.renderLineBox(pose, vc,
+                    wx - 0.14, wy - 0.02, wz - 0.14,
+                    wx + 0.14, wy + 0.26, wz + 0.14,
+                    r, g, bl, 0.95F);
+        }
         buffer.endBatch(RenderType.lines());
     }
 

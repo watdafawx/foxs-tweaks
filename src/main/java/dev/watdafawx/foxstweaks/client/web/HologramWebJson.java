@@ -428,7 +428,7 @@ final class HologramWebJson {
 
         HologramSpec spec = new HologramSpec(base.id(), base.pos(), off[0], off[1], off[2], rot[0], rot[1], rot[2],
                 scale, base.enabled(), renderDistance, base.owner(), base.ownerName(), radius, seconds, style, groups,
-                layers, timeline, attach);
+                layers, timeline, attach, base.path());
         String audioCaps = HologramAudioMod.checkCaps(spec, ServerConfig.hologramAudioMaxPerValue(),
                 ServerConfig.hologramAudioMaxPerHologram());
         if (audioCaps != null)

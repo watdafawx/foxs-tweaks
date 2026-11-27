@@ -123,6 +123,7 @@ public class HologramScreen extends Screen {
             List<HologramLayer> layers,
             @Nullable HologramTimeline timeline,
             @Nullable dev.watdafawx.foxstweaks.hologram.HologramAttach attach,
+            @Nullable dev.watdafawx.foxstweaks.hologram.HologramPath path,
             TargetKind targetKind,
             int selectedLayer,
             @Nullable String selectedGroupId
@@ -186,6 +187,8 @@ public class HologramScreen extends Screen {
     private HologramTimeline timeline;
     @Nullable
     private dev.watdafawx.foxstweaks.hologram.HologramAttach attach;
+    @Nullable
+    private dev.watdafawx.foxstweaks.hologram.HologramPath path;
 
     // ---- Selection & Solo ----
     private TargetKind targetKind = TargetKind.LAYER;
@@ -285,6 +288,7 @@ public class HologramScreen extends Screen {
         this.layers = new ArrayList<>(spec.layers());
         this.timeline = spec.timeline();
         this.attach = spec.attach();
+        this.path = spec.path();
         if (this.layers.isEmpty())
             this.layers.add(HologramLayer.block("minecraft:stone", Map.of(), new CompoundTag()));
 
@@ -561,7 +565,7 @@ public class HologramScreen extends Screen {
                 this.rootOffsetX, this.rootOffsetY, this.rootOffsetZ,
                 this.rootYaw, this.rootPitch, this.rootRoll, this.rootScale,
                 this.renderDistance, this.appearRadius, this.appearSeconds, this.appearStyle,
-                List.copyOf(this.groups), List.copyOf(this.layers), this.timeline, this.attach,
+                List.copyOf(this.groups), List.copyOf(this.layers), this.timeline, this.attach, this.path,
                 this.targetKind, this.selectedLayer, this.selectedGroupId);
     }
 
@@ -581,6 +585,7 @@ public class HologramScreen extends Screen {
         this.layers = new ArrayList<>(snap.layers());
         this.timeline = snap.timeline();
         this.attach = snap.attach();
+        this.path = snap.path();
         this.targetKind = snap.targetKind();
         this.selectedLayer = Mth.clamp(snap.selectedLayer(), 0, Math.max(0, this.layers.size() - 1));
         this.selectedGroupId = snap.selectedGroupId();
@@ -981,6 +986,45 @@ public class HologramScreen extends Screen {
                         "1st: " + (this.attach.hideFirstPerson() ? "Hide" : "Show"),
                         this.attach.hideFirstPerson(), false, true, () -> {
                     creatorToggleAttachHideFirstPerson();
+                    rebuildInspector();
+                }));
+            }
+            y += 22;
+            int pathPts = this.path == null ? 0 : this.path.points().size();
+            int ptW = (rw - 8) / 3;
+            this.flatBtns.add(new FlatBtn(rx, y, ptW + 6, 17,
+                    pathPts == 0 ? "+ Path Pt" : "+ Pt (" + pathPts + ")", pathPts > 0, false, true, () -> {
+                creatorAddPathPoint();
+                rebuildInspector();
+            }));
+            this.flatBtns.add(new FlatBtn(rx + ptW + 10, y, ptW - 3, 17, "Undo", false, false, pathPts > 0, () -> {
+                creatorUndoPathPoint();
+                rebuildInspector();
+            }));
+            this.flatBtns.add(new FlatBtn(rx + ptW * 2 + 11, y, rw - (ptW * 2 + 11), 17, "Clear", false, true, pathPts > 0, () -> {
+                creatorClearPath();
+                rebuildInspector();
+            }));
+            if (this.path != null && pathPts > 0) {
+                y += 21;
+                this.numControls.add(new NumControl(rx, y, rw, 16, "Spd ", 0xFF7AD7F0, true,
+                        0.1, 20.0, 0.1, 2.0, () -> this.path != null ? this.path.speed() : 2.0,
+                        v -> creatorSetPathSpeed((float) v), " b/s", 1));
+                y += 20;
+                int tw = (rw - 8) / 3;
+                this.flatBtns.add(new FlatBtn(rx, y, tw, 16, this.path.mode().label, true, false, true, () -> {
+                    creatorCyclePathMode();
+                    rebuildInspector();
+                }));
+                this.flatBtns.add(new FlatBtn(rx + tw + 4, y, tw, 16, this.path.smooth() ? "Smooth" : "Linear",
+                        this.path.smooth(), false, true, () -> {
+                    creatorTogglePathSmooth();
+                    rebuildInspector();
+                }));
+                this.flatBtns.add(new FlatBtn(rx + tw * 2 + 8, y, rw - (tw * 2 + 8), 16,
+                        "Face: " + (this.path.faceMovement() ? "On" : "Off"),
+                        this.path.faceMovement(), false, true, () -> {
+                    creatorTogglePathFace();
                     rebuildInspector();
                 }));
             }
@@ -3118,7 +3162,7 @@ public class HologramScreen extends Screen {
                 this.rootYaw, this.rootPitch, this.rootRoll, this.rootScale,
                 true, this.renderDistance, this.owner, this.ownerName,
                 this.appearRadius, this.appearSeconds, this.appearStyle,
-                this.groups, this.layers, this.timeline, this.attach);
+                this.groups, this.layers, this.timeline, this.attach, this.path);
     }
 
     @Nullable
@@ -3445,6 +3489,75 @@ public class HologramScreen extends Screen {
         refresh();
     }
 
+    @Nullable
+    dev.watdafawx.foxstweaks.hologram.HologramPath creatorPath() {
+        return this.path;
+    }
+
+    void creatorAddPathPoint() {
+        var mc = Minecraft.getInstance();
+        net.minecraft.world.phys.Vec3 at = HologramCamera.isActive()
+                ? mc.gameRenderer.getMainCamera().getPosition()
+                : (mc.player != null ? mc.player.position() : null);
+        if (at == null)
+            return;
+        pushUndo();
+        var base = this.path != null ? this.path : dev.watdafawx.foxstweaks.hologram.HologramPath.empty();
+        float rx = (float) (at.x - (this.pos.getX() + this.rootOffsetX + 0.5));
+        float ry = (float) (at.y - (this.pos.getY() + this.rootOffsetY));
+        float rz = (float) (at.z - (this.pos.getZ() + this.rootOffsetZ + 0.5));
+        this.path = base.withPoint(new dev.watdafawx.foxstweaks.hologram.HologramPath.Point(rx, ry, rz));
+        refresh();
+    }
+
+    void creatorUndoPathPoint() {
+        if (this.path == null || this.path.points().isEmpty())
+            return;
+        pushUndo();
+        var next = this.path.withoutLast();
+        this.path = next.points().isEmpty() ? null : next;
+        refresh();
+    }
+
+    void creatorClearPath() {
+        if (this.path == null)
+            return;
+        pushUndo();
+        this.path = null;
+        refresh();
+    }
+
+    void creatorSetPathSpeed(float speed) {
+        if (this.path == null)
+            return;
+        this.path = this.path.withSpeed(speed);
+        refresh();
+    }
+
+    void creatorCyclePathMode() {
+        if (this.path == null)
+            return;
+        pushUndo();
+        this.path = this.path.withMode(this.path.mode().next());
+        refresh();
+    }
+
+    void creatorTogglePathSmooth() {
+        if (this.path == null)
+            return;
+        pushUndo();
+        this.path = this.path.withSmooth(!this.path.smooth());
+        refresh();
+    }
+
+    void creatorTogglePathFace() {
+        if (this.path == null)
+            return;
+        pushUndo();
+        this.path = this.path.withFaceMovement(!this.path.faceMovement());
+        refresh();
+    }
+
     void creatorMoveLayer(int index, int delta) {
         moveLayer(index, delta);
     }
@@ -3674,6 +3787,7 @@ public class HologramScreen extends Screen {
         this.layers = new ArrayList<>(spec.layers());
         this.timeline = spec.timeline();
         this.attach = spec.attach();
+        this.path = spec.path();
         if (this.layers.isEmpty())
             this.layers.add(HologramLayer.block("minecraft:stone", Map.of(), new CompoundTag()));
         this.selectedLayer = Mth.clamp(this.selectedLayer, 0, this.layers.size() - 1);

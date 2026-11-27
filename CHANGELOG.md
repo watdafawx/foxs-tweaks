@@ -1,5 +1,13 @@
 # Changelog
 
+## 1.54.0
+
+- **Hologram Paths (walking 3D models & floating assets).** Any hologram can now follow a multi-waypoint path (up to 64 waypoints relative to its anchor) with **Loop** or **Ping-Pong** patrol, configurable speed (`0.1`–`20.0` blocks/sec), **Smooth** (Catmull-Rom) vs **Linear** segments, and optional **Face movement** yaw.
+  - 3D model layers on an active path automatically play a `walk`/`run`/`move`/`swim`/`fly` (or first) animation when no explicit animation is chosen; blocks, structures, and images gently float along the path; particle layers follow the moving root.
+  - While editing, the path curve and waypoints (green start, cyan middle, gold end) render live in the world.
+  - Configure in **Whole hologram** (Creator), **Root** (Studio), or via `/foxstweaks hologram path <id> add|undo|clear|list|speed <v>|mode <loop|pingpong>|smooth <bool>|face <bool>`.
+- **Online CDN Asset Lookup in the Hologram Asset Library.** Added keyless **Images**, **GIFs** (Openverse), and **3D** (Khronos glTF-Sample-Assets animated `.glb` + Poly Haven CC0 3D models, auto-bundled on import) search tabs inside the in-game Pictures/Models screen. Click any result to import it into the world library, or Shift+click (Images, GIFs, `.glb`) to stream the URL directly.
+
 ## 1.53.2
 
 - **Higher 3D model limits & FTM1 v2 format.** Raised 3D hologram model ceilings to `262,144` vertices, `524,288` triangles, `4,096` bones/nodes, `1,024` joints per skin, `32` skins, `64` textures, and `128` animations (`400,000` keys). Upgraded FTM1 binary format to v2 (32-bit vertex indices when a mesh has >65,535 vertices, 16-bit joint/skin/texture indices) while staying backward-compatible with v1 blobs. Update client and server together for newly uploaded models.

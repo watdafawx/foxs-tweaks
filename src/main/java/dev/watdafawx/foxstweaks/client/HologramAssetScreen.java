@@ -4,6 +4,7 @@ import com.google.gson.JsonArray;
 import com.google.gson.JsonElement;
 import com.google.gson.JsonObject;
 import dev.watdafawx.foxstweaks.client.asset.HologramAssetImport;
+import dev.watdafawx.foxstweaks.client.asset.HologramAssetSearch;
 import dev.watdafawx.foxstweaks.client.asset.HologramAssets;
 import dev.watdafawx.foxstweaks.hologram.HologramLayer;
 import net.minecraft.client.gui.GuiGraphics;
@@ -20,9 +21,8 @@ import java.util.List;
 import java.util.Locale;
 
 /**
- * The world's asset library (pictures, GIFs, converted videos) as a grid, opened from the Creator. A click adds the
- * picture as an image layer. New files come in three ways, all through the one upload path the web editor uses:
- * drag a file onto the window, or type a file path or http(s) address and press Upload.
+ * The world's asset library (pictures, GIFs, converted videos, 3D models) plus keyless online CDN lookup
+ * (Openverse Images/GIFs, Khronos glTF-Sample-Assets, Poly Haven CC0 3D models).
  *
  * <p>It owns no hologram state: it only calls {@link HologramScreen#creatorAddLayer} and goes back to its caller.
  */
@@ -43,6 +43,8 @@ public final class HologramAssetScreen extends Screen {
     private static final int GAP = 6;
     private static final int LABEL = 20;
 
+    private static final String[] TABS = { "World", "Images", "GIFs", "3D" };
+
     private record Asset(String id, String name, String type, int width, int height, int frames) {
     }
 
@@ -50,6 +52,11 @@ public final class HologramAssetScreen extends Screen {
     private final Screen returnTo;
     private final List<Asset> assets = new ArrayList<>();
     private final String firstImport;
+
+    private int activeTab = 0; // 0 = World, 1 = Images, 2 = GIFs, 3 = 3D
+    private List<HologramAssetSearch.Result> onlineResults = List.of();
+    private boolean onlineLoading = false;
+    private String lastOnlineKey = "";
 
     private EditBox source;
     private EditBox search;
@@ -73,13 +80,13 @@ public final class HologramAssetScreen extends Screen {
 
     @Override
     protected void init() {
-        int w = Math.min(this.width - 16, 372);
+        int w = Math.min(this.width - 16, 404);
         int h = this.height - 24;
         this.px0 = (this.width - w) / 2;
         this.py0 = 12;
         this.px1 = this.px0 + w;
         this.py1 = this.py0 + h;
-        this.gridTop = this.py0 + 22;
+        this.gridTop = this.py0 + 24;
         this.gridBottom = this.py1 - 50;
         this.cols = Math.max(1, (w - 12 + GAP) / (CELL + GAP));
 
@@ -90,12 +97,18 @@ public final class HologramAssetScreen extends Screen {
         this.source.setValue(keep);
         this.addRenderableWidget(this.source);
 
+        int searchX = tabEndX() + 6;
+        int goW = 24;
+        int searchW = Math.max(60, this.px1 - 8 - goW - 4 - searchX);
         String keepSearch = this.search == null ? "" : this.search.getValue();
-        this.search = new EditBox(this.font, this.px0 + 70, this.py0 + 3, 110, 14, Component.literal("Search"));
+        this.search = new EditBox(this.font, searchX, this.py0 + 4, searchW, 14, Component.literal("Search"));
         this.search.setMaxLength(64);
         this.search.setHint(Component.literal("Search"));
         this.search.setValue(keepSearch);
-        this.search.setResponder(v -> this.scroll = 0);
+        this.search.setResponder(v -> {
+            if (this.activeTab == 0)
+                this.scroll = 0;
+        });
         this.addRenderableWidget(this.search);
 
         if (!this.opened) {
@@ -104,6 +117,71 @@ public final class HologramAssetScreen extends Screen {
             if (this.firstImport != null && !this.firstImport.isEmpty())
                 startImport(this.firstImport);
         }
+    }
+
+    private int tabX(int idx) {
+        int x = this.px0 + 8;
+        for (int i = 0; i < idx; i++)
+            x += tabW(i) + 3;
+        return x;
+    }
+
+    private int tabW(int idx) {
+        return this.font.width(TABS[idx]) + 10;
+    }
+
+    private int tabEndX() {
+        return tabX(TABS.length - 1) + tabW(TABS.length - 1);
+    }
+
+    private int goBtnX() {
+        return this.px1 - 8 - 24;
+    }
+
+    private void selectTab(int tab) {
+        if (tab == this.activeTab)
+            return;
+        this.activeTab = tab;
+        this.scroll = 0;
+        this.pendingDelete = "";
+        if (tab > 0)
+            triggerOnlineSearch(false);
+    }
+
+    private HologramAssetSearch.Kind onlineKind() {
+        return switch (this.activeTab) {
+            case 2 -> HologramAssetSearch.Kind.GIF;
+            case 3 -> HologramAssetSearch.Kind.MODEL;
+            default -> HologramAssetSearch.Kind.IMAGE;
+        };
+    }
+
+    private void triggerOnlineSearch(boolean force) {
+        if (this.activeTab == 0)
+            return;
+        HologramAssetSearch.Kind kind = onlineKind();
+        String q = this.search == null ? "" : this.search.getValue().trim();
+        String key = kind.name() + ":" + q.toLowerCase(Locale.ROOT);
+        if (!force && key.equals(this.lastOnlineKey) && !this.onlineResults.isEmpty())
+            return;
+        this.lastOnlineKey = key;
+        this.onlineLoading = true;
+        this.onlineResults = List.of();
+        this.scroll = 0;
+        say("Searching " + kind.label + "...", MUTED);
+        HologramAssetSearch.search(kind, q, results -> {
+            if (!key.equals(this.lastOnlineKey))
+                return;
+            this.onlineLoading = false;
+            this.onlineResults = results;
+            say(results.isEmpty() ? "No online results for '" + q + "'."
+                    : results.size() + " results. Click to import, Shift+click to stream.", MUTED);
+        }, err -> {
+            if (!key.equals(this.lastOnlineKey))
+                return;
+            this.onlineLoading = false;
+            say("Search failed: " + err, BAD);
+        });
     }
 
     private void reload() {
@@ -143,8 +221,8 @@ public final class HologramAssetScreen extends Screen {
         this.statusColour = colour;
     }
 
-    private void startImport(String text) {
-        boolean started = HologramAssetImport.start(text, new HologramAssets.UploadListener() {
+    private HologramAssets.UploadListener uploadListener(boolean switchToWorld) {
+        return new HologramAssets.UploadListener() {
             @Override
             public void progress(int percent, String stage) {
                 say(stage.equals("downloading") ? "Downloading..." : "Uploading " + percent + "% (" + stage + ")", MUTED);
@@ -154,13 +232,42 @@ public final class HologramAssetScreen extends Screen {
             public void done(boolean ok, String message) {
                 say(ok ? "Added to the library. Click it to use it." : message, ok ? GOOD : BAD);
                 if (ok) {
-                    HologramAssetScreen.this.source.setValue("");
+                    if (HologramAssetScreen.this.source != null)
+                        HologramAssetScreen.this.source.setValue("");
+                    if (switchToWorld)
+                        HologramAssetScreen.this.activeTab = 0;
                     reload();
                 }
             }
-        });
+        };
+    }
+
+    private void startImport(String text) {
+        boolean started = HologramAssetImport.start(text, uploadListener(true));
         if (!started)
             say("Another upload is still running", BAD);
+    }
+
+    private void pickOnlineResult(HologramAssetSearch.Result r) {
+        if (Screen.hasShiftDown() && !r.polyHaven()) {
+            startStream(r.downloadUrl());
+            return;
+        }
+        if (!this.canUpload) {
+            if (!r.polyHaven()) {
+                startStream(r.downloadUrl());
+            } else {
+                say("Uploads are disabled on this server.", BAD);
+            }
+            return;
+        }
+        if (r.polyHaven()) {
+            boolean started = HologramAssetSearch.importPolyHaven(r, uploadListener(true));
+            if (!started)
+                say("Another upload is still running", BAD);
+        } else {
+            startImport(r.downloadUrl());
+        }
     }
 
     // ---------------------------------------------------------------- input
@@ -214,12 +321,13 @@ public final class HologramAssetScreen extends Screen {
     }
 
     private int contentHeight() {
-        int rows = (visible().size() + this.cols - 1) / this.cols;
+        int count = this.activeTab == 0 ? visible().size() : this.onlineResults.size();
+        int rows = (count + this.cols - 1) / this.cols;
         return rows * (CELL + LABEL + GAP);
     }
 
     private Asset tileAt(double mx, double my) {
-        if (my < this.gridTop || my >= this.gridBottom)
+        if (this.activeTab != 0 || my < this.gridTop || my >= this.gridBottom)
             return null;
         List<Asset> list = visible();
         for (int i = 0; i < list.size(); i++) {
@@ -231,11 +339,23 @@ public final class HologramAssetScreen extends Screen {
         return null;
     }
 
+    private HologramAssetSearch.Result onlineTileAt(double mx, double my) {
+        if (this.activeTab == 0 || my < this.gridTop || my >= this.gridBottom)
+            return null;
+        for (int i = 0; i < this.onlineResults.size(); i++) {
+            int x = tileX(i);
+            int y = tileY(i);
+            if (mx >= x && mx < x + CELL && my >= y && my < y + CELL + LABEL)
+                return this.onlineResults.get(i);
+        }
+        return null;
+    }
+
     @Override
     public boolean mouseClicked(double mx, double my, int button) {
         if (super.mouseClicked(mx, my, button))
             return true;
-        if (button == 1) {
+        if (button == 1 && this.activeTab == 0) {
             Asset d = tileAt(mx, my);
             if (d == null)
                 return false;
@@ -258,6 +378,20 @@ public final class HologramAssetScreen extends Screen {
         }
         if (button != 0)
             return false;
+        // Tab bar
+        if (my >= this.py0 + 3 && my < this.py0 + 19) {
+            for (int i = 0; i < TABS.length; i++) {
+                int tx = tabX(i);
+                if (mx >= tx && mx < tx + tabW(i)) {
+                    selectTab(i);
+                    return true;
+                }
+            }
+            if (this.activeTab > 0 && mx >= goBtnX() && mx < goBtnX() + 24) {
+                triggerOnlineSearch(true);
+                return true;
+            }
+        }
         if (mx >= streamX() && mx < streamX() + 48 && my >= this.py1 - 37 && my < this.py1 - 21) {
             startStream(this.source.getValue());
             return true;
@@ -269,12 +403,20 @@ public final class HologramAssetScreen extends Screen {
                 say("This server does not let you upload", BAD);
             return true;
         }
-        Asset a = tileAt(mx, my);
-        if (a != null) {
-            if (this.editor != null)
-                this.editor.creatorAddLayer("MODEL".equals(a.type()) ? HologramLayer.model(a.id(), 0.0F) : HologramLayer.image(a.id(), 0.0F));
-            onClose();
-            return true;
+        if (this.activeTab == 0) {
+            Asset a = tileAt(mx, my);
+            if (a != null) {
+                if (this.editor != null)
+                    this.editor.creatorAddLayer("MODEL".equals(a.type()) ? HologramLayer.model(a.id(), 0.0F) : HologramLayer.image(a.id(), 0.0F));
+                onClose();
+                return true;
+            }
+        } else {
+            HologramAssetSearch.Result r = onlineTileAt(mx, my);
+            if (r != null) {
+                pickOnlineResult(r);
+                return true;
+            }
         }
         return false;
     }
@@ -288,16 +430,23 @@ public final class HologramAssetScreen extends Screen {
 
     @Override
     public boolean keyPressed(int key, int scan, int mods) {
-        if ((key == GLFW.GLFW_KEY_ENTER || key == GLFW.GLFW_KEY_KP_ENTER) && this.source.isFocused()) {
-            if (this.canUpload)
-                startImport(this.source.getValue());
-            return true;
+        if (key == GLFW.GLFW_KEY_ENTER || key == GLFW.GLFW_KEY_KP_ENTER) {
+            if (this.source.isFocused()) {
+                if (this.canUpload)
+                    startImport(this.source.getValue());
+                return true;
+            }
+            if (this.search.isFocused() && this.activeTab > 0) {
+                triggerOnlineSearch(true);
+                return true;
+            }
         }
         return super.keyPressed(key, scan, mods);
     }
 
     @Override
     public void onClose() {
+        HologramAssetSearch.clearThumbnails();
         if (this.minecraft != null)
             this.minecraft.setScreen(this.returnTo);
     }
@@ -319,30 +468,67 @@ public final class HologramAssetScreen extends Screen {
         renderBackground(g, mx, my, partial);
         g.fill(this.px0, this.py0, this.px1, this.py1, PANEL);
         g.renderOutline(this.px0, this.py0, this.px1 - this.px0, this.py1 - this.py0, PANEL_EDGE);
-        g.drawString(this.font, "PICTURES", this.px0 + 8, this.py0 + 7, ACCENT, false);
-        String count = this.loading ? "loading..." : this.total + " in world";
-        g.drawString(this.font, count, this.px1 - 8 - this.font.width(count), this.py0 + 7, FAINT, false);
+
+        // Tab strip
+        for (int i = 0; i < TABS.length; i++) {
+            int tx = tabX(i);
+            int tw = tabW(i);
+            boolean active = i == this.activeTab;
+            boolean hov = mx >= tx && mx < tx + tw && my >= this.py0 + 3 && my < this.py0 + 19;
+            g.fill(tx, this.py0 + 3, tx + tw, this.py0 + 19, active ? 0xFF1F6A86 : hov ? TILE_HOVER : TILE);
+            if (active)
+                g.renderOutline(tx, this.py0 + 3, tw, 16, ACCENT);
+            g.drawCenteredString(this.font, TABS[i], tx + tw / 2, this.py0 + 7, active ? TEXT : MUTED);
+        }
+
+        // Go button (for online search) or world count
+        if (this.activeTab > 0) {
+            int gx = goBtnX();
+            boolean overGo = mx >= gx && mx < gx + 24 && my >= this.py0 + 4 && my < this.py0 + 18;
+            g.fill(gx, this.py0 + 4, gx + 24, this.py0 + 18, overGo ? 0xFF2A7FA0 : 0xFF1F6A86);
+            g.drawCenteredString(this.font, "Go", gx + 12, this.py0 + 7, TEXT);
+        } else {
+            String count = this.loading ? "..." : String.valueOf(this.total);
+            g.drawCenteredString(this.font, count, goBtnX() + 12, this.py0 + 7, FAINT);
+        }
 
         g.enableScissor(this.px0 + 1, this.gridTop, this.px1 - 1, this.gridBottom);
-        Asset hover = tileAt(mx, my);
-        List<Asset> shown = visible();
-        for (int i = 0; i < shown.size(); i++) {
-            int y = tileY(i);
-            if (y + CELL + LABEL < this.gridTop || y > this.gridBottom)
-                continue;
-            drawTile(g, shown.get(i), tileX(i), y, shown.get(i) == hover);
+        if (this.activeTab == 0) {
+            Asset hover = tileAt(mx, my);
+            List<Asset> shown = visible();
+            for (int i = 0; i < shown.size(); i++) {
+                int y = tileY(i);
+                if (y + CELL + LABEL < this.gridTop || y > this.gridBottom)
+                    continue;
+                drawTile(g, shown.get(i), tileX(i), y, shown.get(i) == hover);
+            }
+        } else {
+            HologramAssetSearch.Result hover = onlineTileAt(mx, my);
+            for (int i = 0; i < this.onlineResults.size(); i++) {
+                int y = tileY(i);
+                if (y + CELL + LABEL < this.gridTop || y > this.gridBottom)
+                    continue;
+                drawOnlineTile(g, this.onlineResults.get(i), tileX(i), y, this.onlineResults.get(i) == hover);
+            }
         }
         g.disableScissor();
 
-        if (!this.assets.isEmpty() && shown.isEmpty() && !this.loading) {
-            g.drawCenteredString(this.font, "Nothing matches that search.", (this.px0 + this.px1) / 2, this.gridTop + 30, MUTED);
+        if (this.activeTab == 0) {
+            if (!this.assets.isEmpty() && visible().isEmpty() && !this.loading) {
+                g.drawCenteredString(this.font, "Nothing matches that search.", (this.px0 + this.px1) / 2, this.gridTop + 30, MUTED);
+            }
+            if (this.assets.isEmpty() && !this.loading) {
+                String hint = "Nothing here yet. Drop a file, paste a URL,";
+                String hint2 = "or switch to Images / GIFs / 3D above.";
+                g.drawCenteredString(this.font, hint, (this.px0 + this.px1) / 2, this.gridTop + 30, MUTED);
+                g.drawCenteredString(this.font, hint2, (this.px0 + this.px1) / 2, this.gridTop + 42, MUTED);
+            }
+        } else if (this.onlineLoading) {
+            g.drawCenteredString(this.font, "Searching public CDN...", (this.px0 + this.px1) / 2, this.gridTop + 30, MUTED);
+        } else if (this.onlineResults.isEmpty()) {
+            g.drawCenteredString(this.font, "Type a keyword above and press Enter or Go.", (this.px0 + this.px1) / 2, this.gridTop + 30, MUTED);
         }
-        if (this.assets.isEmpty() && !this.loading) {
-            String hint = "Nothing here yet. Drop a file on the window,";
-            String hint2 = "or type a path or address below.";
-            g.drawCenteredString(this.font, hint, (this.px0 + this.px1) / 2, this.gridTop + 30, MUTED);
-            g.drawCenteredString(this.font, hint2, (this.px0 + this.px1) / 2, this.gridTop + 42, MUTED);
-        }
+
         double max = Math.max(0, contentHeight() - (this.gridBottom - this.gridTop));
         if (max > 0) {
             int trackH = this.gridBottom - this.gridTop;
@@ -367,7 +553,10 @@ public final class HologramAssetScreen extends Screen {
                 !this.canUpload || busy ? 0xFF1A222D : overUpload ? 0xFF2A7FA0 : 0xFF1F6A86);
         g.drawCenteredString(this.font, "Upload", uploadX() + 24, this.py1 - 33, this.canUpload && !busy ? TEXT : FAINT);
 
-        String line = this.font.plainSubstrByWidth(this.status.isEmpty() ? "Click an item to add it. Right-click twice to delete. Esc closes." : this.status,
+        String fallbackHint = this.activeTab == 0
+                ? "Click an item to add it. Right-click twice to delete. Esc closes."
+                : "Click to import into world. Shift+click to stream URL. Enter searches.";
+        String line = this.font.plainSubstrByWidth(this.status.isEmpty() ? fallbackHint : this.status,
                 this.px1 - this.px0 - 16);
         g.drawString(this.font, line, this.px0 + 8, this.py1 - 15, this.status.isEmpty() ? FAINT : this.statusColour, false);
     }
@@ -377,7 +566,6 @@ public final class HologramAssetScreen extends Screen {
         if (hover)
             g.renderOutline(x, y, CELL, CELL, ACCENT);
 
-        // The first frame of the asset; it loads on demand, so scrolling to a tile is what starts its download.
         boolean model = "MODEL".equals(a.type());
         ResourceLocation tex = model ? null : HologramAssets.texture(a.id(), 0.0);
         if (model) {
@@ -400,6 +588,30 @@ public final class HologramAssetScreen extends Screen {
         g.drawString(this.font, this.font.plainSubstrByWidth(
                 model ? "model" : a.width() + "x" + a.height() + (a.type().isEmpty() ? "" : " " + a.type().toLowerCase(Locale.ROOT)), CELL),
                 x, y + CELL + 11, FAINT, false);
+    }
+
+    private void drawOnlineTile(GuiGraphics g, HologramAssetSearch.Result r, int x, int y, boolean hover) {
+        g.fill(x, y, x + CELL, y + CELL, hover ? TILE_HOVER : TILE);
+        if (hover)
+            g.renderOutline(x, y, CELL, CELL, ACCENT);
+
+        ResourceLocation tex = HologramAssetSearch.thumbnail(r.thumbUrl());
+        if (tex != null) {
+            g.blit(tex, x + 2, y + 2, CELL - 4, CELL - 4, 0.0F, 0.0F, 128, 128, 128, 128);
+        } else {
+            g.drawCenteredString(this.font, r.kind() == HologramAssetSearch.Kind.MODEL ? "3D" : "...",
+                    x + CELL / 2, y + CELL / 2 - 4, r.kind() == HologramAssetSearch.Kind.MODEL ? ACCENT : FAINT);
+        }
+        if (r.kind() == HologramAssetSearch.Kind.GIF) {
+            g.fill(x + CELL - 20, y + 2, x + CELL - 2, y + 12, 0xAA000000);
+            g.drawString(this.font, "GIF", x + CELL - 18, y + 3, ACCENT, false);
+        } else if (r.kind() == HologramAssetSearch.Kind.MODEL) {
+            String badge = r.polyHaven() ? "CC0" : "GLB";
+            g.fill(x + CELL - 22, y + 2, x + CELL - 2, y + 12, 0xAA000000);
+            g.drawString(this.font, badge, x + CELL - 20, y + 3, ACCENT, false);
+        }
+        g.drawString(this.font, this.font.plainSubstrByWidth(r.title(), CELL), x, y + CELL + 2, TEXT, false);
+        g.drawString(this.font, this.font.plainSubstrByWidth(r.subtitle(), CELL), x, y + CELL + 11, FAINT, false);
     }
 
     // ---------------------------------------------------------------- dev checks
