@@ -827,6 +827,26 @@ public final class HologramCreatorScreen extends Screen {
         chip(g, mx, my, x, y, w, "In-front preview: " + (front ? "On" : "Off"), front,
                 () -> HologramClient.setPreviewAnchored(!HologramClient.previewAnchored()))
                 .tooltip = "Draw the edited hologram a few blocks in front of you, for when the real one is out of view.";
+        y += ROW + 4;
+        var attach = this.editor.creatorAttach();
+        String attachLabel = attach == null
+                ? "Attach to me: Off"
+                : "Attached: " + (attach.playerName().isEmpty() ? "Player" : attach.playerName());
+        chip(g, mx, my, x, y, w, attachLabel, attach != null, this.editor::creatorToggleAttachSelf)
+                .tooltip = attach == null
+                ? "Follow you across dimensions and relogs (hides when offline)."
+                : "Click to detach back into the world at your position.";
+        if (attach != null) {
+            y += ROW + 2;
+            int half = (w - 2) / 2;
+            chip(g, mx, my, x, y, half, "Follow: " + attach.follow().label, true,
+                    this.editor::creatorCycleAttachFollow)
+                    .tooltip = "Position only, follow body yaw, or follow head look.";
+            chip(g, mx, my, x + half + 2, y, w - half - 2,
+                    "1st person: " + (attach.hideFirstPerson() ? "Hide" : "Show"),
+                    attach.hideFirstPerson(), this.editor::creatorToggleAttachHideFirstPerson)
+                    .tooltip = "Hide from your own first-person view so it does not block your screen.";
+        }
         return y + ROW + 2;
     }
 

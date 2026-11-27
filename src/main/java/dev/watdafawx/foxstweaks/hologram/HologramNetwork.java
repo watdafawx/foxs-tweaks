@@ -76,9 +76,21 @@ public final class HologramNetwork {
         }
 
         // The client can send any position it likes; only the stored one (anchor or offset box) is trusted.
-        double distSq = Math.min(
-                player.distanceToSqr(Vec3.atCenterOf(stored.pos())),
-                player.distanceToSqr(stored.box().getCenter()));
+        double distSq;
+        if (stored.isAttached()) {
+            var liveBox = stored.box(level, 1.0F);
+            if (liveBox != null) {
+                distSq = player.distanceToSqr(liveBox.getCenter());
+            } else if (player.hasPermissions(2)) {
+                distSq = 0.0;
+            } else {
+                return;
+            }
+        } else {
+            distSq = Math.min(
+                    player.distanceToSqr(Vec3.atCenterOf(stored.pos())),
+                    player.distanceToSqr(stored.box().getCenter()));
+        }
 
         // An open editor widens the gate: the studio camera, Grab mode and big structures all take the player
         // away from the hologram, and Done must still land. A first preview from within the base limit proves
@@ -160,7 +172,16 @@ public final class HologramNetwork {
             return;
         }
 
-        HologramSpec sanitized = incoming.at(stored.id(), stored.pos(), stored.owner(), stored.ownerName())
+        HologramAttach sanitizedAttach = sanitizeAttach(player, stored.attach(), incoming.attach());
+        BlockPos savePos = stored.pos();
+        if (payload.action() == HologramActionPayload.Action.SAVE && stored.isAttached() && sanitizedAttach == null) {
+            ServerPlayer prevTarget = player.server.getPlayerList().getPlayer(stored.attach().playerUuid());
+            savePos = (prevTarget != null && prevTarget.serverLevel() == level)
+                    ? prevTarget.blockPosition()
+                    : player.blockPosition();
+        }
+        HologramSpec sanitized = incoming.at(stored.id(), savePos, stored.owner(), stored.ownerName())
+                .withAttach(sanitizedAttach)
                 .withRenderDistance(Math.min(incoming.renderDistance(), ServerConfig.hologramsMaxRenderDistance()));
 
         if (payload.action() == HologramActionPayload.Action.PREVIEW) {
@@ -169,6 +190,23 @@ public final class HologramNetwork {
         }
 
         Holograms.save(level, sanitized);
+    }
+
+    @javax.annotation.Nullable
+    private static HologramAttach sanitizeAttach(ServerPlayer editor, @javax.annotation.Nullable HologramAttach previous,
+                                                 @javax.annotation.Nullable HologramAttach incoming) {
+        if (incoming == null)
+            return null;
+        if (!editor.hasPermissions(2) && !incoming.playerUuid().equals(editor.getUUID())) {
+            // Non-ops may only attach to themselves (or keep an existing op-set attachment target).
+            if (previous != null && previous.playerUuid().equals(incoming.playerUuid()))
+                return incoming.withPlayer(previous.playerUuid(), previous.playerName());
+            return incoming.withPlayer(editor.getUUID(), editor.getGameProfile().getName());
+        }
+        ServerPlayer target = editor.server.getPlayerList().getPlayer(incoming.playerUuid());
+        if (target != null)
+            return incoming.withPlayer(target.getUUID(), target.getGameProfile().getName());
+        return incoming;
     }
 
     private static boolean canEdit(ServerPlayer player, HologramSpec spec) {
@@ -198,6 +236,7 @@ public final class HologramNetwork {
 
         HologramSpec created = style.at(Holograms.newId(level, style.primaryId()), pos,
                         player.getUUID(), player.getGameProfile().getName())
+                .withAttach(null)
                 .withRenderDistance(Math.min(style.renderDistance(), ServerConfig.hologramsMaxRenderDistance()));
 
         Holograms.save(level, created);

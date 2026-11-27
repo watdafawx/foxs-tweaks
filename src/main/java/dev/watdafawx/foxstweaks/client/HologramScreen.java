@@ -122,6 +122,7 @@ public class HologramScreen extends Screen {
             List<HologramGroup> groups,
             List<HologramLayer> layers,
             @Nullable HologramTimeline timeline,
+            @Nullable dev.watdafawx.foxstweaks.hologram.HologramAttach attach,
             TargetKind targetKind,
             int selectedLayer,
             @Nullable String selectedGroupId
@@ -183,6 +184,8 @@ public class HologramScreen extends Screen {
     /** Edited only in the web editor; the Studio and Creator just carry it through to the save. */
     @Nullable
     private HologramTimeline timeline;
+    @Nullable
+    private dev.watdafawx.foxstweaks.hologram.HologramAttach attach;
 
     // ---- Selection & Solo ----
     private TargetKind targetKind = TargetKind.LAYER;
@@ -281,6 +284,7 @@ public class HologramScreen extends Screen {
         this.groups = new ArrayList<>(spec.groups());
         this.layers = new ArrayList<>(spec.layers());
         this.timeline = spec.timeline();
+        this.attach = spec.attach();
         if (this.layers.isEmpty())
             this.layers.add(HologramLayer.block("minecraft:stone", Map.of(), new CompoundTag()));
 
@@ -557,7 +561,7 @@ public class HologramScreen extends Screen {
                 this.rootOffsetX, this.rootOffsetY, this.rootOffsetZ,
                 this.rootYaw, this.rootPitch, this.rootRoll, this.rootScale,
                 this.renderDistance, this.appearRadius, this.appearSeconds, this.appearStyle,
-                List.copyOf(this.groups), List.copyOf(this.layers), this.timeline,
+                List.copyOf(this.groups), List.copyOf(this.layers), this.timeline, this.attach,
                 this.targetKind, this.selectedLayer, this.selectedGroupId);
     }
 
@@ -576,6 +580,7 @@ public class HologramScreen extends Screen {
         this.groups = new ArrayList<>(snap.groups());
         this.layers = new ArrayList<>(snap.layers());
         this.timeline = snap.timeline();
+        this.attach = snap.attach();
         this.targetKind = snap.targetKind();
         this.selectedLayer = Mth.clamp(snap.selectedLayer(), 0, Math.max(0, this.layers.size() - 1));
         this.selectedGroupId = snap.selectedGroupId();
@@ -956,6 +961,29 @@ public class HologramScreen extends Screen {
                 rebuildInspector();
                 applyLocalPreviewOnly();
             }));
+            y += 22;
+            String attachText = this.attach == null
+                    ? "Attach to Me: Off"
+                    : "Attached: " + (this.attach.playerName().isEmpty() ? "Player" : this.attach.playerName());
+            this.flatBtns.add(new FlatBtn(rx, y, rw, 17, attachText, this.attach != null, false, true, () -> {
+                creatorToggleAttachSelf();
+                rebuildInspector();
+            }));
+            if (this.attach != null) {
+                y += 20;
+                int halfW = (rw - 4) / 2;
+                this.flatBtns.add(new FlatBtn(rx, y, halfW, 16,
+                        "Follow: " + this.attach.follow().label, true, false, true, () -> {
+                    creatorCycleAttachFollow();
+                    rebuildInspector();
+                }));
+                this.flatBtns.add(new FlatBtn(rx + halfW + 4, y, rw - halfW - 4, 16,
+                        "1st: " + (this.attach.hideFirstPerson() ? "Hide" : "Show"),
+                        this.attach.hideFirstPerson(), false, true, () -> {
+                    creatorToggleAttachHideFirstPerson();
+                    rebuildInspector();
+                }));
+            }
         } else if (group != null) {
             int halfW = (rw - 4) / 2;
             this.flatBtns.add(new FlatBtn(rx, y, halfW, 17,
@@ -3046,7 +3074,9 @@ public class HologramScreen extends Screen {
 
     private Vec3 targetWorldCenter() {
         HologramSpec spec = buildSpec();
-        Matrix4f m = spec.rootMatrix();
+        Matrix4f m = spec.rootMatrix(Minecraft.getInstance().level, 1.0F);
+        if (m == null)
+            m = spec.rootMatrix();
         Vector3f v = new Vector3f(0.0F, 0.5F, 0.0F);
         if (this.targetKind == TargetKind.GROUP) {
             HologramGroup g = currentGroup();
@@ -3085,7 +3115,7 @@ public class HologramScreen extends Screen {
                 this.rootYaw, this.rootPitch, this.rootRoll, this.rootScale,
                 true, this.renderDistance, this.owner, this.ownerName,
                 this.appearRadius, this.appearSeconds, this.appearStyle,
-                this.groups, this.layers, this.timeline);
+                this.groups, this.layers, this.timeline, this.attach);
     }
 
     @Nullable
@@ -3379,6 +3409,39 @@ public class HologramScreen extends Screen {
         this.renderDistance = (int) clamp(Math.round(blocks), 8, this.maxRenderDistance);
     }
 
+    @Nullable
+    dev.watdafawx.foxstweaks.hologram.HologramAttach creatorAttach() {
+        return this.attach;
+    }
+
+    void creatorToggleAttachSelf() {
+        pushUndo();
+        if (this.attach != null) {
+            this.attach = null;
+        } else {
+            var player = Minecraft.getInstance().player;
+            if (player != null)
+                this.attach = dev.watdafawx.foxstweaks.hologram.HologramAttach.of(player);
+        }
+        refresh();
+    }
+
+    void creatorCycleAttachFollow() {
+        if (this.attach == null)
+            return;
+        pushUndo();
+        this.attach = this.attach.withFollow(this.attach.follow().next());
+        refresh();
+    }
+
+    void creatorToggleAttachHideFirstPerson() {
+        if (this.attach == null)
+            return;
+        pushUndo();
+        this.attach = this.attach.withHideFirstPerson(!this.attach.hideFirstPerson());
+        refresh();
+    }
+
     void creatorMoveLayer(int index, int delta) {
         moveLayer(index, delta);
     }
@@ -3607,6 +3670,7 @@ public class HologramScreen extends Screen {
         this.groups = new ArrayList<>(spec.groups());
         this.layers = new ArrayList<>(spec.layers());
         this.timeline = spec.timeline();
+        this.attach = spec.attach();
         if (this.layers.isEmpty())
             this.layers.add(HologramLayer.block("minecraft:stone", Map.of(), new CompoundTag()));
         this.selectedLayer = Mth.clamp(this.selectedLayer, 0, this.layers.size() - 1);

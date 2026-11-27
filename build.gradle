@@ -192,6 +192,14 @@ neoForge {
             systemProperty 'foxstweaks.hologramCreatorCheck', 'true'
         }
 
+        // Dev-only check of player-attached holograms (client/dev/HologramAttachCheck): attach, 1st-person hide,
+        // 3rd-person render + tracking, follow modes, Overworld->Nether travel, detach.
+        hologramAttachCheck {
+            client()
+            gameDirectory = file('run-hologram-attach')
+            systemProperty 'foxstweaks.hologramAttachCheck', 'true'
+        }
+
         // Dev-only check of music-reactive holograms (client/dev/HologramAudioCheck): generated tones and a click
         // track through the analyser and a fake capture device, modulations, presets, the panels, save, caps.
         // Report + screenshots land in run-hologram-audio/.

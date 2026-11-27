@@ -126,6 +126,14 @@ final class HologramWebJson {
         o.add("layers", layers);
         if (spec.timeline() != null)
             o.add("timeline", timeline(spec.timeline()));
+        if (spec.attach() != null) {
+            JsonObject a = new JsonObject();
+            a.addProperty("uuid", spec.attach().playerUuid().toString());
+            a.addProperty("name", spec.attach().playerName());
+            a.addProperty("follow", spec.attach().follow().name());
+            a.addProperty("hideFirstPerson", spec.attach().hideFirstPerson());
+            o.add("attach", a);
+        }
         return o;
     }
 
@@ -385,10 +393,35 @@ final class HologramWebJson {
         HologramTimeline timeline = o.has("timeline") && !o.get("timeline").isJsonNull()
                 ? readTimeline(asObj(o.get("timeline"), "timeline"), groups, layers)
                 : null;
+        dev.watdafawx.foxstweaks.hologram.HologramAttach attach = null;
+        if (o.has("attach") && !o.get("attach").isJsonNull()) {
+            JsonObject a = asObj(o.get("attach"), "attach");
+            String rawUuid = a.has("uuid") && !a.get("uuid").isJsonNull() ? str(a, "uuid", 64) : "self";
+            String name = a.has("name") && !a.get("name").isJsonNull() ? str(a, "name", 64) : "";
+            var follow = dev.watdafawx.foxstweaks.hologram.HologramAttach.Follow.parse(
+                    a.has("follow") && !a.get("follow").isJsonNull() ? str(a, "follow", 16) : "BODY_YAW");
+            boolean hideFp = bool(a, "hideFirstPerson", true);
+            java.util.UUID uuid = null;
+            if ("self".equalsIgnoreCase(rawUuid) || rawUuid.isEmpty()) {
+                var player = net.minecraft.client.Minecraft.getInstance().player;
+                if (player != null) {
+                    uuid = player.getUUID();
+                    name = player.getGameProfile().getName();
+                }
+            } else {
+                try {
+                    uuid = java.util.UUID.fromString(rawUuid);
+                } catch (IllegalArgumentException e) {
+                    throw new Invalid("bad attach uuid");
+                }
+            }
+            if (uuid != null)
+                attach = new dev.watdafawx.foxstweaks.hologram.HologramAttach(uuid, name, follow, hideFp);
+        }
 
         HologramSpec spec = new HologramSpec(base.id(), base.pos(), off[0], off[1], off[2], rot[0], rot[1], rot[2],
                 scale, base.enabled(), renderDistance, base.owner(), base.ownerName(), radius, seconds, style, groups,
-                layers, timeline);
+                layers, timeline, attach);
         String audioCaps = HologramAudioMod.checkCaps(spec, ServerConfig.hologramAudioMaxPerValue(),
                 ServerConfig.hologramAudioMaxPerHologram());
         if (audioCaps != null)

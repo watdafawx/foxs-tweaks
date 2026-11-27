@@ -130,6 +130,6 @@ public class HologramItem extends Item {
     private static HologramSpec pick(ServerLevel server, Player player) {
         Vec3 eye = player.getEyePosition();
         Vec3 look = player.getViewVector(1.0F);
-        return HologramPick.pick(eye, look, Holograms.REACH, Holograms.list(server));
+        return HologramPick.pick(server, eye, look, Holograms.REACH, Holograms.list(server));
     }
 }

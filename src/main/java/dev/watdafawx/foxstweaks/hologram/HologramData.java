@@ -4,6 +4,7 @@ import net.minecraft.core.HolderLookup;
 import net.minecraft.nbt.CompoundTag;
 import net.minecraft.nbt.ListTag;
 import net.minecraft.nbt.Tag;
+import net.minecraft.server.MinecraftServer;
 import net.minecraft.server.level.ServerLevel;
 import net.minecraft.world.level.saveddata.SavedData;
 
@@ -20,6 +21,7 @@ import java.util.Map;
  */
 public final class HologramData extends SavedData {
     private static final String FILE_NAME = "foxstweaks_holograms";
+    private static final String ATTACHED_FILE_NAME = "foxstweaks_attached_holograms";
 
     private final Map<String, HologramSpec> holograms = new LinkedHashMap<>();
 
@@ -27,6 +29,13 @@ public final class HologramData extends SavedData {
         return level.getDataStorage().computeIfAbsent(
                 new Factory<>(HologramData::new, HologramData::load),
                 FILE_NAME);
+    }
+
+    /** Server-wide store for player-attached holograms (lives in overworld data, travels across dimensions). */
+    public static HologramData attached(MinecraftServer server) {
+        return server.overworld().getDataStorage().computeIfAbsent(
+                new Factory<>(HologramData::new, HologramData::load),
+                ATTACHED_FILE_NAME);
     }
 
     public Collection<HologramSpec> all() {

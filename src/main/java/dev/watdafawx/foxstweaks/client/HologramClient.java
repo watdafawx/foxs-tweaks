@@ -174,7 +174,7 @@ public final class HologramClient {
             HologramClient.hovered = null;
             return;
         }
-        HologramClient.hovered = HologramPick.pick(mc.player.getEyePosition(), mc.player.getViewVector(1.0F),
+        HologramClient.hovered = HologramPick.pick(mc.level, mc.player.getEyePosition(), mc.player.getViewVector(1.0F),
                 Holograms.REACH, HologramClient.visible);
     }
 
@@ -190,11 +190,16 @@ public final class HologramClient {
 
             float target = 1.0F;
             if (spec.appearRadius() > 0.0F) {
-                var centre = spec.box().getCenter();
-                double nearest = Double.MAX_VALUE;
-                for (var player : players)
-                    nearest = Math.min(nearest, player.distanceToSqr(centre));
-                target = HologramAnim.appearTarget(nearest, spec.appearRadius());
+                var box = spec.box(mc.level, 1.0F);
+                if (box == null) {
+                    target = 0.0F;
+                } else {
+                    var centre = box.getCenter();
+                    double nearest = Double.MAX_VALUE;
+                    for (var player : players)
+                        nearest = Math.min(nearest, player.distanceToSqr(centre));
+                    target = HologramAnim.appearTarget(nearest, spec.appearRadius());
+                }
             }
 
             float current = HologramClient.appear.getOrDefault(spec.id(), target);
@@ -220,8 +225,15 @@ public final class HologramClient {
         for (HologramSpec spec : HologramClient.visible) {
             if (!spec.enabled() || spec.layers().isEmpty() || appearProgress(spec.id()) <= 0.01F)
                 continue;
+            if (spec.attach() != null && spec.attach().hideFirstPerson()
+                    && spec.attach().playerUuid().equals(mc.player.getUUID())
+                    && mc.options.getCameraType().isFirstPerson() && !HologramCamera.isActive())
+                continue;
 
-            var centre = spec.box().getCenter();
+            var box = spec.box(mc.level, 1.0F);
+            if (box == null)
+                continue;
+            var centre = box.getCenter();
             if (mc.player.distanceToSqr(centre) > (double) spec.renderDistance() * spec.renderDistance())
                 continue;
 
@@ -259,8 +271,11 @@ public final class HologramClient {
                 if (count <= 0)
                     continue;
 
-                if (rootMat == null)
-                    rootMat = spec.rootMatrix();
+                if (rootMat == null) {
+                    rootMat = spec.rootMatrix(mc.level, 1.0F);
+                    if (rootMat == null)
+                        break;
+                }
 
                 Matrix4f m = new Matrix4f(rootMat);
                 if (group != null) {

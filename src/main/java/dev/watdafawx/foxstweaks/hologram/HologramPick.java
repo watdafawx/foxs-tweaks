@@ -1,5 +1,7 @@
 package dev.watdafawx.foxstweaks.hologram;
 
+import net.minecraft.world.level.Level;
+import net.minecraft.world.phys.AABB;
 import net.minecraft.world.phys.Vec3;
 
 import javax.annotation.Nullable;
@@ -17,6 +19,11 @@ public final class HologramPick {
 
     @Nullable
     public static HologramSpec pick(Vec3 eye, Vec3 look, double reach, List<HologramSpec> specs) {
+        return pick(null, eye, look, reach, specs);
+    }
+
+    @Nullable
+    public static HologramSpec pick(@Nullable Level level, Vec3 eye, Vec3 look, double reach, List<HologramSpec> specs) {
         Vec3 end = eye.add(look.scale(reach));
         HologramSpec best = null;
         double bestDist = reach * reach;
@@ -25,7 +32,10 @@ public final class HologramPick {
             HologramSpec spec = specs.get(i);
             if (!spec.enabled())
                 continue;
-            Optional<Vec3> hit = spec.box().clip(eye, end);
+            AABB box = level != null ? spec.box(level, 1.0F) : spec.box();
+            if (box == null)
+                continue;
+            Optional<Vec3> hit = box.clip(eye, end);
             if (hit.isEmpty())
                 continue;
             double dist = eye.distanceToSqr(hit.get());

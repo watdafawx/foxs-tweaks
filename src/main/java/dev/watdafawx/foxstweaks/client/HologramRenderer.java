@@ -180,9 +180,15 @@ public final class HologramRenderer {
             HologramSpec spec = specs.get(i);
             if (!spec.enabled() || spec.layers().isEmpty())
                 continue;
+            if (spec.attach() != null && spec.attach().hideFirstPerson()
+                    && mc.player != null && spec.attach().playerUuid().equals(mc.player.getUUID())
+                    && mc.options.getCameraType().isFirstPerson() && !HologramCamera.isActive())
+                continue;
 
             double cap = Math.min(spec.renderDistance(), globalCap);
-            AABB box = spec.box();
+            AABB box = spec.box(mc.level, partial);
+            if (box == null)
+                continue;
             Vec3 center = box.getCenter();
             if (camera.distanceToSqr(center) > cap * cap)
                 continue;
@@ -203,7 +209,7 @@ public final class HologramRenderer {
         lastDrawn = drawn;
 
         if (hovered != null)
-            drawOutline(pose, buffer, hovered, camera,
+            drawOutline(pose, buffer, hovered, camera, partial,
                     mc.player != null && mc.player.isShiftKeyDown());
 
         HologramSpec preview = HologramClient.previewSpec();
@@ -236,20 +242,36 @@ public final class HologramRenderer {
                 .add(right.scale(0.15))
                 .add(0.0, -drop, 0.0);
 
-        drawAt(pose, buffer, spec, seconds, camera, anchor, 0xF000F0, 1.0F, partialTick);
+        drawAt(pose, buffer, spec, seconds, camera, anchor, null, 0xF000F0, 1.0F, partialTick);
     }
 
     public static void draw(PoseStack pose, MultiBufferSource buffer, HologramSpec spec, double seconds,
                             Vec3 camera, float partialTick) {
+        Minecraft mc = Minecraft.getInstance();
+        if (mc.level == null)
+            return;
+        if (spec.attach() != null) {
+            net.minecraft.world.entity.player.Player target = mc.level.getPlayerByUUID(spec.attach().playerUuid());
+            if (target == null)
+                return;
+            Matrix4f anchorMat = spec.attach().anchorMatrix(target, partialTick);
+            Vector3f worldPt = anchorMat.transformPosition(new Vector3f(spec.offsetX(), spec.offsetY() + 0.5F, spec.offsetZ()));
+            Vec3 origin = new Vec3(worldPt.x - 0.5, worldPt.y - 0.5, worldPt.z - 0.5);
+            int worldLight = LevelRenderer.getLightColor(mc.level, BlockPos.containing(worldPt.x, worldPt.y, worldPt.z));
+            drawAt(pose, buffer, spec, seconds, camera, origin, anchorMat, worldLight,
+                    HologramClient.appearProgress(spec.id()), partialTick);
+            return;
+        }
         Vec3 origin = Vec3.atLowerCornerOf(spec.pos()).add(spec.offsetX(), spec.offsetY(), spec.offsetZ());
-        int worldLight = LevelRenderer.getLightColor(Minecraft.getInstance().level,
+        int worldLight = LevelRenderer.getLightColor(mc.level,
                 BlockPos.containing(origin.x + 0.5, origin.y + 0.5, origin.z + 0.5));
-        drawAt(pose, buffer, spec, seconds, camera, origin, worldLight,
+        drawAt(pose, buffer, spec, seconds, camera, origin, null, worldLight,
                 HologramClient.appearProgress(spec.id()), partialTick);
     }
 
     private static void drawAt(PoseStack pose, MultiBufferSource buffer, HologramSpec spec, double seconds,
-                               Vec3 camera, Vec3 origin, int worldLight, float appear, float partialTick) {
+                               Vec3 camera, Vec3 origin, @Nullable Matrix4f attachAnchor, int worldLight, float appear,
+                               float partialTick) {
         if (appear <= 0.01F || spec.layers().isEmpty())
             return;
 
@@ -304,9 +326,17 @@ public final class HologramRenderer {
         buffer = TintedBuffer.tint(buffer, rootTint);
 
         pose.pushPose();
-        pose.translate(origin.x + rdx + 0.5 - camera.x + reveal.glitchX(),
-                origin.y + rdy - camera.y + reveal.dy(),
-                origin.z + rdz + 0.5 - camera.z);
+        if (attachAnchor != null) {
+            pose.translate(-camera.x, -camera.y, -camera.z);
+            pose.mulPose(attachAnchor);
+            pose.translate(spec.offsetX() + rdx + reveal.glitchX(),
+                    spec.offsetY() + rdy + reveal.dy(),
+                    spec.offsetZ() + rdz);
+        } else {
+            pose.translate(origin.x + rdx + 0.5 - camera.x + reveal.glitchX(),
+                    origin.y + rdy - camera.y + reveal.dy(),
+                    origin.z + rdz + 0.5 - camera.z);
+        }
         pose.mulPose(Axis.YP.rotationDegrees(rYaw + reveal.spinY()));
         pose.mulPose(Axis.XP.rotationDegrees(rPitch));
         pose.mulPose(Axis.ZP.rotationDegrees(rRoll));
@@ -795,8 +825,11 @@ public final class HologramRenderer {
     }
 
     private static void drawOutline(PoseStack pose, MultiBufferSource.BufferSource buffer, HologramSpec spec,
-                                    Vec3 camera, boolean deleting) {
-        AABB box = spec.box().move(-camera.x, -camera.y, -camera.z).inflate(0.02);
+                                    Vec3 camera, float partialTick, boolean deleting) {
+        AABB raw = spec.box(Minecraft.getInstance().level, partialTick);
+        if (raw == null)
+            return;
+        AABB box = raw.move(-camera.x, -camera.y, -camera.z).inflate(0.02);
         float red = deleting ? 1.0F : 0.35F;
         float green = deleting ? 0.3F : 0.9F;
         float blue = deleting ? 0.3F : 1.0F;

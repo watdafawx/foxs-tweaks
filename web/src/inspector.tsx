@@ -122,6 +122,54 @@ function RootInspector({ spec }: { spec: Spec }) {
           onChange={(v, g) => edit((s) => (s.renderDistance = v), g)}
         />
       </Section>
+      <Section title="Player Attachment">
+        <Row
+          label="Attach"
+          title="Follow a player across dimensions and relogs (hides when offline)"
+        >
+          <Toggle
+            value={!!spec.attach}
+            label={spec.attach ? spec.attach.name || 'Attached' : 'Off'}
+            onChange={(on) =>
+              edit((s) => {
+                s.attach = on
+                  ? { uuid: 'self', name: '', follow: 'BODY_YAW', hideFirstPerson: true }
+                  : null;
+              })
+            }
+          />
+        </Row>
+        {spec.attach && (
+          <>
+            <Row label="Follow">
+              <SelectField
+                value={spec.attach.follow}
+                options={[
+                  { value: 'POSITION', label: 'Position only' },
+                  { value: 'BODY_YAW', label: 'Body yaw' },
+                  { value: 'HEAD_LOOK', label: 'Head look' },
+                ]}
+                onChange={(v) =>
+                  edit((s) => {
+                    if (s.attach) s.attach.follow = v as 'POSITION' | 'BODY_YAW' | 'HEAD_LOOK';
+                  })
+                }
+              />
+            </Row>
+            <Row label="1st person" title="Hide from the attached player's own first-person camera">
+              <Toggle
+                value={spec.attach.hideFirstPerson}
+                label={spec.attach.hideFirstPerson ? 'Hide' : 'Show'}
+                onChange={(v) =>
+                  edit((s) => {
+                    if (s.attach) s.attach.hideFirstPerson = v;
+                  })
+                }
+              />
+            </Row>
+          </>
+        )}
+      </Section>
       <TargetAudio target="ROOT" id="" />
     </div>
   );

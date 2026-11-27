@@ -145,6 +145,15 @@ export interface Timeline {
   audio?: AudioLink[];
 }
 
+export type AttachFollow = 'POSITION' | 'BODY_YAW' | 'HEAD_LOOK';
+
+export interface Attach {
+  uuid: string;
+  name: string;
+  follow: AttachFollow;
+  hideFirstPerson: boolean;
+}
+
 export interface Spec {
   id: string;
   pos: Vec3;
@@ -156,6 +165,7 @@ export interface Spec {
   groups: Group[];
   layers: Layer[];
   timeline?: Timeline | null;
+  attach?: Attach | null;
 }
 
 export interface EffectDef {

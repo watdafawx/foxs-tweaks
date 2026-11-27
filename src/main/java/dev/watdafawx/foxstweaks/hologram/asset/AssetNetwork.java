@@ -557,6 +557,8 @@ public final class AssetNetwork {
             for (HologramSpec spec : HologramData.get(level).all())
                 imageUses(spec).forEach((k, v) -> used.merge(k, v, Integer::sum));
         }
+        for (HologramSpec spec : HologramData.attached(e.getServer()).all())
+            imageUses(spec).forEach((k, v) -> used.merge(k, v, Integer::sum));
         try {
             store(e.getServer()).reconcile(used);
         } catch (IOException ex) {

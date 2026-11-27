@@ -46,12 +46,44 @@ public final class Holograms {
     }
 
     public static List<HologramSpec> list(ServerLevel level) {
-        return HologramData.get(level).snapshot();
+        List<HologramSpec> out = HologramData.get(level).snapshot();
+        for (HologramSpec spec : HologramData.attached(level.getServer()).all()) {
+            if (spec.attach() != null && level.getPlayerByUUID(spec.attach().playerUuid()) != null)
+                out.add(spec);
+        }
+        return out;
+    }
+
+    /** All player-attached holograms server-wide, regardless of whether their player is online. */
+    public static List<HologramSpec> listAttached(net.minecraft.server.MinecraftServer server) {
+        return HologramData.attached(server).snapshot();
+    }
+
+    public static boolean hasAttached(net.minecraft.server.MinecraftServer server, UUID playerUuid) {
+        for (HologramSpec spec : HologramData.attached(server).all()) {
+            if (spec.attach() != null && spec.attach().playerUuid().equals(playerUuid))
+                return true;
+        }
+        return false;
     }
 
     /** Saved holograms with any active live-editor previews overlaid for broadcasting to players. */
     public static List<HologramSpec> listForSync(ServerLevel level) {
+        return listForSync(level, null);
+    }
+
+    public static List<HologramSpec> listForSync(ServerLevel level, @Nullable UUID excludePlayer) {
         List<HologramSpec> saved = HologramData.get(level).snapshot();
+        for (HologramSpec spec : HologramData.attached(level.getServer()).all()) {
+            if (spec.attach() == null)
+                continue;
+            UUID target = spec.attach().playerUuid();
+            if (target.equals(excludePlayer))
+                continue;
+            Player p = level.getPlayerByUUID(target);
+            if (p instanceof ServerPlayer sp && !sp.hasDisconnected())
+                saved.add(spec);
+        }
         Map<String, LivePreview> dimPreviews = LIVE_PREVIEWS.get(level.dimension().location());
         if (dimPreviews == null || dimPreviews.isEmpty())
             return saved;
@@ -66,7 +98,8 @@ public final class Holograms {
 
     @Nullable
     public static HologramSpec get(ServerLevel level, String id) {
-        return HologramData.get(level).get(id);
+        HologramSpec dim = HologramData.get(level).get(id);
+        return dim != null ? dim : HologramData.attached(level.getServer()).get(id);
     }
 
     /** A short unique id for a new hologram, readable enough to use from a command. */
@@ -78,9 +111,10 @@ public final class Holograms {
             base = base.substring(0, 20);
 
         HologramData data = HologramData.get(level);
+        HologramData attached = HologramData.attached(level.getServer());
         for (int i = 1; i < 1000; i++) {
             String candidate = base + "_" + i;
-            if (data.get(candidate) == null)
+            if (data.get(candidate) == null && attached.get(candidate) == null)
                 return candidate;
         }
         return base + "_" + UUID.randomUUID().toString().substring(0, 6);
@@ -190,10 +224,37 @@ public final class Holograms {
             if (dimPreviews.isEmpty())
                 LIVE_PREVIEWS.remove(level.dimension().location());
         }
-        HologramSpec previous = HologramData.get(level).put(spec);
+        var server = level.getServer();
+        HologramData dimData = HologramData.get(level);
+        HologramData attachedData = HologramData.attached(server);
+        HologramSpec prevDim = dimData.get(spec.id());
+        HologramSpec prevAttached = attachedData.get(spec.id());
+        HologramSpec previous = prevDim != null ? prevDim : prevAttached;
+
+        ServerLevel extraSync = null;
+        if (spec.isAttached()) {
+            if (prevDim != null)
+                dimData.remove(spec.id());
+            attachedData.put(spec);
+            ServerPlayer target = server.getPlayerList().getPlayer(spec.attach().playerUuid());
+            if (target != null && target.serverLevel() != level)
+                extraSync = target.serverLevel();
+        } else {
+            if (prevAttached != null) {
+                attachedData.remove(spec.id());
+                if (prevAttached.attach() != null) {
+                    ServerPlayer prevTarget = server.getPlayerList().getPlayer(prevAttached.attach().playerUuid());
+                    if (prevTarget != null && prevTarget.serverLevel() != level)
+                        extraSync = prevTarget.serverLevel();
+                }
+            }
+            dimData.put(spec);
+        }
         // Reference counts follow saved holograms only, so an asset in use cannot be deleted by accident.
-        dev.watdafawx.foxstweaks.hologram.asset.AssetNetwork.track(level.getServer(), previous, spec);
+        dev.watdafawx.foxstweaks.hologram.asset.AssetNetwork.track(server, previous, spec);
         sync(level);
+        if (extraSync != null)
+            sync(extraSync);
     }
 
     @Nullable
@@ -204,10 +265,22 @@ public final class Holograms {
             if (dimPreviews.isEmpty())
                 LIVE_PREVIEWS.remove(level.dimension().location());
         }
+        var server = level.getServer();
         HologramSpec removed = HologramData.get(level).remove(id);
+        ServerLevel extraSync = null;
+        if (removed == null) {
+            removed = HologramData.attached(server).remove(id);
+            if (removed != null && removed.attach() != null) {
+                ServerPlayer target = server.getPlayerList().getPlayer(removed.attach().playerUuid());
+                if (target != null && target.serverLevel() != level)
+                    extraSync = target.serverLevel();
+            }
+        }
         if (removed != null) {
-            dev.watdafawx.foxstweaks.hologram.asset.AssetNetwork.track(level.getServer(), removed, null);
+            dev.watdafawx.foxstweaks.hologram.asset.AssetNetwork.track(server, removed, null);
             sync(level);
+            if (extraSync != null)
+                sync(extraSync);
         }
         return removed;
     }
@@ -227,9 +300,15 @@ public final class Holograms {
     }
 
     public static void sync(ServerLevel level) {
-        HologramSyncPayload payload = new HologramSyncPayload(level.dimension().location(), listForSync(level));
-        for (ServerPlayer player : level.players())
-            PacketDistributor.sendToPlayer(player, payload);
+        sync(level, null);
+    }
+
+    public static void sync(ServerLevel level, @Nullable UUID excludePlayer) {
+        HologramSyncPayload payload = new HologramSyncPayload(level.dimension().location(), listForSync(level, excludePlayer));
+        for (ServerPlayer player : level.players()) {
+            if (!player.getUUID().equals(excludePlayer))
+                PacketDistributor.sendToPlayer(player, payload);
+        }
     }
 
     public static void syncTo(ServerPlayer player) {
@@ -240,21 +319,35 @@ public final class Holograms {
 
     @SubscribeEvent
     public static void onLogin(PlayerEvent.PlayerLoggedInEvent event) {
-        if (event.getEntity() instanceof ServerPlayer player)
-            syncTo(player);
+        if (event.getEntity() instanceof ServerPlayer player) {
+            if (hasAttached(player.server, player.getUUID()))
+                sync(player.serverLevel());
+            else
+                syncTo(player);
+        }
     }
 
     @SubscribeEvent
     public static void onLogout(PlayerEvent.PlayerLoggedOutEvent event) {
-        if (event.getEntity() instanceof ServerPlayer player)
+        if (event.getEntity() instanceof ServerPlayer player) {
             clearLivePreviewsForPlayer(player);
+            if (hasAttached(player.server, player.getUUID()))
+                sync(player.serverLevel(), player.getUUID());
+        }
     }
 
     @SubscribeEvent
     public static void onChangedDimension(PlayerEvent.PlayerChangedDimensionEvent event) {
         if (event.getEntity() instanceof ServerPlayer player) {
             clearLivePreviewsForPlayer(player);
-            syncTo(player);
+            if (hasAttached(player.server, player.getUUID())) {
+                ServerLevel from = player.server.getLevel(event.getFrom());
+                if (from != null)
+                    sync(from, player.getUUID());
+                sync(player.serverLevel());
+            } else {
+                syncTo(player);
+            }
         }
     }
 

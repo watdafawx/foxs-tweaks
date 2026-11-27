@@ -1,5 +1,12 @@
 # Changelog
 
+## 1.51.0
+
+- **Player-attached holograms.** Any hologram can now be attached to a player so it follows them across dimensions and relogs (and hides automatically while they are offline).
+  - Three follow modes: **Position** (floats at offset, keeps its own rotation), **Body** (rotates with body yaw), and **Head** (follows head yaw and pitch, pivoting around eye height).
+  - **1st person: Hide / Show** toggle (default Hide so it does not block your own camera, while staying visible in third person and while the hologram editor camera is open).
+  - Toggle and configure from **Whole hologram** in Creator, **Root** in Studio, **Player Attachment** in the web editor, or `/foxstweaks hologram attach <id> [player] [position|body_yaw|head_look]` and `/foxstweaks hologram detach <id>`. Players can attach their own holograms to themselves; operators can attach to any player. Detaching drops the hologram back into the world at the player's current position.
+
 ## 1.50.1
 
 - **Hologram asset size limits are now configured in MB instead of bytes.** In `serverconfig/foxstweaks-server.toml` under `[assets]`, `assetMaxFileBytes` is now `assetMaxFileMb` (default `2`, range `1`–`16`) and `assetMaxWorldBytes` is now `assetMaxWorldMb` (default `200`, range `1`–`4096`), making them easier to edit in the in-game settings screen. Because the key names changed, existing worlds fall back to the defaults (`2` MB per asset, `200` MB per world) until re-edited.
