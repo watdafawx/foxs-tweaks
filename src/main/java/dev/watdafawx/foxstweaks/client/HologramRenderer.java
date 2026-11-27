@@ -720,7 +720,18 @@ public final class HologramRenderer {
                 pose.mulPose(Axis.XP.rotationDegrees(lAngleX));
                 pose.mulPose(Axis.ZP.rotationDegrees(lAngleZ));
                 pose.scale(sx, sy, sx);
-                HologramModels.draw(pose, out, layer, light, mediaClock(spec, seconds, partialTick), movingOnPath);
+                boolean hasPerVertexFx = TintedBuffer.hasPerVertexFx(effects) || TintedBuffer.hasPerVertexFx(gEffects);
+                float[] rgb = { (totalTint >> 16 & 0xFF) / 255.0F, (totalTint >> 8 & 0xFF) / 255.0F,
+                        (totalTint & 0xFF) / 255.0F };
+                if (!hasPerVertexFx) {
+                    if (!gEffects.isEmpty())
+                        TintedBuffer.applyUniformColor(gEffects, seconds, rgb);
+                    if (!effects.isEmpty())
+                        TintedBuffer.applyUniformColor(effects, seconds, rgb);
+                }
+                HologramModels.draw(pose, out, layer, light, mediaClock(spec, seconds, partialTick), movingOnPath,
+                        hasPerVertexFx ? null : lastView, hasPerVertexFx ? null : lastProjection,
+                        rgb[0], rgb[1], rgb[2]);
                 pose.popPose();
             }
             case PARTICLE -> {

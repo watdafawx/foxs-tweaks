@@ -8,7 +8,12 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 
+import com.mojang.blaze3d.systems.RenderSystem;
+import com.mojang.blaze3d.vertex.BufferBuilder;
+import com.mojang.blaze3d.vertex.ByteBufferBuilder;
+import com.mojang.blaze3d.vertex.MeshData;
 import com.mojang.blaze3d.vertex.PoseStack;
+import com.mojang.blaze3d.vertex.VertexBuffer;
 import com.mojang.blaze3d.vertex.VertexConsumer;
 import com.mojang.blaze3d.platform.NativeImage;
 
@@ -23,9 +28,13 @@ import net.minecraft.client.Minecraft;
 import net.minecraft.client.renderer.LevelRenderer;
 import net.minecraft.client.renderer.MultiBufferSource;
 import net.minecraft.client.renderer.RenderType;
+import net.minecraft.client.renderer.ShaderInstance;
 import net.minecraft.client.renderer.texture.DynamicTexture;
 import net.minecraft.client.renderer.texture.OverlayTexture;
 import net.minecraft.resources.ResourceLocation;
+import org.joml.Matrix4f;
+
+import javax.annotation.Nullable;
 
 /**
  * Draws 3D model layers. One {@link Runtime} per asset hash holds the decoded {@link ModelData}, its textures (as
@@ -47,6 +56,9 @@ public final class HologramModels {
     private HologramModels() {
     }
 
+    private record CompiledVbo(RenderType type, VertexBuffer vbo) {
+    }
+
     private static final class Runtime {
         final ModelData model;
         final ModelPose pose;
@@ -58,6 +70,12 @@ public final class HologramModels {
         final float[] bounds;
         int lastAnim = Integer.MIN_VALUE;
         double lastTime = Double.NaN;
+        /** Compiled GPU VBOs for static / rest-pose / paused draws (one draw call per RenderType). */
+        final List<CompiledVbo> vbos = new ArrayList<>();
+        int vboLight = Integer.MIN_VALUE;
+        int vboAnim = Integer.MIN_VALUE;
+        double vboTime = Double.NaN;
+        int vboTriangles;
 
         Runtime(String hash, ModelData model) {
             this.model = model;
@@ -81,7 +99,72 @@ public final class HologramModels {
                     this.scratch.put(p, new float[][] { new float[p.pos.length], new float[p.nrm.length] });
         }
 
+        void closeVbos() {
+            for (CompiledVbo cb : this.vbos) {
+                try {
+                    cb.vbo.close();
+                } catch (Throwable ignored) {
+                }
+            }
+            this.vbos.clear();
+            this.vboLight = Integer.MIN_VALUE;
+        }
+
+        void rebuildVbos(int light) {
+            closeVbos();
+            Map<RenderType, List<ModelData.Prim>> byType = new LinkedHashMap<>();
+            for (int n = 0; n < this.model.nodes.size(); n++) {
+                for (ModelData.Prim p : this.model.nodes.get(n).prims) {
+                    ResourceLocation tex = p.texture >= 0 && p.texture < this.locations.size()
+                            ? this.locations.get(p.texture) : null;
+                    if (tex == null)
+                        tex = white();
+                    RenderType type = p.alphaMode == ModelData.ALPHA_BLEND ? RenderType.entityTranslucent(tex)
+                            : p.doubleSided ? RenderType.entityCutoutNoCull(tex) : RenderType.entityCutout(tex);
+                    byType.computeIfAbsent(type, k -> new ArrayList<>()).add(p);
+                }
+            }
+            int triangles = 0;
+            for (var entry : byType.entrySet()) {
+                RenderType type = entry.getKey();
+                List<ModelData.Prim> prims = entry.getValue();
+                int estVerts = 0;
+                for (ModelData.Prim p : prims)
+                    estVerts += (p.idx.length / 3) * 4;
+                int cap = Math.max(256, estVerts * type.format().getVertexSize());
+                try (ByteBufferBuilder bb = new ByteBufferBuilder(cap)) {
+                    BufferBuilder buf = new BufferBuilder(bb, type.mode(), type.format());
+                    for (ModelData.Prim p : prims) {
+                        float[][] s = this.scratch.get(p);
+                        float[] pos = s[0], nrm = s[1];
+                        int cr = to255(p.cr), cg = to255(p.cg), cb = to255(p.cb), ca = to255(p.ca);
+                        for (int t = 0; t + 2 < p.idx.length; t += 3) {
+                            int a = p.idx[t], b = p.idx[t + 1], c = p.idx[t + 2];
+                            emitLocal(buf, pos, nrm, p.uv, a, cr, cg, cb, ca, light);
+                            emitLocal(buf, pos, nrm, p.uv, b, cr, cg, cb, ca, light);
+                            emitLocal(buf, pos, nrm, p.uv, c, cr, cg, cb, ca, light);
+                            emitLocal(buf, pos, nrm, p.uv, c, cr, cg, cb, ca, light);
+                            triangles++;
+                        }
+                    }
+                    MeshData mesh = buf.build();
+                    if (mesh != null) {
+                        VertexBuffer vbo = new VertexBuffer(VertexBuffer.Usage.STATIC);
+                        vbo.bind();
+                        vbo.upload(mesh);
+                        VertexBuffer.unbind();
+                        this.vbos.add(new CompiledVbo(type, vbo));
+                    }
+                }
+            }
+            this.vboLight = light;
+            this.vboAnim = this.lastAnim;
+            this.vboTime = this.lastTime;
+            this.vboTriangles = triangles;
+        }
+
         void release() {
+            closeVbos();
             var manager = Minecraft.getInstance().getTextureManager();
             for (ResourceLocation loc : this.locations)
                 if (loc != null)
@@ -173,6 +256,17 @@ public final class HologramModels {
      */
     public static void draw(PoseStack pose, MultiBufferSource out, HologramLayer layer, int light, double clock,
                             boolean autoWalk) {
+        draw(pose, out, layer, light, clock, autoWalk, null, null, 1.0F, 1.0F, 1.0F);
+    }
+
+    /**
+     * Draws the layer's model; when {@code view} and {@code projection} are provided and the pose is static or
+     * unchanged (e.g. rest-pose / paused high-poly models), renders via compiled GPU {@link VertexBuffer}s in one
+     * draw call per render type instead of submitting every triangle on the CPU each frame.
+     */
+    public static void draw(PoseStack pose, MultiBufferSource out, HologramLayer layer, int light, double clock,
+                            boolean autoWalk, @Nullable Matrix4f view, @Nullable Matrix4f projection,
+                            float tintR, float tintG, float tintB) {
         HologramModelSettings settings = layer.model();
         Runtime r = runtime(layer.id());
         if (r == null) {
@@ -192,6 +286,12 @@ public final class HologramModels {
         boolean dirtyPose = anim != r.lastAnim || time != r.lastTime;
         if (dirtyPose) {
             r.pose.evaluate(anim, time);
+            for (int n = 0; n < r.model.nodes.size(); n++) {
+                for (ModelData.Prim p : r.model.nodes.get(n).prims) {
+                    float[][] s = r.scratch.get(p);
+                    r.pose.pose(n, p, s[0], s[1]);
+                }
+            }
             r.lastAnim = anim;
             r.lastTime = time;
         }
@@ -202,14 +302,38 @@ public final class HologramModels {
         pose.pushPose();
         pose.scale(k, k, k);
         pose.translate(-(b[0] + b[3]) * 0.5F, -b[1], -(b[2] + b[5]) * 0.5F);
+
+        if (view != null && projection != null && (anim < 0 || !dirtyPose)) {
+            if (r.vbos.isEmpty() || r.vboLight != light || r.vboAnim != r.lastAnim || r.vboTime != r.lastTime)
+                r.rebuildVbos(light);
+            Matrix4f mv = new Matrix4f(view).mul(pose.last().pose());
+            for (int i = 0; i < r.vbos.size(); i++) {
+                CompiledVbo cb = r.vbos.get(i);
+                cb.type.setupRenderState();
+                ShaderInstance shader = RenderSystem.getShader();
+                try {
+                    if (shader != null) {
+                        RenderSystem.setShaderColor(tintR, tintG, tintB, 1.0F);
+                        cb.vbo.bind();
+                        cb.vbo.drawWithShader(mv, projection, shader);
+                        VertexBuffer.unbind();
+                    }
+                } finally {
+                    RenderSystem.setShaderColor(1.0F, 1.0F, 1.0F, 1.0F);
+                    cb.type.clearRenderState();
+                }
+            }
+            lastTriangles = r.vboTriangles;
+            pose.popPose();
+            return;
+        }
+
         PoseStack.Pose last = pose.last();
 
         int triangles = 0;
         for (int n = 0; n < r.model.nodes.size(); n++) {
             for (ModelData.Prim p : r.model.nodes.get(n).prims) {
                 float[][] s = r.scratch.get(p);
-                if (dirtyPose)
-                    r.pose.pose(n, p, s[0], s[1]);
                 ResourceLocation tex = p.texture >= 0 && p.texture < r.locations.size() ? r.locations.get(p.texture) : null;
                 if (tex == null)
                     tex = white();
@@ -230,6 +354,16 @@ public final class HologramModels {
         }
         lastTriangles = triangles;
         pose.popPose();
+    }
+
+    private static void emitLocal(VertexConsumer vc, float[] pos, float[] nrm, float[] uv, int i,
+                                  int r, int g, int b, int a, int light) {
+        vc.addVertex(pos[i * 3], pos[i * 3 + 1], pos[i * 3 + 2])
+                .setColor(r, g, b, a)
+                .setUv(uv[i * 2], uv[i * 2 + 1])
+                .setOverlay(OverlayTexture.NO_OVERLAY)
+                .setLight(light)
+                .setNormal(nrm[i * 3], nrm[i * 3 + 1], nrm[i * 3 + 2]);
     }
 
     private static int findWalkAnimation(ModelData model) {

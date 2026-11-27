@@ -1,5 +1,9 @@
 # Changelog
 
+## 1.54.4
+
+- **GPU VBO fast path for 3D hologram models (huge FPS boost on high-poly `.glb` models).** Static, rest-pose, and paused 3D models are now compiled once into per-texture GPU `VertexBuffer`s and drawn via `drawWithShader` instead of submitting every triangle on the CPU each frame. High-poly models (100k–200k+ triangles) no longer tank FPS when looked at. Falls back to immediate mode only for actively playing animations or per-vertex Y-FX (scanline/gradient).
+
 ## 1.54.3
 
 - **Fixed hologram models & assets over ~1.1 MB stalling forever on download.** Fast LAN/local downloads exceeded the server's `40 packets/sec` asset budget (`40 × 28 KB ≈ 1.1 MB`), silently dropping chunk #41 and leaving large 3D models stuck on `3D model (loading or no animations)`. Raised the server budget to `400 packets/sec` (~11 MB/s) and added automatic stalled-chunk re-requesting on the client. Update both client and server for full speed.
