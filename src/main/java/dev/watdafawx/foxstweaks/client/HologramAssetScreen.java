@@ -659,9 +659,15 @@ public final class HologramAssetScreen extends Screen {
             g.renderOutline(x, y, CELL, CELL, ACCENT);
 
         boolean model = "MODEL".equals(a.type());
-        ResourceLocation tex = model ? null : HologramAssets.texture(a.id(), 0.0);
+        ResourceLocation tex = model ? HologramModelThumbs.thumbnail(a.id()) : HologramAssets.texture(a.id(), 0.0);
         if (model) {
-            g.drawCenteredString(this.font, "3D", x + CELL / 2, y + CELL / 2 - 4, ACCENT);
+            if (tex != null) {
+                g.blit(tex, x + 2, y + 2, CELL - 4, CELL - 4, 0.0F, 0.0F, 96, 96, 96, 96);
+            } else {
+                g.drawCenteredString(this.font, "3D", x + CELL / 2, y + CELL / 2 - 4, ACCENT);
+            }
+            g.fill(x + 2, y + 2, x + 16, y + 12, 0xAA000000);
+            g.drawString(this.font, "3D", x + 4, y + 3, ACCENT, false);
         } else if (tex != null && a.width() > 0 && a.height() > 0) {
             double s = Math.min((CELL - 4) / (double) a.width(), (CELL - 4) / (double) a.height());
             int w = Math.max(1, (int) Math.round(a.width() * s));

@@ -207,11 +207,67 @@ public final class HologramModels {
         for (Runtime r : RUNTIMES.values())
             r.release();
         RUNTIMES.clear();
+        HologramModelThumbs.clear();
         dev.watdafawx.foxstweaks.client.asset.HologramUrlModels.clear();
         if (white != null) {
             Minecraft.getInstance().getTextureManager().release(white);
             white = null;
         }
+    }
+
+    /**
+     * Draws {@code hash} at rest pose, centered at origin and normalized so its largest dimension is ~1.1 units.
+     * Used by {@link HologramModelThumbs} to bake 96x96 offscreen thumbnails for the Asset Library.
+     */
+    static boolean drawForThumbnail(PoseStack pose, MultiBufferSource out, String hash) {
+        Runtime r = runtime(hash);
+        if (r == null)
+            return false;
+        if (r.lastAnim != -1 || r.lastTime != 0.0) {
+            r.pose.evaluate(-1, 0.0);
+            for (int n = 0; n < r.model.nodes.size(); n++) {
+                for (ModelData.Prim p : r.model.nodes.get(n).prims) {
+                    float[][] s = r.scratch.get(p);
+                    r.pose.pose(n, p, s[0], s[1]);
+                }
+            }
+            r.lastAnim = -1;
+            r.lastTime = 0.0;
+        }
+        float[] b = r.bounds;
+        float extX = Math.max(0.001F, b[3] - b[0]);
+        float extY = Math.max(0.001F, b[4] - b[1]);
+        float extZ = Math.max(0.001F, b[5] - b[2]);
+        float maxExt = Math.max(extX, Math.max(extY, extZ));
+        float k = 1.1F / maxExt;
+
+        pose.pushPose();
+        pose.scale(k, k, k);
+        pose.translate(-(b[0] + b[3]) * 0.5F, -(b[1] + b[4]) * 0.5F, -(b[2] + b[5]) * 0.5F);
+        PoseStack.Pose last = pose.last();
+        int light = 0xF000F0;
+        for (int n = 0; n < r.model.nodes.size(); n++) {
+            for (ModelData.Prim p : r.model.nodes.get(n).prims) {
+                float[][] s = r.scratch.get(p);
+                ResourceLocation tex = p.texture >= 0 && p.texture < r.locations.size() ? r.locations.get(p.texture) : null;
+                if (tex == null)
+                    tex = white();
+                RenderType type = p.alphaMode == ModelData.ALPHA_BLEND ? RenderType.entityTranslucent(tex)
+                        : p.doubleSided ? RenderType.entityCutoutNoCull(tex) : RenderType.entityCutout(tex);
+                VertexConsumer vc = out.getBuffer(type);
+                int cr = to255(p.cr), cg = to255(p.cg), cb = to255(p.cb), ca = to255(p.ca);
+                float[] pos = s[0], nrm = s[1];
+                for (int t = 0; t + 2 < p.idx.length; t += 3) {
+                    int a = p.idx[t], bb = p.idx[t + 1], c = p.idx[t + 2];
+                    vertex(vc, last, pos, nrm, p.uv, a, cr, cg, cb, ca, light);
+                    vertex(vc, last, pos, nrm, p.uv, bb, cr, cg, cb, ca, light);
+                    vertex(vc, last, pos, nrm, p.uv, c, cr, cg, cb, ca, light);
+                    vertex(vc, last, pos, nrm, p.uv, c, cr, cg, cb, ca, light);
+                }
+            }
+        }
+        pose.popPose();
+        return true;
     }
 
     private static Runtime runtime(String hash) {

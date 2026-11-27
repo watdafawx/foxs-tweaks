@@ -1,5 +1,9 @@
 # Changelog
 
+## 1.55.1
+
+- **3D thumbnails for uploaded 3D models in the Hologram Asset Library.** Uploaded `.glb`/`.gltf`/`.obj`/`.fbx`/`.bbmodel` assets now render a cached `96×96` 3/4 isometric 3D preview thumbnail in the `World` library grid (baked once offscreen, max 1/frame so scrolling stays smooth).
+
 ## 1.55.0
 
 - **`.gltf` (external files), `.obj`+`.mtl`, optional `.fbx`, and `.zip` asset pack support for 3D holograms.**
