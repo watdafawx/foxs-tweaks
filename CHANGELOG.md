@@ -1,5 +1,10 @@
 # Changelog
 
+## 1.57.1
+
+- **Batch `All` import for `.zip` packs.** When viewing a dropped `.zip` pack in the Hologram Asset Library, click **`All`** (top-right) to import all visible models (the whole zip, or just your search filter) sequentially into the pack's folder, with a **`Stop`** button to cancel anytime.
+- **Deleting a folder now deletes its children.** Right-clicking a folder twice removes the folder and deletes all unused assets inside it (any asset currently referenced by a placed hologram is safely kept).
+
 ## 1.57.0
 
 - **Folders & drag-and-drop in the Hologram Asset Library.**

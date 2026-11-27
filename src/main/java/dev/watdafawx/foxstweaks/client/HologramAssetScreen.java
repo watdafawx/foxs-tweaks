@@ -79,6 +79,10 @@ public final class HologramAssetScreen extends Screen {
 
     private int activeTab = 0; // 0 = World, 1 = Images, 2 = GIFs, 3 = 3D
     private HologramPackZip.Pack activePack = null;
+    private final List<HologramPackZip.Entry> packQueue = new ArrayList<>();
+    private int packQueueTotal = 0;
+    private int packQueueDone = 0;
+    private int packQueueFailed = 0;
     private String currentFolder = "";
     private boolean creatingFolder = false;
     private List<HologramAssetSearch.Result> onlineResults = List.of();
@@ -171,6 +175,7 @@ public final class HologramAssetScreen extends Screen {
     }
 
     private void selectTab(int tab) {
+        this.packQueue.clear();
         this.activePack = null;
         this.creatingFolder = false;
         this.dragAsset = null;
@@ -360,25 +365,97 @@ public final class HologramAssetScreen extends Screen {
             say("Removed empty folder '" + folder + "'.", GOOD);
             return;
         }
-        say("Moving " + inside.size() + " asset(s) from '" + folder + "' to root...", MUTED);
-        moveNextToRoot(inside, 0, folder);
+        say("Deleting " + inside.size() + " asset(s) in '" + folder + "'...", MUTED);
+        deleteNextInFolder(inside, 0, folder, 0, 0);
     }
 
-    private void moveNextToRoot(List<Asset> list, int idx, String folder) {
+    private void deleteNextInFolder(List<Asset> list, int idx, String folder, int deleted, int kept) {
         if (idx >= list.size()) {
-            say("Deleted folder '" + folder + "' (assets moved to root).", GOOD);
+            say("Deleted folder '" + folder + "' (" + deleted + " removed"
+                    + (kept > 0 ? ", " + kept + " in use kept" : "") + ").", kept > 0 ? MUTED : GOOD);
             reload();
             return;
         }
         Asset a = list.get(idx);
-        HologramAssets.requestRename(a.id(), a.displayName(), err -> {
-            if (err != null) {
-                say(err, BAD);
+        HologramAssets.requestDelete(a.id(), false, err -> {
+            if (err == null)
+                deleteNextInFolder(list, idx + 1, folder, deleted + 1, kept);
+            else
+                deleteNextInFolder(list, idx + 1, folder, deleted, kept + 1);
+        });
+    }
+
+    private void startImportAllPack() {
+        if (this.activePack == null)
+            return;
+        if (!this.canUpload) {
+            say("This server does not let you upload", BAD);
+            return;
+        }
+        if (!this.packQueue.isEmpty()) {
+            this.packQueue.clear();
+            say("Cancelled batch import.", MUTED);
+            return;
+        }
+        List<HologramPackZip.Entry> targets = visiblePackEntries();
+        if (targets.isEmpty())
+            return;
+        this.packQueue.clear();
+        this.packQueue.addAll(targets);
+        this.packQueueTotal = targets.size();
+        this.packQueueDone = 0;
+        this.packQueueFailed = 0;
+        pumpPackQueue();
+    }
+
+    private void pumpPackQueue() {
+        if (this.activePack == null || this.packQueue.isEmpty()) {
+            int okCount = this.packQueueDone;
+            int failCount = this.packQueueFailed;
+            String folder = this.activePack != null ? HologramPackZip.cleanFolderName(this.activePack.packName()) : "";
+            this.packQueueTotal = 0;
+            if (okCount > 0 || failCount > 0) {
+                this.activePack = null;
+                this.activeTab = 0;
+                this.currentFolder = folder;
+                this.scroll = 0;
                 reload();
-            } else {
-                moveNextToRoot(list, idx + 1, folder);
+                say("Imported " + okCount + " model(s) into '" + folder + "'"
+                        + (failCount > 0 ? " (" + failCount + " skipped)" : "."), failCount > 0 ? MUTED : GOOD);
+            }
+            return;
+        }
+        HologramPackZip.Entry next = this.packQueue.remove(0);
+        int num = this.packQueueDone + this.packQueueFailed + 1;
+        int total = this.packQueueTotal;
+        say("Importing " + num + "/" + total + ": " + next.name() + "...", MUTED);
+        boolean started = HologramPackZip.importEntry(this.activePack, next, new HologramAssets.UploadListener() {
+            @Override
+            public void progress(int percent, String stage) {
+                say("Importing " + num + "/" + total + ": " + next.name() + " (" + percent + "%)", MUTED);
+            }
+
+            @Override
+            public void done(boolean ok, String message) {
+                if (ok) {
+                    HologramAssetScreen.this.packQueueDone++;
+                } else {
+                    HologramAssetScreen.this.packQueueFailed++;
+                    String low = message == null ? "" : message.toLowerCase(Locale.ROOT);
+                    if (low.contains("cap") || low.contains("quota") || low.contains("permission")) {
+                        HologramAssetScreen.this.packQueue.clear();
+                        say("Stopped: " + message, BAD);
+                        reload();
+                        return;
+                    }
+                }
+                pumpPackQueue();
             }
         });
+        if (!started) {
+            this.packQueue.add(0, next);
+            say("Waiting for current upload to finish...", MUTED);
+        }
     }
 
     private void openZipPack(Path zipPath) {
@@ -590,7 +667,9 @@ public final class HologramAssetScreen extends Screen {
                 String key = "folder:" + gi.folder();
                 if (!key.equals(this.pendingDelete)) {
                     this.pendingDelete = key;
-                    say("Delete folder '" + gi.folder() + "'? Right-click again (assets move to root).", BAD);
+                    int cnt = countInFolder(gi.folder());
+                    say("Delete folder '" + gi.folder() + "'" + (cnt > 0 ? " and its " + cnt + " item(s)" : "")
+                            + "? Right-click again to confirm.", BAD);
                 } else {
                     this.pendingDelete = "";
                     deleteFolder(gi.folder());
@@ -629,7 +708,9 @@ public final class HologramAssetScreen extends Screen {
                 }
             }
             if (mx >= rightBtnX() && mx < rightBtnX() + 42) {
-                if (this.activeTab > 0)
+                if (this.activePack != null)
+                    startImportAllPack();
+                else if (this.activeTab > 0)
                     triggerOnlineSearch(true);
                 else
                     beginCreateFolder();
@@ -799,11 +880,14 @@ public final class HologramAssetScreen extends Screen {
             g.drawCenteredString(this.font, TABS[i], tx + tw / 2, this.py0 + 7, active ? TEXT : MUTED);
         }
 
-        // Top-right button: "+ Dir" on World tab, "Go" on online tabs
+        // Top-right button: "All" / "Stop" in zip pack, "+ Dir" on World tab, "Go" on online tabs
         int rx = rightBtnX();
         boolean overRight = mx >= rx && mx < rx + 42 && my >= this.py0 + 4 && my < this.py0 + 18;
-        g.fill(rx, this.py0 + 4, rx + 42, this.py0 + 18, overRight ? 0xFF2A7FA0 : 0xFF1F6A86);
-        g.drawCenteredString(this.font, this.activeTab > 0 ? "Go" : "+ Dir", rx + 21, this.py0 + 7, TEXT);
+        boolean batching = !this.packQueue.isEmpty();
+        int rightBg = batching ? (overRight ? 0xFFB84444 : 0xFF8F3333) : (overRight ? 0xFF2A7FA0 : 0xFF1F6A86);
+        String rightLbl = this.activePack != null ? (batching ? "Stop" : "All") : (this.activeTab > 0 ? "Go" : "+ Dir");
+        g.fill(rx, this.py0 + 4, rx + 42, this.py0 + 18, rightBg);
+        g.drawCenteredString(this.font, rightLbl, rx + 21, this.py0 + 7, TEXT);
 
         g.enableScissor(this.px0 + 1, this.gridTop, this.px1 - 1, this.gridBottom);
         if (this.activePack != null) {
