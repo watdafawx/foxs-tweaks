@@ -1,5 +1,10 @@
 # Changelog
 
+## 1.53.1
+
+- **Live 3D Armor Stand preview in the Effects picker tab.** Selecting a `MobEffect` now renders a rotating 3D armor stand wearing that effect in the preview pane (with the effect's icon in the corner).
+- **Fixed: adding Effects to existing holograms.** Adding a new entity/effect layer previously dropped its `effect` and `invisible` props; also clicking an effect while an Image, 3D Model, or Structure layer is selected now automatically adds it as a new aura layer instead of being ignored.
+
 ## 1.53.0
 
 - **Parameterized modded & vanilla particles in holograms.** The Particle picker now unlocks parameterized `ParticleType`s (vanilla `dust`, `dust_color_transition`, `entity_effect`, `block`, `item`, plus modded spell/attack particles from Relics, Cataclysm, Iron's Spellbooks, Ars Nouveau, etc.) using default or layer-tinted options.

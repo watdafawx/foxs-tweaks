@@ -2998,7 +2998,9 @@ public class HologramScreen extends Screen {
             for (HologramLayer l : this.layers)
                 topY = Math.max(topY, l.offsetY() + layerStackHeight(l));
             HologramLayer created = switch (kind) {
-                case ENTITY -> HologramLayer.entity(id, topY);
+                case ENTITY -> props.isEmpty()
+                        ? HologramLayer.entity(id, topY)
+                        : HologramLayer.entity(id, topY).withContent(HologramLayer.Kind.ENTITY, id, props, new CompoundTag());
                 case PARTICLE -> HologramLayer.particle(id, topY + 0.5F);
                 default -> HologramLayer.block(id, props, topY);
             };

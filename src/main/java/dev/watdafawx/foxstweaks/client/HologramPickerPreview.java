@@ -117,6 +117,20 @@ public final class HologramPickerPreview {
         }
     }
 
+    /** Draws a live 3D dummy entity (e.g. armor stand) wearing {@code effectId} inside {@code (x, y, size, size)}. */
+    static boolean drawEffectEntityIcon(GuiGraphics graphics, String entityId, String effectId, int x, int y, int size,
+                                        float yawDegrees, double seconds) {
+        Entity entity = HologramEntities.getWithEffect(entityId, effectId, 0.0, 0.0, 0.0, 0.0F, (float) seconds);
+        if (entity == null)
+            return false;
+        graphics.enableScissor(x, y, x + size, y + size);
+        try {
+            return drawEntityInstance(graphics, entity, "fx:" + entityId + ":" + effectId, x, y, size, yawDegrees, null);
+        } finally {
+            graphics.disableScissor();
+        }
+    }
+
     /**
      * The same drawing without the scissor: {@link GuiGraphics#enableScissor} converts GUI units to window pixels
      * with the window's GUI scale, which is wrong for an off-screen target (the web editor's icon sheets). The
@@ -128,7 +142,11 @@ public final class HologramPickerPreview {
         Entity entity = HologramEntities.getById(entityId, 0.0, 0.0, 0.0, 0.0F, (float) seconds);
         if (entity == null)
             return false;
+        return drawEntityInstance(graphics, entity, entityId, x, y, size, yawDegrees, onFail);
+    }
 
+    private static boolean drawEntityInstance(GuiGraphics graphics, Entity entity, String failKey, int x, int y, int size,
+                                              float yawDegrees, @Nullable Consumer<Throwable> onFail) {
         float bbW = Math.max(0.35F, entity.getBbWidth());
         float bbH = Math.max(0.35F, entity.getBbHeight());
         float maxDim = Math.max(bbW * 1.15F, bbH);
@@ -156,7 +174,7 @@ public final class HologramPickerPreview {
             pose.popPose();
             return true;
         } catch (Throwable t) {
-            HologramEntities.markFailed(entityId);
+            HologramEntities.markFailed(failKey);
             try {
                 Minecraft.getInstance().getEntityRenderDispatcher().setRenderShadow(true);
                 graphics.pose().popPose();

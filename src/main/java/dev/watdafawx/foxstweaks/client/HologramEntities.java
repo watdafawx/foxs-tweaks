@@ -54,6 +54,11 @@ public final class HologramEntities {
     }
 
     @Nullable
+    public static Entity getWithEffect(String entityId, String effectId, double x, double y, double z, float yawDegrees, float seconds) {
+        return get("fx:" + entityId + ":" + effectId, entityId, EMPTY_DATA, Map.of("effect", effectId), x, y, z, yawDegrees, seconds);
+    }
+
+    @Nullable
     private static Entity get(Object key, String id, CompoundTag data, Map<String, String> props,
                               double x, double y, double z, float yaw, float seconds) {
         Entry entry = CACHE.get(key);

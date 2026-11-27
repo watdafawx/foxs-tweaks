@@ -716,10 +716,10 @@ public class HologramPickerScreen extends Screen {
         Entry entry = this.selected;
         if (entry == null || this.minecraft == null)
             return;
-        boolean structureSelected = this.current != null && this.current.kind() == HologramLayer.Kind.STRUCTURE;
-        if (!asNew && structureSelected)
+        boolean fixedCurrent = this.current != null && this.current.fixedContent();
+        if (!asNew && fixedCurrent && entry.mobEffect() == null)
             return;
-        boolean forceNew = asNew || this.current == null;
+        boolean forceNew = asNew || this.current == null || (entry.mobEffect() != null && fixedCurrent);
         if (forceNew && this.editorLayerCount >= HologramLayer.MAX_LAYERS)
             return;
         if (entry.mobEffect() != null) {
@@ -1401,11 +1401,14 @@ public class HologramPickerScreen extends Screen {
             }
             case ENTITY -> {
                 if (e.mobEffect() != null) {
+                    int fit = Math.round(size * 0.86F);
+                    int ex = x + (w - fit) / 2;
+                    int ey = y + (h - fit) / 2;
+                    HologramPickerPreview.drawEffectEntityIcon(g, "minecraft:armor_stand", e.id(), ex, ey, fit, this.yaw, secs);
                     var holder = BuiltInRegistries.MOB_EFFECT.getHolder(e.mobEffect()).orElse(null);
                     if (holder != null && this.minecraft != null) {
                         var sprite = this.minecraft.getMobEffectTextures().get(holder);
-                        int ps = Math.min(size, 54);
-                        g.blit(x + (w - ps) / 2, y + (h - ps) / 2, 0, ps, ps, sprite);
+                        g.blit(x + 4, y + 4, 0, 18, 18, sprite);
                     }
                     break;
                 }
