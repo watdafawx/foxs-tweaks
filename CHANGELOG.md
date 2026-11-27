@@ -1,5 +1,9 @@
 # Changelog
 
+## 1.50.1
+
+- **Hologram asset size limits are now configured in MB instead of bytes.** In `serverconfig/foxstweaks-server.toml` under `[assets]`, `assetMaxFileBytes` is now `assetMaxFileMb` (default `2`, range `1`–`16`) and `assetMaxWorldBytes` is now `assetMaxWorldMb` (default `200`, range `1`–`4096`), making them easier to edit in the in-game settings screen. Because the key names changed, existing worlds fall back to the defaults (`2` MB per asset, `200` MB per world) until re-edited.
+
 ## 1.50.0
 
 - **Attribute Dial: vanilla default is the floor.** The dial now goes down to the attribute's vanilla value instead of 0: block interaction range 4.5 dials between 4.5 and what your gear gives, luck (vanilla 0) still goes to 0. The first preset reads **Base** when vanilla is not 0 (**Off** otherwise), the slider's left end shows the value, and a "Vanilla default" line says it. Never below vanilla, never above gear. Percentages are now a share of that range (50% of 4.5..64 is 34.25). Network version bumped: update client and server together.

@@ -207,9 +207,13 @@ public final class ServerConfig {
 
     static { BUILDER.push("assets"); }
 
-    public static final ModConfigSpec.IntValue ASSET_MAX_FILE_BYTES = BUILDER.comment("Maximum uploaded file and canonical asset bytes.").defineInRange("assetMaxFileBytes", 2097152, 1024, 16777216);
+    public static final ModConfigSpec.IntValue ASSET_MAX_FILE_MB = BUILDER
+            .comment("Maximum uploaded file and canonical asset size, in MB.")
+            .defineInRange("assetMaxFileMb", 2, 1, 16);
 
-    public static final ModConfigSpec.IntValue ASSET_MAX_WORLD_BYTES = BUILDER.comment("Maximum stored asset bytes per world.").defineInRange("assetMaxWorldBytes", 209715200, 1024, 1073741824);
+    public static final ModConfigSpec.IntValue ASSET_MAX_WORLD_MB = BUILDER
+            .comment("Maximum stored asset quota per world, in MB.")
+            .defineInRange("assetMaxWorldMb", 200, 1, 4096);
     public static final ModConfigSpec.BooleanValue ASSET_UPLOAD_EVERYONE = BUILDER.comment("Allow everyone to upload; otherwise operators only.").define("assetUploadEveryone", false);
 
     public static final ModConfigSpec.IntValue ASSET_MAX_DIMENSION = BUILDER.comment("Larger images are downscaled preserving aspect ratio.").defineInRange("assetMaxDimension", 256, 16, 1024);
@@ -310,6 +314,14 @@ public final class ServerConfig {
 
     public static int hologramImageMaxLayers() {
         return loaded() ? HOLOGRAM_IMAGE_MAX_LAYERS.get() : 8;
+    }
+
+    public static int assetMaxFileMb() {
+        return loaded() ? ASSET_MAX_FILE_MB.get() : 2;
+    }
+
+    public static int assetMaxWorldMb() {
+        return loaded() ? ASSET_MAX_WORLD_MB.get() : 200;
     }
 
     public static boolean assetUploadEveryone() {

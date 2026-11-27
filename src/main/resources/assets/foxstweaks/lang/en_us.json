@@ -1,7 +1,7 @@
 {
   "foxstweaks.configuration.assets": "Hologram assets",
-  "foxstweaks.configuration.assetMaxFileBytes": "Maximum bytes per asset",
-  "foxstweaks.configuration.assetMaxWorldBytes": "World asset storage quota",
+  "foxstweaks.configuration.assetMaxFileMb": "Maximum size per asset (MB)",
+  "foxstweaks.configuration.assetMaxWorldMb": "World asset storage quota (MB)",
   "foxstweaks.configuration.assetUploadEveryone": "Allow everyone to upload",
   "foxstweaks.configuration.assetMaxDimension": "Maximum image dimension",
   "foxstweaks.configuration.assetMaxFps": "Maximum animation FPS",
