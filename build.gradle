@@ -379,6 +379,7 @@ dependencies {
     compileOnly "maven.modrinth:libipn:${libipn_version}"
     compileOnly "org.jetbrains.kotlin:kotlin-stdlib:2.1.0"
     compileOnly "dev.ftb.mods:ftb-library-neoforge:${ftblibrary_version}"
+    compileOnly "maven.modrinth:G922NeHS:${watermedia_version}"
 
     // The one real dependency, shipped inside our jar: lets StaleMixinCanceller switch off other
     // mods' mixins that broke when the mod they patch updated. The neoforge artifact is the

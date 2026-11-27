@@ -170,6 +170,8 @@ public final class HologramClient {
         updateAppear(mc);
         HologramBlockEntities.tick(mc);
         emitParticles(mc);
+        if (net.neoforged.fml.ModList.get().isLoaded("watermedia"))
+            dev.watdafawx.foxstweaks.client.compat.WaterMediaBridge.tick();
         if (!holdingWand(mc)) {
             HologramClient.hovered = null;
             return;
@@ -353,6 +355,9 @@ public final class HologramClient {
         HologramEntities.clear();
         HologramBlockEntities.clear();
         HologramStructureMesh.clear();
+        HologramModels.clear();
+        if (net.neoforged.fml.ModList.get().isLoaded("watermedia"))
+            dev.watdafawx.foxstweaks.client.compat.WaterMediaBridge.clear();
         HologramPickerPreview.clear();
         HologramTimelinePlayer.clear();
         HologramClient.lastAppearNanos = 0L;

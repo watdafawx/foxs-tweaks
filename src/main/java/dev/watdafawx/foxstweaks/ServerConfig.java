@@ -209,12 +209,15 @@ public final class ServerConfig {
 
     public static final ModConfigSpec.IntValue ASSET_MAX_FILE_MB = BUILDER
             .comment("Maximum uploaded file and canonical asset size, in MB.")
-            .defineInRange("assetMaxFileMb", 2, 1, 16);
+            .defineInRange("assetMaxFileMb", 2, 1, 64);
 
     public static final ModConfigSpec.IntValue ASSET_MAX_WORLD_MB = BUILDER
             .comment("Maximum stored asset quota per world, in MB.")
             .defineInRange("assetMaxWorldMb", 200, 1, 4096);
     public static final ModConfigSpec.BooleanValue ASSET_UPLOAD_EVERYONE = BUILDER.comment("Allow everyone to upload; otherwise operators only.").define("assetUploadEveryone", false);
+    public static final ModConfigSpec.BooleanValue HOLOGRAM_ALLOW_EXTERNAL_URLS = BUILDER
+            .comment("Allow hologram image/video layers (via WATERMeDIA) and 3D model layers to stream directly from http(s) URLs without uploading through the server.")
+            .define("hologramAllowExternalUrls", true);
 
     public static final ModConfigSpec.IntValue ASSET_MAX_DIMENSION = BUILDER.comment("Larger images are downscaled preserving aspect ratio.").defineInRange("assetMaxDimension", 256, 16, 1024);
 
@@ -326,6 +329,10 @@ public final class ServerConfig {
 
     public static boolean assetUploadEveryone() {
         return loaded() && ASSET_UPLOAD_EVERYONE.get();
+    }
+
+    public static boolean hologramAllowExternalUrls() {
+        return !loaded() || HOLOGRAM_ALLOW_EXTERNAL_URLS.get();
     }
 
     public static int hologramTimelineMaxKeys() {

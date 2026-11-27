@@ -13,7 +13,7 @@ public record AssetLimits(int fileBytes, long worldBytes, int dimension, int fps
                 ServerConfig.ASSET_MAX_DIMENSION.get(), ServerConfig.ASSET_MAX_FPS.get(),
                 ServerConfig.ASSET_MAX_SECONDS.get(), ServerConfig.ASSET_MAX_PER_PLAYER.get());
     }
-    public static final int MAX_BYTES = 16 * 1024 * 1024;
+    public static final int MAX_BYTES = 64 * 1024 * 1024;
     public static final int MAX_FRAMES = 900;
     public static final long PIXEL_BUDGET = 32L * 1024 * 1024;
 }

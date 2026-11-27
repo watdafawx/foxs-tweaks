@@ -84,7 +84,7 @@ public final class HologramAssetScreen extends Screen {
         this.cols = Math.max(1, (w - 12 + GAP) / (CELL + GAP));
 
         String keep = this.source == null ? "" : this.source.getValue();
-        this.source = new EditBox(this.font, this.px0 + 8, this.py1 - 36, w - 16 - 52, 14, Component.literal("Path or address"));
+        this.source = new EditBox(this.font, this.px0 + 8, this.py1 - 36, w - 16 - 104, 14, Component.literal("Path or address"));
         this.source.setMaxLength(1024);
         this.source.setHint(Component.literal("File path or http(s) address"));
         this.source.setValue(keep);
@@ -175,6 +175,23 @@ public final class HologramAssetScreen extends Screen {
         return this.px1 - 8 - 48;
     }
 
+    private int streamX() {
+        return uploadX() - 52;
+    }
+
+    private void startStream(String raw) {
+        String url = raw == null ? "" : raw.trim();
+        if (!dev.watdafawx.foxstweaks.hologram.HologramNetwork.isExternalUrl(url)) {
+            say("Enter an http:// or https:// URL to stream directly.", BAD);
+            return;
+        }
+        String clean = url.split("\\?")[0].split("#")[0].toLowerCase(Locale.ROOT);
+        boolean model = clean.endsWith(".glb") || clean.endsWith(".gltf") || clean.endsWith(".bbmodel") || clean.endsWith(".json");
+        if (this.editor != null)
+            this.editor.creatorAddLayer(model ? HologramLayer.model(url, 0.0F) : HologramLayer.image(url, 0.0F));
+        onClose();
+    }
+
     private List<Asset> visible() {
         String q = this.search == null ? "" : this.search.getValue().trim().toLowerCase(Locale.ROOT);
         if (q.isEmpty())
@@ -241,6 +258,10 @@ public final class HologramAssetScreen extends Screen {
         }
         if (button != 0)
             return false;
+        if (mx >= streamX() && mx < streamX() + 48 && my >= this.py1 - 37 && my < this.py1 - 21) {
+            startStream(this.source.getValue());
+            return true;
+        }
         if (mx >= uploadX() && mx < uploadX() + 48 && my >= this.py1 - 37 && my < this.py1 - 21) {
             if (this.canUpload)
                 startImport(this.source.getValue());
@@ -333,6 +354,13 @@ public final class HologramAssetScreen extends Screen {
         g.drawString(this.font, this.canUpload ? "Add a picture or 3D model (.glb, .bbmodel): drop a file here, or type a path / address" : "Uploads are not allowed for you here",
                 this.px0 + 8, this.py1 - 48, MUTED, false);
         super.render(g, mx, my, partial);
+        String rawUrl = this.source == null ? "" : this.source.getValue().trim();
+        boolean validUrl = dev.watdafawx.foxstweaks.hologram.HologramNetwork.isExternalUrl(rawUrl);
+        boolean overStream = mx >= streamX() && mx < streamX() + 48 && my >= this.py1 - 37 && my < this.py1 - 21;
+        g.fill(streamX(), this.py1 - 37, streamX() + 48, this.py1 - 21,
+                !validUrl ? 0xFF1A222D : overStream ? 0xFF2E8B57 : 0xFF226B42);
+        g.drawCenteredString(this.font, "Stream", streamX() + 24, this.py1 - 33, validUrl ? TEXT : FAINT);
+
         boolean overUpload = mx >= uploadX() && mx < uploadX() + 48 && my >= this.py1 - 37 && my < this.py1 - 21;
         boolean busy = HologramAssetImport.busy();
         g.fill(uploadX(), this.py1 - 37, uploadX() + 48, this.py1 - 21,

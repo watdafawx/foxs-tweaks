@@ -3,6 +3,7 @@
   "foxstweaks.configuration.assetMaxFileMb": "Maximum size per asset (MB)",
   "foxstweaks.configuration.assetMaxWorldMb": "World asset storage quota (MB)",
   "foxstweaks.configuration.assetUploadEveryone": "Allow everyone to upload",
+  "foxstweaks.configuration.hologramAllowExternalUrls": "Allow external URLs (streams & 3D models)",
   "foxstweaks.configuration.assetMaxDimension": "Maximum image dimension",
   "foxstweaks.configuration.assetMaxFps": "Maximum animation FPS",
   "foxstweaks.configuration.assetMaxSeconds": "Maximum animation seconds",

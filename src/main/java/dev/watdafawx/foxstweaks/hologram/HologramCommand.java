@@ -85,7 +85,17 @@ public final class HologramCommand {
                                         .then(Commands.argument("id", StringArgumentType.word())
                                                 .suggests((ctx, builder) -> SharedSuggestionProvider.suggest(ids(ctx.getSource()), builder))
                                                 .executes(ctx -> detach(ctx.getSource(),
-                                                        StringArgumentType.getString(ctx, "id")))))));
+                                                        StringArgumentType.getString(ctx, "id")))))
+                                .then(Commands.literal("url")
+                                        .then(Commands.argument("id", StringArgumentType.word())
+                                                .suggests((ctx, builder) -> SharedSuggestionProvider.suggest(ids(ctx.getSource()), builder))
+                                                .then(Commands.argument("kind", StringArgumentType.word())
+                                                        .suggests((ctx, builder) -> SharedSuggestionProvider.suggest(List.of("image", "model"), builder))
+                                                        .then(Commands.argument("url", StringArgumentType.greedyString())
+                                                                .executes(ctx -> addUrl(ctx.getSource(),
+                                                                        StringArgumentType.getString(ctx, "id"),
+                                                                        StringArgumentType.getString(ctx, "kind"),
+                                                                        StringArgumentType.getString(ctx, "url")))))))));
     }
 
     private static int add(CommandSourceStack source, String blockName) {
@@ -202,6 +212,45 @@ public final class HologramCommand {
         HologramSpec updated = spec.at(spec.id(), dropPos, spec.owner(), spec.ownerName()).withAttach(null);
         Holograms.save(dropLevel, updated);
         source.sendSuccess(() -> Component.literal("Detached hologram '" + id + "' at " + dropPos.toShortString() + "."), true);
+        return 1;
+    }
+
+    private static int addUrl(CommandSourceStack source, String id, String kindRaw, String rawUrl) {
+        ServerLevel level = source.getLevel();
+        if (!dev.watdafawx.foxstweaks.ServerConfig.hologramAllowExternalUrls()) {
+            source.sendFailure(Component.literal("External URLs are disabled on this server."));
+            return 0;
+        }
+        String url = rawUrl.trim();
+        if (!HologramNetwork.isExternalUrl(url)) {
+            source.sendFailure(Component.literal("URL must start with http:// or https:// (max 512 chars)."));
+            return 0;
+        }
+        HologramSpec spec = Holograms.get(level, id);
+        if (spec == null) {
+            source.sendFailure(Component.literal("No hologram '" + id + "'."));
+            return 0;
+        }
+        if (source.getEntity() instanceof ServerPlayer caller && !caller.hasPermissions(Commands.LEVEL_GAMEMASTERS)
+                && spec.owner() != null && !spec.owner().equals(caller.getUUID())) {
+            source.sendFailure(Component.literal("You do not own hologram '" + id + "'."));
+            return 0;
+        }
+        boolean model = "model".equalsIgnoreCase(kindRaw);
+        if (!model && !"image".equalsIgnoreCase(kindRaw)) {
+            source.sendFailure(Component.literal("Kind must be 'image' or 'model'."));
+            return 0;
+        }
+        List<HologramLayer> next = new ArrayList<>(spec.layers());
+        next.add(model ? HologramLayer.model(url, 0.0F) : HologramLayer.image(url, 0.0F));
+        HologramSpec updated = spec.withLayers(next);
+        String problem = HologramNetwork.imageProblem(source.getServer(), updated);
+        if (problem != null) {
+            source.sendFailure(Component.literal("Refused: " + problem));
+            return 0;
+        }
+        Holograms.save(level, updated);
+        source.sendSuccess(() -> Component.literal("Added URL " + (model ? "3D model" : "stream") + " layer to '" + id + "'."), true);
         return 1;
     }
 

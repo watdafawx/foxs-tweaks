@@ -1,5 +1,11 @@
 # Changelog
 
+## 1.52.0
+
+- **Higher hologram asset limits & auto-downscaling model textures.** Raised the per-asset ceiling (`assetMaxFileMb` max and transfer cap) from `16 MB` to `64 MB`, and 3D model imports now accept up to `64 MB` embedded textures and automatically downscale oversized textures (`1024 -> 512 -> 256 px`, ≤2 MB per PNG) so heavy `.glb`/`.bbmodel` files shrink cleanly.
+- **Direct URL streaming for 3D models & optional WATERMeDIA video/live streams.** Hologram `MODEL` layers can now take `http(s)://` URLs directly (`.glb`, `.gltf`, `.bbmodel`, `.json`): clients download over HTTPS and cache canonical `FTM1` blobs on disk with zero Minecraft server bandwidth. Hologram `IMAGE` layers with `http(s)://` URLs play big videos and live streams (YouTube, Twitch, Kick, HLS/DASH, `.mp4`, etc.) with distance-attenuated audio when **WATERMeDIA** is installed (strictly optional). Add them via the new **Stream** button in the in-game Pictures/Models library, **Stream URL** in the web editor, or `/foxstweaks hologram url <id> <image|model> <url>`. Server toggle: `assets.hologramAllowExternalUrls` (default `true`).
+- **Fixed: holding Shift on sliders in the hologram editor flew the camera down.** Camera WASD/Space/Shift movement is now blocked while the cursor is over any editor panel in both Creator and Studio, so holding Shift for fine slider scrolling/dragging no longer moves the camera away.
+
 ## 1.51.1
 
 - **Attribute Dial: normal modifier names, formatted values and Apothic Attributes icons.** Hover tooltips now use Apothic Attributes' own `ModifierSource` icons (armor, hands, Curios, mob effects) and formatted modifier lines (`+8 Armor`, `+6% Attack Speed`) instead of raw internal IDs (`apotheosis:armor/attribute/ironforged`, `minecraft:armor.boots`), along with the attribute's `.desc` description. Percentage attributes now display with `%` in the list and editor, and the editor subtitle shows the description or mod name instead of the raw attribute ID (shown only with `F3+H` advanced tooltips).

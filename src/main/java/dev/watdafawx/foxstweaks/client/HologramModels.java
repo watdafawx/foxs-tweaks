@@ -93,9 +93,15 @@ public final class HologramModels {
         return r == null ? 1.0F : Math.max(0.001F, r.bounds[4] - r.bounds[1]);
     }
 
+    private static ModelData lookup(String hash) {
+        if (dev.watdafawx.foxstweaks.hologram.HologramNetwork.isExternalUrl(hash))
+            return dev.watdafawx.foxstweaks.client.asset.HologramUrlModels.model(hash);
+        return HologramAssets.model(hash);
+    }
+
     /** Names of the animations of a loaded model, empty while it loads. */
     public static List<String> animations(String hash) {
-        ModelData m = HologramAssets.model(hash);
+        ModelData m = lookup(hash);
         List<String> out = new ArrayList<>();
         if (m != null)
             for (ModelData.Animation a : m.animations)
@@ -105,7 +111,7 @@ public final class HologramModels {
 
     /** Length in seconds of the named animation of {@code hash}, 0 when unknown. */
     public static float animationLength(String hash, String name) {
-        ModelData m = HologramAssets.model(hash);
+        ModelData m = lookup(hash);
         if (m == null)
             return 0.0F;
         int i = m.animationIndex(name);
@@ -116,6 +122,7 @@ public final class HologramModels {
         for (Runtime r : RUNTIMES.values())
             r.release();
         RUNTIMES.clear();
+        dev.watdafawx.foxstweaks.client.asset.HologramUrlModels.clear();
         if (white != null) {
             Minecraft.getInstance().getTextureManager().release(white);
             white = null;
@@ -126,7 +133,7 @@ public final class HologramModels {
         Runtime r = RUNTIMES.get(hash);
         if (r != null)
             return r;
-        ModelData m = HologramAssets.model(hash);
+        ModelData m = lookup(hash);
         if (m == null)
             return null;
         if (RUNTIMES.size() >= MAX_RUNTIMES) {

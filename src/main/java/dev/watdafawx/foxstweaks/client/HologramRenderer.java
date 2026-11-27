@@ -770,6 +770,24 @@ public final class HologramRenderer {
             return;
         }
 
+        if (dev.watdafawx.foxstweaks.hologram.HologramNetwork.isExternalUrl(hash)) {
+            boolean drew = false;
+            if (net.neoforged.fml.ModList.get().isLoaded("watermedia")) {
+                var box = spec.box(Minecraft.getInstance().level, 1.0F);
+                double distSq = box == null ? 0.0 : lastCamera.distanceToSqr(box.getCenter());
+                drew = dev.watdafawx.foxstweaks.client.compat.WaterMediaBridge.draw(
+                        pose, spec.id(), hash, image, -w * 0.5F, bottom, w * 0.5F, bottom + h,
+                        distSq, spec.renderDistance());
+            }
+            lastImageLoaded = drew;
+            if (!drew) {
+                LevelRenderer.renderLineBox(pose, out.getBuffer(RenderType.lines()),
+                        -w * 0.5, bottom, -0.01, w * 0.5, bottom + h, 0.01, 0.55F, 0.85F, 1.0F, 0.6F);
+            }
+            pose.popPose();
+            return;
+        }
+
         double duration = HologramAssets.duration(hash);
         ResourceLocation texture = HologramAssets.texture(hash, image.assetTime(clock, duration));
         lastImageLoaded = texture != null;

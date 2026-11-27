@@ -271,14 +271,34 @@ public final class HologramNetwork {
     /** A model is drawn from CPU-skinned vertices every frame, so a hologram may hold only a few. */
     public static final int MAX_MODEL_LAYERS = 4;
 
+    /** True when {@code id} is an external http(s) URL allowed for direct client streaming. */
+    public static boolean isExternalUrl(@javax.annotation.Nullable String id) {
+        if (id == null || id.length() < 10 || id.length() > 512)
+            return false;
+        if (!(id.startsWith("http://") || id.startsWith("https://")))
+            return false;
+        for (int i = 0; i < id.length(); i++) {
+            char c = id.charAt(i);
+            if (c <= 0x20 || c == 0x7F)
+                return false;
+        }
+        return true;
+    }
+
     @javax.annotation.Nullable
     public static String imageProblem(net.minecraft.server.MinecraftServer server, HologramSpec spec) {
         int images = 0;
         int models = 0;
+        boolean allowUrls = ServerConfig.hologramAllowExternalUrls();
         for (HologramLayer layer : spec.layers()) {
             if (layer.kind() == HologramLayer.Kind.MODEL) {
                 if (++models > MAX_MODEL_LAYERS)
                     return "too many model layers (limit " + MAX_MODEL_LAYERS + ")";
+                if (isExternalUrl(layer.id())) {
+                    if (!allowUrls)
+                        return "external URLs are disabled on this server";
+                    continue;
+                }
                 if (!dev.watdafawx.foxstweaks.hologram.asset.AssetNetwork.known(server, layer.id()))
                     return "model layer uses an asset that is not in this world's library";
                 continue;
@@ -286,6 +306,11 @@ public final class HologramNetwork {
             if (layer.kind() != HologramLayer.Kind.IMAGE)
                 continue;
             images++;
+            if (isExternalUrl(layer.id())) {
+                if (!allowUrls)
+                    return "external URLs are disabled on this server";
+                continue;
+            }
             if (!dev.watdafawx.foxstweaks.hologram.asset.AssetNetwork.known(server, layer.id()))
                 return "image layer uses an asset that is not in this world's library";
         }

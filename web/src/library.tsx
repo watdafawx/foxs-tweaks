@@ -61,6 +61,7 @@ export function AssetLibrary() {
   const layer = sel.kind === 'layer' ? spec.layers[sel.layer] : undefined;
   const input = useRef<HTMLInputElement>(null);
   const [over, setOver] = useState(false);
+  const [streamUrl, setStreamUrl] = useState('');
   const [trim, setTrim] = useState<{ req: TrimRequest; done: (r: Range | null) => void } | null>(null);
   const choose = (req: TrimRequest) =>
     new Promise<Range | null>((resolve) =>
@@ -159,6 +160,42 @@ export function AssetLibrary() {
         <span class="muted small">
           {lib.count} in this world · {imageLayerCount()}/{caps.maxImageLayers} image layers here
         </span>
+      </div>
+      <div class="library-bar">
+        <input
+          type="text"
+          class="input"
+          style={{ flex: 1, minWidth: 0 }}
+          placeholder="Stream URL (YouTube, Twitch, .mp4, .glb, .bbmodel)..."
+          value={streamUrl}
+          onInput={(e) => setStreamUrl((e.currentTarget as HTMLInputElement).value)}
+        />
+        <button
+          class="btn"
+          disabled={full || !/^https?:\/\/\S+$/i.test(streamUrl.trim())}
+          title="Add as a direct URL stream (WATERMeDIA for videos/streams, direct HTTPS for .glb/.bbmodel — zero server upload)"
+          onClick={() => {
+            const url = streamUrl.trim();
+            if (!/^https?:\/\/\S+$/i.test(url) || full) return;
+            const cleanPath = url.split('?')[0].split('#')[0].toLowerCase();
+            const isModel =
+              cleanPath.endsWith('.glb') ||
+              cleanPath.endsWith('.gltf') ||
+              cleanPath.endsWith('.bbmodel') ||
+              cleanPath.endsWith('.json');
+            if (isModel) {
+              if (modelLayerCount() < MAX_MODEL_LAYERS) {
+                addLayer('MODEL', url);
+                setStreamUrl('');
+              }
+            } else if (!imageCapReached()) {
+              addImage(url);
+              setStreamUrl('');
+            }
+          }}
+        >
+          Stream URL
+        </button>
       </div>
       {up ? (
         <div class="upload-progress" title={up.name}>

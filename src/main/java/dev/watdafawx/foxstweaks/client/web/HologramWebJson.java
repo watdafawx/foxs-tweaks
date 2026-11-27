@@ -313,7 +313,7 @@ final class HologramWebJson {
             } catch (IllegalArgumentException e) {
                 throw new Invalid("unknown layer kind");
             }
-            String id = str(l, "id", 256);
+            String id = str(l, "id", 512);
             // A structure layer's id is its display name ("Structure 5x4x6"), not a registry id; an image layer's
             // is an asset hash. Neither is looked up in a registry.
             boolean structure = kind == HologramLayer.Kind.STRUCTURE;

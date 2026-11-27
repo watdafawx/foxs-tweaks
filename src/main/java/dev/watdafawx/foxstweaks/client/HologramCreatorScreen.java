@@ -232,7 +232,7 @@ public final class HologramCreatorScreen extends Screen {
         this.fits.clear();
         HologramCamera.setAnchor(this.editor.creatorTargetCenter());
         HologramCamera.setMovementBlocked(this.hexBox.isFocused() || this.activeDrag != null
-                || this.editor.creatorGizmoDragging());
+                || this.editor.creatorGizmoDragging() || insidePanels(mx, my));
         renderBackground(g, mx, my, pt);
 
         this.editor.creatorGizmoRender(g, this.font, mx, my, this.width, this.height);

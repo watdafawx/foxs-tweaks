@@ -2146,7 +2146,8 @@ public class HologramScreen extends Screen {
 
     @Override
     public void render(GuiGraphics graphics, int mouseX, int mouseY, float partialTick) {
-        HologramCamera.setMovementBlocked(getFocused() instanceof EditBox || this.gizmo.isDragging() || this.activeNum != null);
+        HologramCamera.setMovementBlocked(getFocused() instanceof EditBox || this.gizmo.isDragging()
+                || this.activeNum != null || isInsidePanel(mouseX, mouseY));
         HologramCamera.setAnchor(targetWorldCenter());
         renderBackground(graphics, mouseX, mouseY, partialTick);
 

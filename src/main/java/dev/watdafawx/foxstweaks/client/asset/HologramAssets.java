@@ -197,6 +197,10 @@ public final class HologramAssets {
 
     /** Height / width, NaN while unknown. Safe from any thread (the integrated server asks for reach boxes). */
     public static double aspect(String hash) {
+        if (dev.watdafawx.foxstweaks.hologram.HologramNetwork.isExternalUrl(hash)
+                && net.neoforged.fml.ModList.get().isLoaded("watermedia")) {
+            return dev.watdafawx.foxstweaks.client.compat.WaterMediaBridge.aspectRatio(hash);
+        }
         synchronized (ASPECTS) {
             Double known = ASPECTS.get(hash);
             return known == null ? Double.NaN : known;
