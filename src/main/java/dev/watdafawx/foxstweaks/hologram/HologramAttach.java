@@ -70,12 +70,24 @@ public record HologramAttach(
         return new HologramAttach(uuid, name, this.follow, this.hideFirstPerson);
     }
 
+    /** Client-installed hook providing live animated body/head pose (Emotecraft / playerAnimator / PAL). */
+    @Nullable
+    public static volatile java.util.function.BiFunction<Player, Follow, Matrix4f> livePoseLookup;
+
     /**
      * World-space base transform for a player-attached hologram before the hologram's own
      * {@code offset/yaw/pitch/roll/scale}. In {@link Follow#HEAD_LOOK}, pitch pivots around the
      * player's eyes so hats/visors tilt naturally while keeping zero jump at pitch 0.
      */
     public Matrix4f anchorMatrix(Player player, float partialTick) {
+        if (this.follow != Follow.POSITION && player.level().isClientSide()) {
+            var lookup = livePoseLookup;
+            if (lookup != null) {
+                Matrix4f live = lookup.apply(player, this.follow);
+                if (live != null)
+                    return live;
+            }
+        }
         Vec3 pos = partialTick >= 1.0F ? player.position() : player.getPosition(partialTick);
         Matrix4f m = new Matrix4f().translate((float) pos.x, (float) pos.y, (float) pos.z);
         if (this.follow == Follow.BODY_YAW) {

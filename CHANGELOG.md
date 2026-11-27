@@ -1,5 +1,10 @@
 # Changelog
 
+## 1.56.0
+
+- **Live animated body/head tracking for player-attached holograms (Emotecraft / playerAnimator / PAL).** Attached holograms in **Body** or **Head** follow mode now track the player's actual rendered `PlayerModel` body and head transforms each frame, so holograms spin, lean, flip, and dance in lockstep with Emotecraft emotes, `playerAnimator`/`PAL` animations, BetterCombat, sneaking, and swimming.
+- **Emotecraft: allow emotes while moving.** Optional client patch (`integrations.allowEmoteWhileMoving`, default `true` in Settings) keeps Emotecraft emotes playing while walking, sprinting, or jumping instead of auto-cancelling on movement.
+
 ## 1.55.1
 
 - **3D thumbnails for uploaded 3D models in the Hologram Asset Library.** Uploaded `.glb`/`.gltf`/`.obj`/`.fbx`/`.bbmodel` assets now render a cached `96×96` 3/4 isometric 3D preview thumbnail in the `World` library grid (baked once offscreen, max 1/frame so scrolling stays smooth).

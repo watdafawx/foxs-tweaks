@@ -57,6 +57,7 @@ public final class HologramClient {
         HologramTriggers.install();
         dev.watdafawx.foxstweaks.client.audio.AudioHub.install();
         HologramGrab.init();
+        HologramPlayerPose.install();
         dev.watdafawx.foxstweaks.client.web.HologramWebSession.init();
     }
 
@@ -381,6 +382,7 @@ public final class HologramClient {
         HologramBlockEntities.clear();
         HologramStructureMesh.clear();
         HologramModels.clear();
+        HologramPlayerPose.clear();
         if (net.neoforged.fml.ModList.get().isLoaded("watermedia"))
             dev.watdafawx.foxstweaks.client.compat.WaterMediaBridge.clear();
         HologramPickerPreview.clear();

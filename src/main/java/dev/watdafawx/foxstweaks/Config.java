@@ -522,6 +522,14 @@ public final class Config {
                     "Client-side only. Does nothing without TACZ.")
             .define("taczAttachmentTooltipNumbers", true);
 
+    public static final ModConfigSpec.BooleanValue ALLOW_EMOTE_WHILE_MOVING = BUILDER
+            .comment(
+                    "Let Emotecraft emotes keep playing while you walk, sprint, or jump instead of",
+                    "auto-cancelling on movement.",
+                    "",
+                    "Client-side only. Does nothing without Emotecraft.")
+            .define("allowEmoteWhileMoving", true);
+
     public static final ModConfigSpec.BooleanValue SHRINK_HOTKEY = BUILDER
             .comment(
                     "Let the 'Toggle Shrink' key (Controls, unbound by default) use a Shrink 'Shrinking Device' from",
@@ -794,6 +802,10 @@ public final class Config {
         PERF_OVERLAY_OFFSET_X.set(offsetX);
         PERF_OVERLAY_OFFSET_Y.set(offsetY);
         SPEC.save();
+    }
+
+    public static boolean allowEmoteWhileMoving() {
+        return SPEC.isLoaded() && ALLOW_EMOTE_WHILE_MOVING.get();
     }
 
     public static int hologramRenderCap() {
