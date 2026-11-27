@@ -263,21 +263,45 @@ public class AttributeDialScreen extends Screen {
         renderEditor(g);
 
         int hovered = rowAt(mouseX, mouseY);
-        if (hovered >= 0 && !dragging)
-            g.renderComponentTooltip(font, tooltipFor(shown.get(hovered)), mouseX, mouseY);
+        if (hovered >= 0 && !dragging) {
+            Row row = shown.get(hovered);
+            boolean rendered = false;
+            if (minecraft != null && minecraft.player != null
+                    && net.neoforged.fml.ModList.get().isLoaded("apothic_attributes")) {
+                rendered = dev.watdafawx.foxstweaks.client.compat.ApothicDialTooltip.renderTooltip(
+                        g, font, minecraft.player, row.entry(), row.name(),
+                        valueOf(row), ratioOf(row), mouseX, mouseY, width);
+            }
+            if (!rendered)
+                g.renderComponentTooltip(font, tooltipFor(row), mouseX, mouseY);
+        }
+    }
+
+    private String formatVal(ResourceLocation id, double v) {
+        String plain = fmt(v);
+        if (net.neoforged.fml.ModList.get().isLoaded("apothic_attributes"))
+            return dev.watdafawx.foxstweaks.client.compat.ApothicDialTooltip.formatValue(id, v, plain);
+        return plain;
     }
 
     /** What Apothic's own panel shows on hover: current value, base, limits and every modifier, plus our dial's share. */
     List<Component> tooltipFor(Row row) {
         List<Component> lines = new ArrayList<>();
         AttributeDial.Entry e = row.entry();
-        lines.add(row.name().copy().withStyle(ChatFormatting.WHITE));
-        lines.add(Component.translatable("foxstweaks.dial.tip.current", fmt(valueOf(row))).withStyle(ChatFormatting.GRAY));
-        lines.add(Component.translatable("foxstweaks.dial.tip.base", fmt(e.base())).withStyle(ChatFormatting.GRAY));
+        lines.add(row.name().copy().withStyle(ChatFormatting.GOLD, ChatFormatting.UNDERLINE));
 
         var holder = BuiltInRegistries.ATTRIBUTE.getHolder(e.id()).orElse(null);
+        if (holder != null) {
+            String descKey = holder.value().getDescriptionId() + ".desc";
+            if (net.minecraft.client.resources.language.I18n.exists(descKey))
+                lines.add(Component.translatable(descKey).withStyle(ChatFormatting.YELLOW, ChatFormatting.ITALIC));
+        }
+
+        lines.add(Component.translatable("foxstweaks.dial.tip.current", formatVal(e.id(), valueOf(row))).withStyle(ChatFormatting.GRAY));
+        lines.add(Component.translatable("foxstweaks.dial.tip.base", formatVal(e.id(), e.base())).withStyle(ChatFormatting.GRAY));
+
         if (holder != null && holder.value() instanceof net.minecraft.world.entity.ai.attributes.RangedAttribute ranged)
-            lines.add(Component.translatable("foxstweaks.dial.tip.limits", fmt(ranged.getMinValue()), fmt(ranged.getMaxValue())).withStyle(ChatFormatting.GRAY));
+            lines.add(Component.translatable("foxstweaks.dial.tip.limits", formatVal(e.id(), ranged.getMinValue()), formatVal(e.id(), ranged.getMaxValue())).withStyle(ChatFormatting.GRAY));
 
         var inst = holder == null || minecraft == null || minecraft.player == null ? null : minecraft.player.getAttribute(holder);
         if (inst != null) {
@@ -297,15 +321,13 @@ public class AttributeDialScreen extends Screen {
                     break;
                 }
 
-                boolean percent = m.operation() != net.minecraft.world.entity.ai.attributes.AttributeModifier.Operation.ADD_VALUE;
-                double amount = percent ? m.amount() * 100.0 : m.amount();
-                String text = (amount >= 0 ? "+" : "") + fmt(amount) + (percent ? "%" : "") + "  " + m.id();
-                lines.add(Component.literal(font.plainSubstrByWidth(text, 220)).withStyle(amount >= 0 ? ChatFormatting.GREEN : ChatFormatting.RED));
+                Component comp = holder.value().toComponent(m, net.minecraft.world.item.TooltipFlag.NORMAL);
+                lines.add(comp);
             }
         }
 
         if (ratioOf(row) < 1.0)
-            lines.add(Component.translatable("foxstweaks.dial.tip.dial", Math.round(ratioOf(row) * 100), fmt(e.floor()), fmt(e.gear())).withStyle(ChatFormatting.GOLD));
+            lines.add(Component.translatable("foxstweaks.dial.tip.dial", Math.round(ratioOf(row) * 100), formatVal(e.id(), e.floor()), formatVal(e.id(), e.gear())).withStyle(ChatFormatting.GOLD));
 
         return lines;
     }
@@ -327,7 +349,7 @@ public class AttributeDialScreen extends Screen {
 
             double ratio = ratioOf(row);
             boolean edited = ratio < 1.0;
-            Component value = Component.literal(fmt(valueOf(row)));
+            Component value = Component.literal(formatVal(row.id(), valueOf(row)));
             int valueColor = edited ? AMBER : Math.abs(row.entry().gear() - row.entry().base()) < 1e-9 ? 0xFFAAAAAA : 0xFF55FF55;
             int valueW = font.width(value);
             int right = left + 6 + rowW - 4;
@@ -336,7 +358,7 @@ public class AttributeDialScreen extends Screen {
 
             int reserved = valueW + 10;
             if (edited) {
-                Component gear = Component.literal(fmt(row.entry().gear())).withStyle(ChatFormatting.GRAY, ChatFormatting.STRIKETHROUGH);
+                Component gear = Component.literal(formatVal(row.id(), row.entry().gear())).withStyle(ChatFormatting.GRAY, ChatFormatting.STRIKETHROUGH);
                 g.drawString(font, gear, right - valueW - 4 - font.width(gear), y + 5, 0xFF888888, false);
                 reserved += font.width(gear) + 4;
             }
@@ -399,14 +421,15 @@ public class AttributeDialScreen extends Screen {
         int x = edX + 10;
 
         g.drawString(font, row.name(), x, top + 10, 0xFFFFFFFF, true);
-        g.drawString(font, font.plainSubstrByWidth(row.id().toString(), edW - 20), x, top + 22, 0xFF9A9AA8, false);
+        String subtitle = subtitleFor(row);
+        g.drawString(font, font.plainSubstrByWidth(subtitle, edW - 20), x, top + 22, 0xFF9A9AA8, false);
 
-        Component big = Component.literal(fmt(value));
+        Component big = Component.literal(formatVal(row.id(), value));
         g.pose().pushPose();
         g.pose().scale(2.0F, 2.0F, 1.0F);
         g.drawString(font, big, x / 2, (top + 36) / 2, ratio < 1.0 ? AMBER : 0xFFE8E8EE, true);
         g.pose().popPose();
-        g.drawString(font, Component.translatable("foxstweaks.dial.of_gear", fmt(gear)), x + font.width(big) * 2 + 8, top + 48, 0xFF9A9AA8, false);
+        g.drawString(font, Component.translatable("foxstweaks.dial.of_gear", formatVal(row.id(), gear)), x + font.width(big) * 2 + 8, top + 48, 0xFF9A9AA8, false);
 
         // Fill bar: how much of the gear value is in use.
         int by = top + 62;
@@ -422,11 +445,11 @@ public class AttributeDialScreen extends Screen {
         g.fill(kx - 3, sy - 5, kx + 3, sy + 9, dragging ? 0xFFFFFFFF : AMBER);
         g.renderOutline(kx - 3, sy - 5, 6, 14, 0xFF000000);
 
-        String low = row.entry().floor() == 0.0 ? Component.translatable("foxstweaks.dial.off").getString() : fmt(row.entry().floor());
+        String low = row.entry().floor() == 0.0 ? Component.translatable("foxstweaks.dial.off").getString() : formatVal(row.id(), row.entry().floor());
         g.drawString(font, low, x, sy + 14, 0xFF9A9AA8, false);
         String pct = Math.round(ratio * 100) + "%";
         g.drawString(font, pct, x + sliderW() / 2 - font.width(pct) / 2, sy + 14, 0xFFE8E8EE, false);
-        String full = fmt(gear);
+        String full = formatVal(row.id(), gear);
         g.drawString(font, full, x + sliderW() - font.width(full), sy + 14, 0xFF9A9AA8, false);
 
         // Active preset gets an outline.
@@ -438,10 +461,25 @@ public class AttributeDialScreen extends Screen {
         }
 
         int iy = top + 136;
-        Component vanilla = Component.translatable("foxstweaks.dial.vanilla", fmt(row.entry().floor()));
+        Component vanilla = Component.translatable("foxstweaks.dial.vanilla", formatVal(row.id(), row.entry().floor()));
         int used = font.split(vanilla, edW - 20).size() * 9;
         g.drawWordWrap(font, vanilla, x, iy, edW - 20, 0xFF9A9AA8);
         g.drawWordWrap(font, Component.translatable("foxstweaks.dial.stored", String.format(Locale.ROOT, "%.2f", ratio)), x, iy + used + 6, edW - 20, 0xFF9A9AA8);
+    }
+
+    private String subtitleFor(Row row) {
+        if (minecraft != null && minecraft.options.advancedItemTooltips)
+            return row.id().toString();
+        Attribute attr = BuiltInRegistries.ATTRIBUTE.get(row.id());
+        if (attr != null) {
+            String descKey = attr.getDescriptionId() + ".desc";
+            if (net.minecraft.client.resources.language.I18n.exists(descKey))
+                return Component.translatable(descKey).getString();
+        }
+        String ns = row.id().getNamespace();
+        return net.neoforged.fml.ModList.get().getModContainerById(ns)
+                .map(c -> c.getModInfo().getDisplayName())
+                .orElse(ns);
     }
 
     // ---- input ----

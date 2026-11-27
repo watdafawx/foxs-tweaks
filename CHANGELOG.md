@@ -1,5 +1,9 @@
 # Changelog
 
+## 1.51.1
+
+- **Attribute Dial: normal modifier names, formatted values and Apothic Attributes icons.** Hover tooltips now use Apothic Attributes' own `ModifierSource` icons (armor, hands, Curios, mob effects) and formatted modifier lines (`+8 Armor`, `+6% Attack Speed`) instead of raw internal IDs (`apotheosis:armor/attribute/ironforged`, `minecraft:armor.boots`), along with the attribute's `.desc` description. Percentage attributes now display with `%` in the list and editor, and the editor subtitle shows the description or mod name instead of the raw attribute ID (shown only with `F3+H` advanced tooltips).
+
 ## 1.51.0
 
 - **Player-attached holograms.** Any hologram can now be attached to a player so it follows them across dimensions and relogs (and hides automatically while they are offline).

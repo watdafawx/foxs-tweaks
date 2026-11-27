@@ -62,6 +62,7 @@
     "EntityRenderProfilerMixin",
     "FtbSidebarTooltipFlushMixin",
     "GpuShiftClassifierMixin",
+    "GuiGraphicsTooltipInvoker",
     "GuideMeHotkeyMixin",
     "GunSmithTableScreenMixin",
     "HatsFreshAnimationsLookupMixin",
