@@ -6,6 +6,7 @@ import com.google.gson.JsonObject;
 import dev.watdafawx.foxstweaks.client.asset.HologramAssetImport;
 import dev.watdafawx.foxstweaks.client.asset.HologramAssetSearch;
 import dev.watdafawx.foxstweaks.client.asset.HologramAssets;
+import dev.watdafawx.foxstweaks.client.asset.HologramPackZip;
 import dev.watdafawx.foxstweaks.hologram.HologramLayer;
 import net.minecraft.client.gui.GuiGraphics;
 import net.minecraft.client.gui.components.EditBox;
@@ -54,6 +55,7 @@ public final class HologramAssetScreen extends Screen {
     private final String firstImport;
 
     private int activeTab = 0; // 0 = World, 1 = Images, 2 = GIFs, 3 = 3D
+    private HologramPackZip.Pack activePack = null;
     private List<HologramAssetSearch.Result> onlineResults = List.of();
     private boolean onlineLoading = false;
     private String lastOnlineKey = "";
@@ -139,6 +141,7 @@ public final class HologramAssetScreen extends Screen {
     }
 
     private void selectTab(int tab) {
+        this.activePack = null;
         if (tab == this.activeTab)
             return;
         this.activeTab = tab;
@@ -243,9 +246,74 @@ public final class HologramAssetScreen extends Screen {
     }
 
     private void startImport(String text) {
+        String trimmed = text == null ? "" : text.trim();
+        if (trimmed.length() >= 2 && trimmed.startsWith("\"") && trimmed.endsWith("\""))
+            trimmed = trimmed.substring(1, trimmed.length() - 1).trim();
+        if (trimmed.toLowerCase(Locale.ROOT).endsWith(".zip") && !trimmed.toLowerCase(Locale.ROOT).startsWith("http")) {
+            try {
+                Path zp = trimmed.toLowerCase(Locale.ROOT).startsWith("file:") ? Path.of(java.net.URI.create(trimmed)) : Path.of(trimmed);
+                if (java.nio.file.Files.isRegularFile(zp)) {
+                    openZipPack(zp);
+                    return;
+                }
+            } catch (RuntimeException ignored) {
+            }
+        }
         boolean started = HologramAssetImport.start(text, uploadListener(true));
         if (!started)
             say("Another upload is still running", BAD);
+    }
+
+    private void openZipPack(Path zipPath) {
+        say("Scanning " + zipPath.getFileName() + "...", MUTED);
+        Thread t = new Thread(() -> {
+            try {
+                HologramPackZip.Pack pack = HologramPackZip.scan(zipPath);
+                net.minecraft.client.Minecraft.getInstance().execute(() -> {
+                    if (pack.entries().isEmpty()) {
+                        say("No .glb, .gltf, .obj, or .fbx models found in " + pack.packName(), BAD);
+                    } else {
+                        this.activePack = pack;
+                        this.scroll = 0;
+                        if (this.search != null)
+                            this.search.setValue("");
+                        say(pack.entries().size() + " models in " + pack.packName() + ". Click any model to import.", GOOD);
+                    }
+                });
+            } catch (Exception e) {
+                String msg = e.getMessage() == null ? e.getClass().getSimpleName() : e.getMessage();
+                net.minecraft.client.Minecraft.getInstance().execute(() -> say("Could not open zip: " + msg, BAD));
+            }
+        }, "FoxsTweaks zip scan");
+        t.setDaemon(true);
+        t.start();
+    }
+
+    private List<HologramPackZip.Entry> visiblePackEntries() {
+        if (this.activePack == null)
+            return List.of();
+        String q = this.search == null ? "" : this.search.getValue().trim().toLowerCase(Locale.ROOT);
+        if (q.isEmpty())
+            return this.activePack.entries();
+        List<HologramPackZip.Entry> out = new ArrayList<>();
+        for (HologramPackZip.Entry e : this.activePack.entries()) {
+            if (e.name().toLowerCase(Locale.ROOT).contains(q) || e.format().label.toLowerCase(Locale.ROOT).contains(q))
+                out.add(e);
+        }
+        return out;
+    }
+
+    private HologramPackZip.Entry packTileAt(double mx, double my) {
+        if (this.activePack == null || my < this.gridTop || my >= this.gridBottom)
+            return null;
+        List<HologramPackZip.Entry> list = visiblePackEntries();
+        for (int i = 0; i < list.size(); i++) {
+            int x = tileX(i);
+            int y = tileY(i);
+            if (mx >= x && mx < x + CELL && my >= y && my < y + CELL + LABEL)
+                return list.get(i);
+        }
+        return null;
     }
 
     private void pickOnlineResult(HologramAssetSearch.Result r) {
@@ -321,7 +389,7 @@ public final class HologramAssetScreen extends Screen {
     }
 
     private int contentHeight() {
-        int count = this.activeTab == 0 ? visible().size() : this.onlineResults.size();
+        int count = this.activePack != null ? visiblePackEntries().size() : (this.activeTab == 0 ? visible().size() : this.onlineResults.size());
         int rows = (count + this.cols - 1) / this.cols;
         return rows * (CELL + LABEL + GAP);
     }
@@ -402,6 +470,18 @@ public final class HologramAssetScreen extends Screen {
             else
                 say("This server does not let you upload", BAD);
             return true;
+        }
+        if (this.activePack != null) {
+            HologramPackZip.Entry pe = packTileAt(mx, my);
+            if (pe != null) {
+                if (!this.canUpload) {
+                    say("This server does not let you upload", BAD);
+                } else if (!HologramPackZip.importEntry(this.activePack, pe, uploadListener(false))) {
+                    say("Another upload is still running", BAD);
+                }
+                return true;
+            }
+            return false;
         }
         if (this.activeTab == 0) {
             Asset a = tileAt(mx, my);
@@ -493,7 +573,16 @@ public final class HologramAssetScreen extends Screen {
         }
 
         g.enableScissor(this.px0 + 1, this.gridTop, this.px1 - 1, this.gridBottom);
-        if (this.activeTab == 0) {
+        if (this.activePack != null) {
+            HologramPackZip.Entry hover = packTileAt(mx, my);
+            List<HologramPackZip.Entry> shown = visiblePackEntries();
+            for (int i = 0; i < shown.size(); i++) {
+                int y = tileY(i);
+                if (y + CELL + LABEL < this.gridTop || y > this.gridBottom)
+                    continue;
+                drawPackTile(g, shown.get(i), tileX(i), y, shown.get(i) == hover);
+            }
+        } else if (this.activeTab == 0) {
             Asset hover = tileAt(mx, my);
             List<Asset> shown = visible();
             for (int i = 0; i < shown.size(); i++) {
@@ -513,7 +602,10 @@ public final class HologramAssetScreen extends Screen {
         }
         g.disableScissor();
 
-        if (this.activeTab == 0) {
+        if (this.activePack != null) {
+            if (visiblePackEntries().isEmpty())
+                g.drawCenteredString(this.font, "No models in pack match that search.", (this.px0 + this.px1) / 2, this.gridTop + 30, MUTED);
+        } else if (this.activeTab == 0) {
             if (!this.assets.isEmpty() && visible().isEmpty() && !this.loading) {
                 g.drawCenteredString(this.font, "Nothing matches that search.", (this.px0 + this.px1) / 2, this.gridTop + 30, MUTED);
             }
@@ -537,7 +629,7 @@ public final class HologramAssetScreen extends Screen {
             g.fill(this.px1 - 5, barY, this.px1 - 3, barY + barH, FAINT);
         }
 
-        g.drawString(this.font, this.canUpload ? "Add a picture or 3D model (.glb, .bbmodel): drop a file here, or type a path / address" : "Uploads are not allowed for you here",
+        g.drawString(this.font, this.canUpload ? "Drop image, 3D model (.glb/.gltf/.obj/.fbx/.bbmodel), or pack .zip here, or paste path/URL" : "Uploads are not allowed for you here",
                 this.px0 + 8, this.py1 - 48, MUTED, false);
         super.render(g, mx, my, partial);
         String rawUrl = this.source == null ? "" : this.source.getValue().trim();
@@ -612,6 +704,18 @@ public final class HologramAssetScreen extends Screen {
         }
         g.drawString(this.font, this.font.plainSubstrByWidth(r.title(), CELL), x, y + CELL + 2, TEXT, false);
         g.drawString(this.font, this.font.plainSubstrByWidth(r.subtitle(), CELL), x, y + CELL + 11, FAINT, false);
+    }
+
+    private void drawPackTile(GuiGraphics g, HologramPackZip.Entry e, int x, int y, boolean hover) {
+        g.fill(x, y, x + CELL, y + CELL, hover ? TILE_HOVER : TILE);
+        if (hover)
+            g.renderOutline(x, y, CELL, CELL, ACCENT);
+        g.drawCenteredString(this.font, "3D", x + CELL / 2, y + CELL / 2 - 4, ACCENT);
+        String badge = e.format().label;
+        g.fill(x + CELL - this.font.width(badge) - 5, y + 2, x + CELL - 2, y + 12, 0xAA000000);
+        g.drawString(this.font, badge, x + CELL - this.font.width(badge) - 3, y + 3, ACCENT, false);
+        g.drawString(this.font, this.font.plainSubstrByWidth(e.name(), CELL), x, y + CELL + 2, TEXT, false);
+        g.drawString(this.font, this.font.plainSubstrByWidth(badge + " pack", CELL), x, y + CELL + 11, FAINT, false);
     }
 
     // ---------------------------------------------------------------- dev checks

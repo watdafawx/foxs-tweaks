@@ -129,7 +129,8 @@ public final class HologramAssetImport {
     /** A glTF binary, a Blockbench project, or a file with one of those extensions. */
     static boolean isModel(String name, byte[] b) {
         String lower = name.toLowerCase(Locale.ROOT);
-        if (lower.endsWith(".glb") || lower.endsWith(".gltf") || lower.endsWith(".bbmodel") || lower.endsWith(".json"))
+        if (lower.endsWith(".glb") || lower.endsWith(".gltf") || lower.endsWith(".bbmodel")
+                || lower.endsWith(".json") || lower.endsWith(".obj") || lower.endsWith(".fbx"))
             return true;
         return dev.watdafawx.foxstweaks.hologram.model.GlbReader.looksLikeGlb(b)
                 || dev.watdafawx.foxstweaks.hologram.model.BlockbenchReader.looksLikeBbmodel(b);
@@ -150,8 +151,23 @@ public final class HologramAssetImport {
             throw new IOException("No such file: " + path.getFileName());
         if (Files.size(path) > MAX_SOURCE)
             throw new IOException("File is over the 64 MiB limit");
-        byte[] bytes = Files.readAllBytes(path);
         String name = path.getFileName().toString();
+        String nameLower = name.toLowerCase(Locale.ROOT);
+        if (nameLower.endsWith(".gltf")) {
+            Minecraft.getInstance().execute(() -> listener.progress(0, "bundling glTF"));
+            return new Loaded(name, GltfBundler.bundleFile(path), false, true);
+        }
+        if (nameLower.endsWith(".obj")) {
+            Minecraft.getInstance().execute(() -> listener.progress(0, "converting OBJ"));
+            String glbName = name.substring(0, name.length() - 4) + ".glb";
+            return new Loaded(glbName, ObjToGlb.convertFile(path), false, true);
+        }
+        if (nameLower.endsWith(".fbx")) {
+            Minecraft.getInstance().execute(() -> listener.progress(0, "converting FBX"));
+            String glbName = name.substring(0, name.length() - 4) + ".glb";
+            return new Loaded(glbName, FbxConverter.convertFile(path), false, true);
+        }
+        byte[] bytes = Files.readAllBytes(path);
         boolean video = isVideo(name, bytes);
         if (video && bytes.length > AssetLimits.MAX_BYTES)
             throw new IOException("Video is over the 16 MiB upload limit");

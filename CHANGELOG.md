@@ -1,5 +1,14 @@
 # Changelog
 
+## 1.55.0
+
+- **`.gltf` (external files), `.obj`+`.mtl`, optional `.fbx`, and `.zip` asset pack support for 3D holograms.**
+  - Dropping or pasting a local `.gltf` now automatically inlines its external `.bin` buffers and `baseColorTexture` images (searching the same folder and sibling `Textures/` / `../Textures/` folders).
+  - Pure-Java `.obj` + `.mtl` converter turns Wavefront models (triangles, quads, n-gons, diffuse color/opacity, `map_Kd` textures, auto flat normals) into `.glb` on import.
+  - Optional headless **Blender** bridge converts `.fbx` files to `.glb` automatically when Blender is installed.
+  - **Drop-a-`.zip` Pack Browser:** drop any itch.io / Quaternius / Kenney `.zip` pack straight onto the Hologram Asset Library (no unzipping needed) to browse, search, and click-import deduplicated models (`GLB > glTF > OBJ > FBX`) with automatic `Textures/` resolution inside the archive.
+- **16× faster hologram asset uploads (~9 MB/s on LAN).** Raised client upload burst from `1` chunk/tick (`560 KB/s`) to `16` chunks/tick (`~9 MB/s`), matching the `400 packets/sec` server budget.
+
 ## 1.54.4
 
 - **GPU VBO fast path for 3D hologram models (huge FPS boost on high-poly `.glb` models).** Static, rest-pose, and paused 3D models are now compiled once into per-texture GPU `VertexBuffer`s and drawn via `drawWithShader` instead of submitting every triangle on the CPU each frame. High-poly models (100k–200k+ triangles) no longer tank FPS when looked at. Falls back to immediate mode only for actively playing animations or per-vertex Y-FX (scanline/gradient).
