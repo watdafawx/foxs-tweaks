@@ -169,7 +169,9 @@ public final class HologramAssetImport {
         try {
             HttpClient client = HttpClient.newBuilder().followRedirects(HttpClient.Redirect.NORMAL)
                     .connectTimeout(Duration.ofSeconds(10)).build();
-            HttpRequest request = HttpRequest.newBuilder(uri).timeout(Duration.ofSeconds(30)).GET().build();
+            HttpRequest request = HttpRequest.newBuilder(uri)
+                    .header("User-Agent", "FoxsTweaks/1.54 (https://github.com/watdafawx/foxs-tweaks)")
+                    .timeout(Duration.ofSeconds(30)).GET().build();
             HttpResponse<InputStream> response = client.send(request, HttpResponse.BodyHandlers.ofInputStream());
             if (response.statusCode() / 100 != 2)
                 throw new IOException("The address answered " + response.statusCode());

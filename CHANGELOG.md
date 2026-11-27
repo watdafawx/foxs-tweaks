@@ -1,5 +1,10 @@
 # Changelog
 
+## 1.54.2
+
+- **Fixed HTTP 403 when importing online images/GIFs.** `HologramAssetImport` now sends a proper `User-Agent` header when downloading from CDNs (Wikimedia Commons, Wallhaven, etc.) instead of Java's default client string.
+- **Fixed dim/darkened hologram asset library panel.** Stopped `HologramAssetScreen` from double-drawing its translucent backdrop over the panel, tabs, and thumbnails when `super.render(...)` runs.
+
 ## 1.54.1
 
 - **Fixed HTTP 401 in online Images & GIFs search.** Openverse rejects anonymous requests with `page_size > 20`; switched Images to **Wallhaven** (keyless SFW, 24 results) and GIFs to **Wikimedia Commons** (`filemime:image/gif` with proper project User-Agent), both falling back to **Openverse** with `page_size=20`.

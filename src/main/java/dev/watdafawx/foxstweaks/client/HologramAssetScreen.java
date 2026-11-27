@@ -460,12 +460,12 @@ public final class HologramAssetScreen extends Screen {
 
     @Override
     public void renderBackground(GuiGraphics g, int mouseX, int mouseY, float partialTick) {
-        g.fill(0, 0, this.width, this.height, DIM);
+        // Drawn manually at the start of render() so super.render() never double-dims the panel & thumbnails.
     }
 
     @Override
     public void render(GuiGraphics g, int mx, int my, float partial) {
-        renderBackground(g, mx, my, partial);
+        g.fill(0, 0, this.width, this.height, DIM);
         g.fill(this.px0, this.py0, this.px1, this.py1, PANEL);
         g.renderOutline(this.px0, this.py0, this.px1 - this.px0, this.py1 - this.py0, PANEL_EDGE);
 
