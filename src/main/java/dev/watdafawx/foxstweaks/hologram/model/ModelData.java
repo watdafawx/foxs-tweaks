@@ -25,21 +25,20 @@ import java.util.List;
  */
 public final class ModelData {
     public static final int MAGIC = 0x46544D31; // "FTM1"
-    public static final int VERSION = 1;
+    public static final int VERSION = 2;
 
-    // Hard ceilings. The server may be stricter (AssetLimits), never looser. A hologram holds a couple of models,
-    // so these are sized for a detailed prop, not a film asset.
-    public static final int MAX_NODES = 512;
-    public static final int MAX_VERTICES = 65_536;
-    public static final int MAX_TRIANGLES = 131_072;
-    public static final int MAX_TEXTURES = 8;
+    // Hard ceilings. Sized for detailed Sketchfab/game .glb props and rigged characters.
+    public static final int MAX_NODES = 4096;
+    public static final int MAX_VERTICES = 262_144;
+    public static final int MAX_TRIANGLES = 524_288;
+    public static final int MAX_TEXTURES = 64;
     public static final int MAX_TEXTURE_DIMENSION = 2048;
     public static final int MAX_TEXTURE_BYTES = 8 * 1024 * 1024;
-    public static final int MAX_SKINS = 8;
-    public static final int MAX_JOINTS = 256;
-    public static final int MAX_ANIMATIONS = 64;
-    public static final int MAX_CHANNELS = 4096;
-    public static final int MAX_KEYS = 120_000;
+    public static final int MAX_SKINS = 32;
+    public static final int MAX_JOINTS = 1024;
+    public static final int MAX_ANIMATIONS = 128;
+    public static final int MAX_CHANNELS = 16_384;
+    public static final int MAX_KEYS = 400_000;
     public static final float MAX_SECONDS = 600.0F;
     public static final int MAX_NAME = 64;
 
@@ -265,24 +264,29 @@ public final class ModelData {
             string(out, n.name);
             out.writeShort(n.parent);
             floats(out, n.tx, n.ty, n.tz, n.rx, n.ry, n.rz, n.rw, n.sx, n.sy, n.sz);
-            out.writeByte(n.skin);
+            out.writeShort(n.skin);
             out.writeShort(n.prims.size());
             for (Prim p : n.prims) {
-                out.writeInt(p.vertexCount());
+                int vCount = p.vertexCount();
+                out.writeInt(vCount);
                 floatArray(out, p.pos);
                 floatArray(out, p.nrm);
                 floatArray(out, p.uv);
                 out.writeInt(p.idx.length);
-                // Indices fit a short for every capped model (max 65,536 vertices).
-                for (int i : p.idx)
-                    out.writeShort(i);
+                if (vCount <= 65535) {
+                    for (int i : p.idx)
+                        out.writeShort(i);
+                } else {
+                    for (int i : p.idx)
+                        out.writeInt(i);
+                }
                 out.writeBoolean(p.joints != null);
                 if (p.joints != null) {
                     for (short j : p.joints)
-                        out.writeByte(j);
+                        out.writeShort(j);
                     floatArray(out, p.weights);
                 }
-                out.writeByte(p.texture);
+                out.writeShort(p.texture);
                 floats(out, p.cr, p.cg, p.cb, p.ca);
                 out.writeByte(p.alphaMode);
                 out.writeBoolean(p.doubleSided);
@@ -330,7 +334,8 @@ public final class ModelData {
             throw new IOException("Not a model blob");
         try (DataInputStream in = new DataInputStream(new ByteArrayInputStream(bytes))) {
             in.readInt();
-            if (in.readUnsignedByte() != VERSION)
+            int ver = in.readUnsignedByte();
+            if (ver != 1 && ver != VERSION)
                 throw new IOException("Unsupported model version");
             ModelData m = new ModelData();
             int total = bytes.length;
@@ -354,7 +359,7 @@ public final class ModelData {
                 n.sx = in.readFloat();
                 n.sy = in.readFloat();
                 n.sz = in.readFloat();
-                n.skin = in.readByte();
+                n.skin = ver == 1 ? in.readByte() : in.readShort();
                 int primCount = in.readUnsignedShort();
                 if (primCount > 256)
                     throw new IOException("Too many meshes on a node");
@@ -372,15 +377,25 @@ public final class ModelData {
                         throw new IOException("Too many triangles");
                     triangleBudget -= indexCount / 3;
                     p.idx = new int[indexCount];
-                    for (int x = 0; x < indexCount; x++)
-                        p.idx[x] = in.readUnsignedShort();
+                    if (ver == 1 || v <= 65535) {
+                        for (int x = 0; x < indexCount; x++)
+                            p.idx[x] = in.readUnsignedShort();
+                    } else {
+                        for (int x = 0; x < indexCount; x++)
+                            p.idx[x] = in.readInt();
+                    }
                     if (in.readBoolean()) {
                         p.joints = new short[v * 4];
-                        for (int x = 0; x < p.joints.length; x++)
-                            p.joints[x] = (short) in.readUnsignedByte();
+                        if (ver == 1) {
+                            for (int x = 0; x < p.joints.length; x++)
+                                p.joints[x] = (short) in.readUnsignedByte();
+                        } else {
+                            for (int x = 0; x < p.joints.length; x++)
+                                p.joints[x] = in.readShort();
+                        }
                         p.weights = floatArray(in, v * 4, total);
                     }
-                    p.texture = in.readByte();
+                    p.texture = ver == 1 ? in.readByte() : in.readShort();
                     p.cr = in.readFloat();
                     p.cg = in.readFloat();
                     p.cb = in.readFloat();

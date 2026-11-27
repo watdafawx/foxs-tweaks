@@ -316,7 +316,7 @@ public final class GlbReader {
                 if (j.length == v * 4 && w.length == v * 4) {
                     p.joints = new short[v * 4];
                     for (int i = 0; i < j.length; i++)
-                        p.joints[i] = (short) Math.max(0, Math.min(255, Math.round(j[i])));
+                        p.joints[i] = (short) Math.max(0, Math.min(ModelData.MAX_JOINTS - 1, Math.round(j[i])));
                     p.weights = w;
                 }
             }

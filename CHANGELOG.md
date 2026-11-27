@@ -1,5 +1,10 @@
 # Changelog
 
+## 1.53.2
+
+- **Higher 3D model limits & FTM1 v2 format.** Raised 3D hologram model ceilings to `262,144` vertices, `524,288` triangles, `4,096` bones/nodes, `1,024` joints per skin, `32` skins, `64` textures, and `128` animations (`400,000` keys). Upgraded FTM1 binary format to v2 (32-bit vertex indices when a mesh has >65,535 vertices, 16-bit joint/skin/texture indices) while staying backward-compatible with v1 blobs. Update client and server together for newly uploaded models.
+- **3D model pose & skinning cache.** Static, rest-pose, and paused 3D models now cache `(anim, time)` and skip bone evaluation and CPU vertex skinning whenever the pose has not changed.
+
 ## 1.53.1
 
 - **Live 3D Armor Stand preview in the Effects picker tab.** Selecting a `MobEffect` now renders a rotating 3D armor stand wearing that effect in the preview pane (with the effect's icon in the corner).

@@ -56,6 +56,8 @@ public final class HologramModels {
         final Map<ModelData.Prim, float[][]> scratch = new IdentityHashMap<>();
         /** Rest-pose bounds {minX, minY, minZ, maxX, maxY, maxZ}. */
         final float[] bounds;
+        int lastAnim = Integer.MIN_VALUE;
+        double lastTime = Double.NaN;
 
         Runtime(String hash, ModelData model) {
             this.model = model;
@@ -176,7 +178,12 @@ public final class HologramModels {
         double time = 0.0;
         if (anim >= 0)
             time = settings.time(clock, r.model.animations.get(anim).length);
-        r.pose.evaluate(anim, time);
+        boolean dirtyPose = anim != r.lastAnim || time != r.lastTime;
+        if (dirtyPose) {
+            r.pose.evaluate(anim, time);
+            r.lastAnim = anim;
+            r.lastTime = time;
+        }
 
         float[] b = r.bounds;
         float nativeH = Math.max(0.001F, b[4] - b[1]);
@@ -190,7 +197,8 @@ public final class HologramModels {
         for (int n = 0; n < r.model.nodes.size(); n++) {
             for (ModelData.Prim p : r.model.nodes.get(n).prims) {
                 float[][] s = r.scratch.get(p);
-                r.pose.pose(n, p, s[0], s[1]);
+                if (dirtyPose)
+                    r.pose.pose(n, p, s[0], s[1]);
                 ResourceLocation tex = p.texture >= 0 && p.texture < r.locations.size() ? r.locations.get(p.texture) : null;
                 if (tex == null)
                     tex = white();
