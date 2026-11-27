@@ -72,6 +72,7 @@ public final class AttributeDialNetwork {
         private static final StreamCodec<ByteBuf, AttributeDial.Entry> ENTRY = StreamCodec.composite(
                 ResourceLocation.STREAM_CODEC, AttributeDial.Entry::id,
                 ByteBufCodecs.DOUBLE, AttributeDial.Entry::base,
+                ByteBufCodecs.DOUBLE, AttributeDial.Entry::floor,
                 ByteBufCodecs.DOUBLE, AttributeDial.Entry::gear,
                 ByteBufCodecs.DOUBLE, AttributeDial.Entry::ratio,
                 ByteBufCodecs.DOUBLE, AttributeDial.Entry::value,
@@ -85,7 +86,7 @@ public final class AttributeDialNetwork {
     }
 
     public static void register(RegisterPayloadHandlersEvent event) {
-        var registrar = event.registrar("1").optional();
+        var registrar = event.registrar("2").optional();
 
         registrar.playToServer(Open.TYPE, Open.CODEC, (payload, context) -> context.enqueueWork(() -> {
             if (context.player() instanceof ServerPlayer player && Config.ATTRIBUTE_DIAL.get())

@@ -122,7 +122,7 @@ quality-of-life features sharing a jar, among them:
 
 28. **Attribute Dial** - `attribute/AttributeDial`, `attribute/AttributeDialNetwork`, `client/AttributeDialScreen`,
     `client/AttributeDialClient`. A screen (inventory button or the `open_attribute_dial` key) that turns any of the
-    player's own attributes down to 0-100% of what gear gives. See [Attribute Dial](#attribute-dial-attributeattributedial-clientattributedialscreen).
+    player's own attributes down from what gear gives to its vanilla default. See [Attribute Dial](#attribute-dial-attributeattributedial-clientattributedialscreen).
 
 **Every parent mod is optional.** The mod must load and behave correctly with either, both, or
 neither installed. This is the single most important invariant in the codebase — see
@@ -1512,22 +1512,29 @@ chest. With it off, 167 errors in 10 s and the entry stayed. Against ApotSpawner
 ### Attribute Dial (`attribute/AttributeDial`, `attribute/AttributeDialNetwork`, `client/AttributeDialScreen`)
 
 Lowers an attribute without touching gear. One `ADD_MULTIPLIED_TOTAL` modifier per attribute
-(`foxstweaks:dial/<ns>/<path>`), which vanilla applies after every other modifier, so the result is `gear * ratio`.
+(`foxstweaks:dial/<ns>/<path>`), which vanilla applies after every other modifier, so the result is `floor + (gear - floor) * ratio`.
 Rules that are easy to break:
 
 - **The ratio lives in a player attachment** (`AttributeDial.RATIOS`, `copyOnDeath`, serialised) and the modifier is
   **transient**, re-applied on login, respawn and every 10 ticks. Nothing is left in the save if the mod is removed.
-- **The ratio is relative to the clamped value.** The attribute's min/max is applied after our multiply, so a raw total
-  above the cap (200 reach on a 64 cap) would ignore a 50% dial. `refresh` therefore sets
-  `amount = clamp(raw) * ratio / raw - 1` and re-fits it as gear changes. `total()` re-implements vanilla's formula
+- **The floor is the vanilla default, not 0.** `floor = min(sanitize(base), gear)`: reach 4.5 dials between 4.5 and gear, luck
+  (base 0) between 0 and gear, so "Off" means "vanilla" and the UI labels it (first chip "Base" unless the floor is 0, slider
+  left label, "Vanilla default" line). The ratio is a share of `gear - floor`, and `Entry.at(ratio)` is that maths.
+- **The target is absolute, so it is re-fitted.** The attribute's min/max is applied after our multiply, so a raw total
+  above the cap (200 reach on a 64 cap) would ignore the dial. `refresh` therefore sets
+  `amount = target / raw - 1` (raw = unclamped total without our modifier) and re-fits it as gear changes (10-tick refresh;
+  creative's +0.5 reach lands a tick after respawn, so a respawned player is briefly at the floor/old gear). `total()` re-implements vanilla's formula
   (add, multiply-base, multiply-total) minus our own modifier; keep it in step if vanilla changes it.
 - **Lower only.** The server clamps `ratio >= 0` and treats `>= 0.9999` as "remove"; there is no raising.
 - **Client never trusted for values.** It sends `(attribute id, ratio)`; the server answers with the whole table
-  (`State`: base, gear, ratio, current) for every attribute the player has. The screen applies its own last change
+  (`State`: base, floor, gear, ratio, current; registrar "2") for every attribute the player has. The screen applies its own last change
   locally (`pendingId`) until that answer arrives so the slider never snaps back.
 - **No Apothic dependency.** The screen is our own; it lists the player's attribute registry itself, so Apothic's
   panel is not patched. Attribute ids in 1.21.1 are `minecraft:player.block_interaction_range`,
   `minecraft:generic.attack_damage` etc.: take them from `BuiltInRegistries.ATTRIBUTE`, never type them from memory.
+- **Hover tooltip** on a list row (`tooltipFor`): current, base, min/max, every modifier of the client player's own
+  `AttributeInstance` (ours excluded, id + signed amount, capped at 12) and our dial line. Apothic's panel does the same with
+  item icons; modifiers here only carry an id, so no icon.
 - **Search** is substring per word, else letters in order; **Hide unchanged** hides rows where `gear == base` and the
   dial is untouched (Apothic's own panel hides `base == value`).
 - The inventory button only attaches to `InventoryScreen` (survival). Creative's inventory is a different screen and
@@ -1535,11 +1542,11 @@ Rules that are easy to break:
 - Not covered: effects that are not attributes (many affix procs, enchantment/potion effects), per-source dials
   (the ratio applies to the total), raising above gear.
 
-Dev check: `build.bat runAttributeDialCheck` (run on rig, game dir `run-attribute-dial/`, no extra mods). Fake gear is
+Dev check: `build.bat runAttributeDialCheck` (run on rig, game dir `run-attribute-dial/`, Placebo + ApothicAttributes in `mods/` for the survival inventory). Fake gear is
 a transient +100 on block interaction range (raw 104.5, cap 64) and attack damage; the check opens the screen with the
 real key, types into the search box, clicks rows, drags the slider, clicks presets, the filter and Reset, then proves
-values on the **server** player (50% -> 32, Off -> 0, gear swapped while dialled, reset, respawn, inventory button).
-Report + screenshots: `run-attribute-dial/foxstweaks-attributedial-check.txt`, `screenshots/`. 39 checks, all PASS.
+values on the **server** player (50% -> 34.25 = 4.5 + half of 59.5, Base chip -> 4.5, gear swapped while dialled, reset, respawn, inventory button).
+Report + screenshots: `run-attribute-dial/foxstweaks-attributedial-check.txt`, `screenshots/`. 45 checks, all PASS (hover tooltip lines, chip label, respawn included).
 
 ### Client vs server
 

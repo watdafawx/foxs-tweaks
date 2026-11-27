@@ -44,7 +44,7 @@ import net.neoforged.neoforge.common.NeoForge;
 
 /**
  * Dev-only check of the attribute dial ({@code attribute/*}, {@code client/AttributeDialScreen}). Run by
- * {@code build.bat runAttributeDialCheck} on rig (game dir {@code run-attribute-dial/}, no extra mods needed).
+ * {@code build.bat runAttributeDialCheck} on rig (game dir {@code run-attribute-dial/}, Placebo + ApothicAttributes in its mods/ show the inventory button next to Apothic's own).
  *
  * <p>Flat creative world. Gear is faked with transient +100 modifiers on block interaction range (raw 104.5, capped at
  * 64: the clamp case) and attack damage. Everything is then done through the real screen handlers (key press, typing in
@@ -97,6 +97,11 @@ public final class AttributeDialCheck {
                     shown.toString());
             s.devSearch("blkrng");
             check("letters-in-order search finds reach", s.devShown().contains(REACH), s.devShown().toString());
+            var tip = s.devTooltip(REACH);
+            check("hover tooltip lists current value", tip.stream().anyMatch(l -> l.startsWith("Current: ")), tip.toString());
+            check("hover tooltip lists base 4.5", tip.contains("Base: 4.5") || tip.contains("Base: 4.50"), tip.toString());
+            check("hover tooltip lists the gear modifier", tip.stream().anyMatch(l -> l.contains("+100") && l.contains(GEAR1.toString())), tip.toString());
+            check("hover tooltip has Modifiers header", tip.contains("Modifiers:"), tip.toString());
             s.devSearch("zzzzqq");
             check("no match -> empty list", s.devShown().isEmpty(), s.devShown().toString());
             s.devSearch("interaction");
@@ -109,6 +114,7 @@ public final class AttributeDialCheck {
             if (at != null)
                 click(s, at[0], at[1]);
             check("click selects the row", REACH.equals(s.devSelected()), "selected " + s.devSelected());
+            check("first chip says Base when vanilla default is 4.5", s.devChips().get(0).getMessage().getString().equals("Base"), s.devChips().get(0).getMessage().getString());
             // Drag the real slider: press at the right end (100%), move to the middle, release.
             var from = s.devSliderPoint(1.0);
             var to = s.devSliderPoint(0.5);
@@ -118,7 +124,7 @@ public final class AttributeDialCheck {
             s.mouseReleased(to[0], to[1], 0);
         });
         STEPS.add(mc -> {
-            check("dial 50% -> server reach 32 (clamp case)", near(serverValue(mc, Attributes.BLOCK_INTERACTION_RANGE), 32.0, 0.05),
+            check("dial 50% -> server reach 34.25 (4.5 vanilla + half of 59.5, clamp case)", near(serverValue(mc, Attributes.BLOCK_INTERACTION_RANGE), 34.25, 0.05),
                     "reach " + serverValue(mc, Attributes.BLOCK_INTERACTION_RANGE));
             check("other attributes untouched", near(serverValue(mc, Attributes.ATTACK_DAMAGE), 101.0), "damage " + serverValue(mc, Attributes.ATTACK_DAMAGE));
             check("ratio stored 0.50", near(ratio(mc, REACH), 0.5), "ratio " + ratio(mc, REACH));
@@ -130,11 +136,11 @@ public final class AttributeDialCheck {
             clickChip(mc, 0);
         });
         STEPS.add(mc -> {
-            check("Off chip -> server reach 0", near(serverValue(mc, Attributes.BLOCK_INTERACTION_RANGE), 0.0), "reach " + serverValue(mc, Attributes.BLOCK_INTERACTION_RANGE));
+            check("Base chip -> server reach 4.5 (vanilla default)", near(serverValue(mc, Attributes.BLOCK_INTERACTION_RANGE), 4.5), "reach " + serverValue(mc, Attributes.BLOCK_INTERACTION_RANGE));
             clickChip(mc, 1);
         });
         STEPS.add(mc -> {
-            check("25% chip -> server reach 16", near(serverValue(mc, Attributes.BLOCK_INTERACTION_RANGE), 16.0, 0.05), "reach " + serverValue(mc, Attributes.BLOCK_INTERACTION_RANGE));
+            check("25% chip -> server reach 19.375", near(serverValue(mc, Attributes.BLOCK_INTERACTION_RANGE), 19.375, 0.05), "reach " + serverValue(mc, Attributes.BLOCK_INTERACTION_RANGE));
             var s = dial(mc);
             s.devSearch("");
             int before = s.devShown().size();
@@ -156,13 +162,13 @@ public final class AttributeDialCheck {
             clickChip(mc, 1);
         });
         STEPS.add(mc -> {
-            check("damage 25% of 101 = 25.25", near(serverValue(mc, Attributes.ATTACK_DAMAGE), 25.25, 0.01), "damage " + serverValue(mc, Attributes.ATTACK_DAMAGE));
+            check("damage 25% between 1 and 101 = 26", near(serverValue(mc, Attributes.ATTACK_DAMAGE), 26.0, 0.01), "damage " + serverValue(mc, Attributes.ATTACK_DAMAGE));
             // New gear while dialled: the percentage must follow it.
             server(mc, p -> p.getAttribute(Attributes.ATTACK_DAMAGE).addOrUpdateTransientModifier(
                     new AttributeModifier(GEAR3, 50.0, AttributeModifier.Operation.ADD_VALUE)));
         });
         STEPS.add(mc -> {
-            check("gear swapped while dialled: 25% of 151 = 37.75", near(serverValue(mc, Attributes.ATTACK_DAMAGE), 37.75, 0.01),
+            check("gear swapped while dialled: 1 + 25% of 150 = 38.5", near(serverValue(mc, Attributes.ATTACK_DAMAGE), 38.5, 0.01),
                     "damage " + serverValue(mc, Attributes.ATTACK_DAMAGE));
             var s = dial(mc);
             click(s, s.devResetButton().getX() + 5, s.devResetButton().getY() + 5);
@@ -177,9 +183,12 @@ public final class AttributeDialCheck {
                 p.server.getPlayerList().respawn(p, false, Entity.RemovalReason.KILLED);
             });
         });
+        // The creative +0.5 lands after the respawn event, and the programmatic respawn above does not get the player
+        // ticked by the dev server loop, so run the refresh the 10-tick handler would.
+        STEPS.add(mc -> server(mc, AttributeDial::reapply));
         STEPS.add(mc -> {
             check("dial survives death/respawn: ratio kept", near(ratio(mc), 0.5), "ratios " + AttributeDial.ratios(sp(mc)));
-            check("dial survives death/respawn: reach = creative 5.0 * 0.5", near(serverValue(mc, Attributes.BLOCK_INTERACTION_RANGE), 2.5, 0.01),
+            check("dial survives death/respawn: reach = 4.5 + (5.0 - 4.5) * 0.5", near(serverValue(mc, Attributes.BLOCK_INTERACTION_RANGE), 4.75, 0.01),
                     "reach " + serverValue(mc, Attributes.BLOCK_INTERACTION_RANGE));
             server(mc, p -> {
                 AttributeDial.resetAll(p);

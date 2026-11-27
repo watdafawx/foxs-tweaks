@@ -1,5 +1,10 @@
 # Changelog
 
+## 1.50.0
+
+- **Attribute Dial: vanilla default is the floor.** The dial now goes down to the attribute's vanilla value instead of 0: block interaction range 4.5 dials between 4.5 and what your gear gives, luck (vanilla 0) still goes to 0. The first preset reads **Base** when vanilla is not 0 (**Off** otherwise), the slider's left end shows the value, and a "Vanilla default" line says it. Never below vanilla, never above gear. Percentages are now a share of that range (50% of 4.5..64 is 34.25). Network version bumped: update client and server together.
+- **Attribute Dial: hover a row** to see where its value comes from, like Apothic's panel: current value, base, min/max, each modifier (id and amount) and the dial's own share.
+
 ## 1.49.0
 
 - **Attribute Dial.** A new screen turns any of your own attributes down to 0-100% of what your gear gives you, so you can keep every item and still drop, say, a 200 block interaction range you do not want. Open it with the inventory button (top-right corner of the inventory) or the new **Attribute Dial** key (Controls, unbound by default). It has a search box (words in any order, or letters in order: `blkrng`), a **Hide unchanged** toggle like Apothic's panel, a slider, Off / 25% / 50% / 75% / Full presets, mouse-wheel fine steps, and **Reset all dials**. Dialled rows show the gear value struck through and your value in amber. Gear is never touched: the dial is one extra multiplier applied last, kept per player (survives death and relogs) and re-fitted to new gear every half second, so an attribute capped by its maximum (200 reach on a 64 cap) still responds to the dial. It can only lower, never raise past what you have. Works on any attribute in the registry, including Apothic Attributes' ones; it cannot change effects that are not attributes (many affix procs, enchantment and potion effects). Needs Fox's Tweaks on the server too. Config: `misc.attributeDial` (default on; off removes every dial).

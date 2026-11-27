@@ -24,11 +24,11 @@ import net.neoforged.neoforge.registries.DeferredRegister;
 import net.neoforged.neoforge.registries.NeoForgeRegistries;
 
 /**
- * Attribute dial: lets a player turn any of their own attributes down to 0..100% of what their gear gives them.
+ * Attribute dial: lets a player turn any of their own attributes down, between the vanilla default (0 when it has none) and what their gear gives them.
  *
  * <p>Gear, affixes and effects stay exactly as they are. The dial is one extra {@code ADD_MULTIPLIED_TOTAL}
  * modifier per attribute, which vanilla applies after every other modifier, so the final value is
- * {@code gearValue * ratio}. The ratio itself lives in a player attachment (copied on death) and the modifier is
+ * {@code floor + (gear - floor) * ratio}. The ratio itself lives in a player attachment (copied on death) and the modifier is
  * transient, so removing this mod leaves nothing behind in the save.
  *
  * <p>The ratio is relative to the attribute's <em>clamped</em> value: an attribute whose raw total is above its maximum
@@ -54,7 +54,16 @@ public final class AttributeDial {
     }
 
     /** One row of what the server tells the dial screen. */
-    public record Entry(ResourceLocation id, double base, double gear, double ratio, double value) {
+    public record Entry(ResourceLocation id, double base, double floor, double gear, double ratio, double value) {
+        /** What the dial lands on at {@code ratio}: floor at 0, gear at 1. */
+        public double at(double ratio) {
+            return floor + (gear - floor) * ratio;
+        }
+    }
+
+    /** Lowest the dial goes: the vanilla default (clamped), never above what gear gives. */
+    public static double floorOf(AttributeInstance inst, double gear) {
+        return Math.min(inst.getAttribute().value().sanitizeValue(inst.getBaseValue()), gear);
     }
 
     public static ResourceLocation modifierId(ResourceLocation attribute) {
@@ -136,7 +145,9 @@ public final class AttributeDial {
         ResourceLocation modId = modifierId(attribute);
         double raw = total(inst, modId, false);
         double gear = inst.getAttribute().value().sanitizeValue(raw);
-        double amount = raw == 0.0 ? 0.0 : gear * ratio / raw - 1.0;
+        double floor = floorOf(inst, gear);
+        double target = floor + (gear - floor) * ratio;
+        double amount = raw == 0.0 ? 0.0 : target / raw - 1.0;
 
         if (!Double.isFinite(amount))
             amount = 0.0;
@@ -180,7 +191,8 @@ public final class AttributeDial {
                 return;
 
             ResourceLocation id = holder.key().location();
-            out.add(new Entry(id, inst.getBaseValue(), gearValue(inst, id), ratios.getOrDefault(id, 1.0), inst.getValue()));
+            double gear = gearValue(inst, id);
+            out.add(new Entry(id, inst.getBaseValue(), floorOf(inst, gear), gear, ratios.getOrDefault(id, 1.0), inst.getValue()));
         });
 
         return out;
