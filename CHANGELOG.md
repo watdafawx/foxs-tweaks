@@ -1,5 +1,9 @@
 # Changelog
 
+## 1.54.1
+
+- **Fixed HTTP 401 in online Images & GIFs search.** Openverse rejects anonymous requests with `page_size > 20`; switched Images to **Wallhaven** (keyless SFW, 24 results) and GIFs to **Wikimedia Commons** (`filemime:image/gif` with proper project User-Agent), both falling back to **Openverse** with `page_size=20`.
+
 ## 1.54.0
 
 - **Hologram Paths (walking 3D models & floating assets).** Any hologram can now follow a multi-waypoint path (up to 64 waypoints relative to its anchor) with **Loop** or **Ping-Pong** patrol, configurable speed (`0.1`–`20.0` blocks/sec), **Smooth** (Catmull-Rom) vs **Linear** segments, and optional **Face movement** yaw.

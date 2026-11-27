@@ -47,7 +47,7 @@ import java.util.function.Consumer;
  * {@link DynamicTexture}s released when the screen closes.
  */
 public final class HologramAssetSearch {
-    private static final String USER_AGENT = "FoxsTweaks/1.0 (Minecraft NeoForge Mod)";
+    private static final String USER_AGENT = "FoxsTweaks/1.54 (https://github.com/watdafawx/foxs-tweaks)";
     private static final HttpClient HTTP = HttpClient.newBuilder()
             .followRedirects(HttpClient.Redirect.NORMAL)
             .connectTimeout(Duration.ofSeconds(8))
@@ -101,8 +101,8 @@ public final class HologramAssetSearch {
         Thread t = new Thread(() -> {
             try {
                 List<Result> results = switch (kind) {
-                    case IMAGE -> searchOpenverse(q, "png,jpg", Kind.IMAGE);
-                    case GIF -> searchOpenverse(q, "gif", Kind.GIF);
+                    case IMAGE -> searchImages(q);
+                    case GIF -> searchGifs(q);
                     case MODEL -> searchModels(q);
                 };
                 Minecraft.getInstance().execute(() -> onResults.accept(results));
@@ -115,10 +115,102 @@ public final class HologramAssetSearch {
         t.start();
     }
 
+    private static List<Result> searchImages(String query) throws IOException, InterruptedException {
+        try {
+            List<Result> wh = searchWallhaven(query);
+            if (!wh.isEmpty())
+                return wh;
+        } catch (Exception ignored) {
+        }
+        return searchOpenverse(query, "png,jpg", Kind.IMAGE);
+    }
+
+    private static List<Result> searchGifs(String query) throws IOException, InterruptedException {
+        try {
+            List<Result> wiki = searchWikimediaGifs(query);
+            if (!wiki.isEmpty())
+                return wiki;
+        } catch (Exception ignored) {
+        }
+        return searchOpenverse(query, "gif", Kind.GIF);
+    }
+
+    private static List<Result> searchWallhaven(String query) throws IOException, InterruptedException {
+        String url = "https://wallhaven.cc/api/v1/search?purity=100"
+                + (query.isEmpty() ? "&sorting=toplist" : "&q=" + URLEncoder.encode(query, StandardCharsets.UTF_8));
+        String body = getString(url, 10);
+        JsonObject root = JsonParser.parseString(body).getAsJsonObject();
+        JsonArray arr = root.has("data") && root.get("data").isJsonArray()
+                ? root.getAsJsonArray("data") : new JsonArray();
+        List<Result> out = new ArrayList<>(arr.size());
+        for (JsonElement el : arr) {
+            if (!el.isJsonObject())
+                continue;
+            JsonObject o = el.getAsJsonObject();
+            String dl = str(o, "path");
+            if (dl.isEmpty())
+                continue;
+            String id = str(o, "id");
+            String thumb = dl;
+            if (o.has("thumbs") && o.get("thumbs").isJsonObject()) {
+                String sm = str(o.getAsJsonObject("thumbs"), "small");
+                if (!sm.isEmpty())
+                    thumb = sm;
+            }
+            String res = str(o, "resolution");
+            String sub = res.isEmpty() ? "wallhaven" : res;
+            out.add(new Result(id, id.isEmpty() ? "image" : "wh-" + id, sub, dl, thumb, Kind.IMAGE, false));
+        }
+        return out;
+    }
+
+    private static List<Result> searchWikimediaGifs(String query) throws IOException, InterruptedException {
+        String q = query.isEmpty() ? "cat" : query;
+        String url = "https://commons.wikimedia.org/w/api.php?action=query&generator=search&gsrsearch="
+                + URLEncoder.encode(q + " filemime:image/gif", StandardCharsets.UTF_8)
+                + "&gsrnamespace=6&gsrlimit=20&prop=imageinfo&iiprop=url%7Cmime&iiurlwidth=128&format=json";
+        String body = getString(url, 10);
+        JsonObject root = JsonParser.parseString(body).getAsJsonObject();
+        if (!root.has("query") || !root.get("query").isJsonObject())
+            return List.of();
+        JsonObject qObj = root.getAsJsonObject("query");
+        if (!qObj.has("pages") || !qObj.get("pages").isJsonObject())
+            return List.of();
+        List<Result> out = new ArrayList<>();
+        for (var entry : qObj.getAsJsonObject("pages").entrySet()) {
+            if (!entry.getValue().isJsonObject())
+                continue;
+            JsonObject page = entry.getValue().getAsJsonObject();
+            if (!page.has("imageinfo") || !page.get("imageinfo").isJsonArray())
+                continue;
+            JsonArray infos = page.getAsJsonArray("imageinfo");
+            if (infos.isEmpty())
+                continue;
+            JsonObject info = infos.get(0).getAsJsonObject();
+            String dl = str(info, "url");
+            if (dl.isEmpty())
+                continue;
+            int qIdx = dl.indexOf('?');
+            if (qIdx > 0)
+                dl = dl.substring(0, qIdx);
+            String thumb = str(info, "thumburl");
+            if (thumb.isEmpty())
+                thumb = dl;
+            String title = str(page, "title");
+            if (title.startsWith("File:"))
+                title = title.substring(5);
+            if (title.toLowerCase(Locale.ROOT).endsWith(".gif"))
+                title = title.substring(0, title.length() - 4);
+            out.add(new Result(entry.getKey(), title, "gif", dl, thumb, Kind.GIF, false));
+        }
+        return out;
+    }
+
     private static List<Result> searchOpenverse(String query, String ext, Kind kind) throws IOException, InterruptedException {
         String q = query.isEmpty() ? (kind == Kind.GIF ? "cat" : "art") : query;
+        // Openverse anonymous requests cap page_size at 20 (>20 returns HTTP 401).
         String url = "https://api.openverse.org/v1/images/?q=" + URLEncoder.encode(q, StandardCharsets.UTF_8)
-                + "&extension=" + ext + "&page_size=24";
+                + "&extension=" + ext + "&page_size=20";
         String body = getString(url, 12);
         JsonObject root = JsonParser.parseString(body).getAsJsonObject();
         JsonArray arr = root.has("results") && root.get("results").isJsonArray()
