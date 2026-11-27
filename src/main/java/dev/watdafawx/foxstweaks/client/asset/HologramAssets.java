@@ -96,6 +96,7 @@ public final class HologramAssets {
     private static ByteArrayOutputStream incoming;
     private static int expected;
     private static long touched;
+    private static int downloadRetries;
     private static long generation;
 
     @Nullable
@@ -647,11 +648,23 @@ public final class HologramAssets {
         long now = System.currentTimeMillis();
         tickUpload(now);
 
-        if (!downloading.isEmpty() && now - touched > 30000)
-            failDownload();
+        if (!downloading.isEmpty()) {
+            if (now - touched > 2000) {
+                if (++downloadRetries > 10) {
+                    downloadRetries = 0;
+                    failDownload();
+                } else {
+                    // Re-request stalled chunk (e.g. dropped by packet budget on an older server) instead of discarding.
+                    touched = now;
+                    PacketDistributor.sendToServer(AssetPayload.request(AssetPayload.GET,
+                            incoming == null ? 0 : incoming.size(), 0, downloading));
+                }
+            }
+        }
         if (downloading.isEmpty() && !REQUESTS.isEmpty()) {
             downloading = REQUESTS.removeFirst();
             touched = now;
+            downloadRetries = 0;
             PacketDistributor.sendToServer(AssetPayload.request(AssetPayload.GET, 0, 0, downloading));
         }
 

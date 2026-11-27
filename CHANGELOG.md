@@ -1,5 +1,9 @@
 # Changelog
 
+## 1.54.3
+
+- **Fixed hologram models & assets over ~1.1 MB stalling forever on download.** Fast LAN/local downloads exceeded the server's `40 packets/sec` asset budget (`40 × 28 KB ≈ 1.1 MB`), silently dropping chunk #41 and leaving large 3D models stuck on `3D model (loading or no animations)`. Raised the server budget to `400 packets/sec` (~11 MB/s) and added automatic stalled-chunk re-requesting on the client. Update both client and server for full speed.
+
 ## 1.54.2
 
 - **Fixed HTTP 403 when importing online images/GIFs.** `HologramAssetImport` now sends a proper `User-Agent` header when downloading from CDNs (Wikimedia Commons, Wallhaven, etc.) instead of Java's default client string.

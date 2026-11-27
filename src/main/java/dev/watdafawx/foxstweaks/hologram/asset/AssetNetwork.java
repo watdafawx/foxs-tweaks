@@ -188,8 +188,10 @@ public final class AssetNetwork {
             budget.second = now / 1000;
             budget.packets = 0;
         }
-        if (++budget.packets > 40) {
-            UPLOADS.remove(id);
+        // 400 chunks/sec (~11 MB/s) allows fast LAN/local transfers of large 3D models without stalling.
+        if (++budget.packets > 400) {
+            if (p.kind() == AssetPayload.CHUNK || p.kind() == AssetPayload.BEGIN)
+                UPLOADS.remove(id);
             return;
         }
 
