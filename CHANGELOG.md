@@ -1,5 +1,9 @@
 # Changelog
 
+## 1.57.2
+
+- **Fixed disconnect during `All` batch zip uploads.** Tuned upload bursts to `6` chunks/tick (~3.6 MB/s) with Netty `channel().isWritable()` backpressure so `KeepAlive` packets never starve on busy modded servers, lowered the server `BEGIN` cooldown to `150 ms`, and added a `200 ms` breather (plus automatic rate-limit retry) between batch items.
+
 ## 1.57.1
 
 - **Batch `All` import for `.zip` packs.** When viewing a dropped `.zip` pack in the Hologram Asset Library, click **`All`** (top-right) to import all visible models (the whole zip, or just your search filter) sequentially into the pack's folder, with a **`Stop`** button to cancel anytime.

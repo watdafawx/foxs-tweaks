@@ -287,8 +287,8 @@ public final class AssetNetwork {
 
     private static void begin(ServerPlayer player, AssetPayload p, Budget budget, long now) throws IOException {
         UUID id = player.getUUID();
-        if (now - budget.begin < 1000)
-            throw new IOException("Upload rate limit: wait one second");
+        if (now - budget.begin < 150)
+            throw new IOException("Upload rate limit: wait a moment");
         budget.begin = now;
         if (UPLOADS.containsKey(id) || PROCESSING.containsKey(id))
             throw new IOException("An upload is already in progress");

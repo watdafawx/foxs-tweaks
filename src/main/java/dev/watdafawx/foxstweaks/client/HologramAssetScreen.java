@@ -440,16 +440,24 @@ public final class HologramAssetScreen extends Screen {
                 if (ok) {
                     HologramAssetScreen.this.packQueueDone++;
                 } else {
-                    HologramAssetScreen.this.packQueueFailed++;
                     String low = message == null ? "" : message.toLowerCase(Locale.ROOT);
-                    if (low.contains("cap") || low.contains("quota") || low.contains("permission")) {
+                    if (low.contains("rate limit")) {
+                        // Server still in cooldown between uploads; re-queue and wait 1s.
+                        HologramAssetScreen.this.packQueue.add(0, next);
+                        java.util.concurrent.CompletableFuture.delayedExecutor(1100, java.util.concurrent.TimeUnit.MILLISECONDS)
+                                .execute(() -> net.minecraft.client.Minecraft.getInstance().execute(HologramAssetScreen.this::pumpPackQueue));
+                        return;
+                    }
+                    HologramAssetScreen.this.packQueueFailed++;
+                    if (low.contains("cap") || low.contains("quota") || low.contains("permission") || low.contains("disconnected")) {
                         HologramAssetScreen.this.packQueue.clear();
                         say("Stopped: " + message, BAD);
                         reload();
                         return;
                     }
                 }
-                pumpPackQueue();
+                java.util.concurrent.CompletableFuture.delayedExecutor(200, java.util.concurrent.TimeUnit.MILLISECONDS)
+                        .execute(() -> net.minecraft.client.Minecraft.getInstance().execute(HologramAssetScreen.this::pumpPackQueue));
             }
         });
         if (!started) {

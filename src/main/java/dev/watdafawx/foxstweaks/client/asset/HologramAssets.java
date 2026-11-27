@@ -713,8 +713,12 @@ public final class HologramAssets {
             return;
 
         if (!u.sent()) {
-            // Up to 16 chunks per tick (~320/s ≈ 9 MB/s, safely under the server's 400/s packet budget).
-            for (int burst = 0; burst < 16 && !u.sent(); burst++) {
+            // Up to 6 chunks per tick (~3.6 MB/s) with Netty channel backpressure so KeepAlive packets never starve.
+            var conn = Minecraft.getInstance().getConnection();
+            var ch = conn != null ? conn.getConnection().channel() : null;
+            for (int burst = 0; burst < 6 && !u.sent(); burst++) {
+                if (burst > 0 && ch != null && !ch.isWritable())
+                    break;
                 int end = Math.min(u.bytes.length, u.offset + AssetPayload.CHUNK_BYTES);
                 PacketDistributor.sendToServer(new AssetPayload(AssetPayload.CHUNK, u.sequence++, 0, "",
                         Arrays.copyOfRange(u.bytes, u.offset, end)));
