@@ -76,6 +76,7 @@
   "key.foxstweaks.toggle_perf_hud": "Toggle Performance Mini-HUD",
   "key.foxstweaks.move_perf_overlay": "Move Performance Overlay",
   "key.foxstweaks.open_fps_report": "Open FPS Hotspot Report",
+  "key.foxstweaks.open_holograms": "Open Hologram Picker",
   "screen.foxstweaks.perf_placement.title": "Performance Overlay Placement",
   "screen.foxstweaks.perf_placement.hint": "Drag the block, or use the arrow keys (Shift = 1px)",
   "screen.foxstweaks.perf_placement.server": "Server card",

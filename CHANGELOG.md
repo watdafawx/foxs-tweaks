@@ -1,5 +1,9 @@
 # Changelog
 
+## 1.52.1
+
+- **Hologram Picker (right-click air with the Hologram Wand or press the new Open Hologram Picker key).** Lists holograms attached to you at the top (even when hidden in first person) and nearby holograms within 32 m sorted by distance, with a search box, a **Nearby 32m / All in dim** toggle, and one-click **Edit**, **Attach / Detach**, and 2-click **Del** actions.
+
 ## 1.52.0
 
 - **Higher hologram asset limits & auto-downscaling model textures.** Raised the per-asset ceiling (`assetMaxFileMb` max and transfer cap) from `16 MB` to `64 MB`, and 3D model imports now accept up to `64 MB` embedded textures and automatically downscale oversized textures (`1024 -> 512 -> 256 px`, ≤2 MB per PNG) so heavy `.glb`/`.bbmodel` files shrink cleanly.

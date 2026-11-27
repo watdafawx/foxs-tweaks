@@ -103,6 +103,11 @@ public class HologramItem extends Item {
 
     @Override
     public InteractionResultHolder<ItemStack> use(Level level, Player player, InteractionHand hand) {
+        if (level.isClientSide()) {
+            if (FMLEnvironment.dist.isClient())
+                dev.watdafawx.foxstweaks.client.HologramClient.onWandUseAir();
+            return InteractionResultHolder.success(player.getItemInHand(hand));
+        }
         if (!(level instanceof ServerLevel server))
             return InteractionResultHolder.success(player.getItemInHand(hand));
 

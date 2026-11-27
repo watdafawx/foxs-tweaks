@@ -95,9 +95,17 @@ public class FoxsTweaksKeys {
             InputConstants.UNKNOWN.getValue(),
             CATEGORY);
 
+    /** Opens the nearby & player-attached hologram picker (see {@code client.HologramNearbyScreen}). Unbound by default. */
+    public static final KeyMapping OPEN_HOLOGRAMS = new KeyMapping(
+            "key." + FoxsTweaks.MODID + ".open_holograms",
+            InputConstants.Type.KEYSYM,
+            InputConstants.UNKNOWN.getValue(),
+            CATEGORY);
+
     @SubscribeEvent
     public static void onRegisterKeyMappings(RegisterKeyMappingsEvent event) {
         event.register(OPEN_FPS_REPORT);
+        event.register(OPEN_HOLOGRAMS);
         event.register(OPEN_RELIC);
         event.register(SHOW_AFFIX_INFO);
         event.register(TOGGLE_AFFIXES);

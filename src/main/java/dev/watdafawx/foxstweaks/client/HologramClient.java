@@ -172,6 +172,10 @@ public final class HologramClient {
         emitParticles(mc);
         if (net.neoforged.fml.ModList.get().isLoaded("watermedia"))
             dev.watdafawx.foxstweaks.client.compat.WaterMediaBridge.tick();
+        while (FoxsTweaksKeys.OPEN_HOLOGRAMS.consumeClick()) {
+            if (mc.screen == null)
+                mc.setScreen(new HologramNearbyScreen());
+        }
         if (!holdingWand(mc)) {
             HologramClient.hovered = null;
             return;
@@ -320,6 +324,13 @@ public final class HologramClient {
         return mc.player != null
                 && (mc.player.getMainHandItem().getItem() instanceof dev.watdafawx.foxstweaks.hologram.HologramItem
                 || mc.player.getOffhandItem().getItem() instanceof dev.watdafawx.foxstweaks.hologram.HologramItem);
+    }
+
+    public static void onWandUseAir() {
+        Minecraft mc = Minecraft.getInstance();
+        if (mc.screen != null || HologramClient.hovered != null)
+            return;
+        mc.setScreen(new HologramNearbyScreen());
     }
 
     public static void onWandUseOn(net.minecraft.world.item.context.UseOnContext context) {
