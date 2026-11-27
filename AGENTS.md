@@ -120,6 +120,10 @@ quality-of-life features sharing a jar, among them:
 27. **3D model holograms** - `HologramLayer.Kind.MODEL`; `.glb`/`.gltf`/`.bbmodel` go through the asset pipeline as
     mode 3 and are stored as one canonical FTM1 blob. See [3D model layers](#3d-model-layers-hologrammodel-hologrammodelsettings-clienthologrammodels).
 
+28. **Attribute Dial** - `attribute/AttributeDial`, `attribute/AttributeDialNetwork`, `client/AttributeDialScreen`,
+    `client/AttributeDialClient`. A screen (inventory button or the `open_attribute_dial` key) that turns any of the
+    player's own attributes down to 0-100% of what gear gives. See [Attribute Dial](#attribute-dial-attributeattributedial-clientattributedialscreen).
+
 **Every parent mod is optional.** The mod must load and behave correctly with either, both, or
 neither installed. This is the single most important invariant in the codebase — see
 [Optional dependencies](#optional-dependencies).
@@ -1504,6 +1508,38 @@ every entry that fails `ItemStack.parse`. `root()` returns the live tag, so the 
 Verified on the dev server with a spawner holding `pointblank:gunmetal_nugget` plus diamonds, a hopper
 underneath. With the toggle on, each bad entry logged once and was gone, and the diamonds went on into the
 chest. With it off, 167 errors in 10 s and the entry stayed. Against ApotSpawner 1.2.0.
+
+### Attribute Dial (`attribute/AttributeDial`, `attribute/AttributeDialNetwork`, `client/AttributeDialScreen`)
+
+Lowers an attribute without touching gear. One `ADD_MULTIPLIED_TOTAL` modifier per attribute
+(`foxstweaks:dial/<ns>/<path>`), which vanilla applies after every other modifier, so the result is `gear * ratio`.
+Rules that are easy to break:
+
+- **The ratio lives in a player attachment** (`AttributeDial.RATIOS`, `copyOnDeath`, serialised) and the modifier is
+  **transient**, re-applied on login, respawn and every 10 ticks. Nothing is left in the save if the mod is removed.
+- **The ratio is relative to the clamped value.** The attribute's min/max is applied after our multiply, so a raw total
+  above the cap (200 reach on a 64 cap) would ignore a 50% dial. `refresh` therefore sets
+  `amount = clamp(raw) * ratio / raw - 1` and re-fits it as gear changes. `total()` re-implements vanilla's formula
+  (add, multiply-base, multiply-total) minus our own modifier; keep it in step if vanilla changes it.
+- **Lower only.** The server clamps `ratio >= 0` and treats `>= 0.9999` as "remove"; there is no raising.
+- **Client never trusted for values.** It sends `(attribute id, ratio)`; the server answers with the whole table
+  (`State`: base, gear, ratio, current) for every attribute the player has. The screen applies its own last change
+  locally (`pendingId`) until that answer arrives so the slider never snaps back.
+- **No Apothic dependency.** The screen is our own; it lists the player's attribute registry itself, so Apothic's
+  panel is not patched. Attribute ids in 1.21.1 are `minecraft:player.block_interaction_range`,
+  `minecraft:generic.attack_damage` etc.: take them from `BuiltInRegistries.ATTRIBUTE`, never type them from memory.
+- **Search** is substring per word, else letters in order; **Hide unchanged** hides rows where `gear == base` and the
+  dial is untouched (Apothic's own panel hides `base == value`).
+- The inventory button only attaches to `InventoryScreen` (survival). Creative's inventory is a different screen and
+  has no button; the key works there.
+- Not covered: effects that are not attributes (many affix procs, enchantment/potion effects), per-source dials
+  (the ratio applies to the total), raising above gear.
+
+Dev check: `build.bat runAttributeDialCheck` (run on rig, game dir `run-attribute-dial/`, no extra mods). Fake gear is
+a transient +100 on block interaction range (raw 104.5, cap 64) and attack damage; the check opens the screen with the
+real key, types into the search box, clicks rows, drags the slider, clicks presets, the filter and Reset, then proves
+values on the **server** player (50% -> 32, Off -> 0, gear swapped while dialled, reset, respawn, inventory button).
+Report + screenshots: `run-attribute-dial/foxstweaks-attributedial-check.txt`, `screenshots/`. 39 checks, all PASS.
 
 ### Client vs server
 

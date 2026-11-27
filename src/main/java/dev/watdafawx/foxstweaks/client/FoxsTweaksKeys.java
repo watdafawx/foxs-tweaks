@@ -56,6 +56,13 @@ public class FoxsTweaksKeys {
             InputConstants.UNKNOWN.getValue(),
             CATEGORY);
 
+    /** Opens the attribute dial (see {@code client.AttributeDialScreen}). Unbound by default. */
+    public static final KeyMapping OPEN_ATTRIBUTE_DIAL = new KeyMapping(
+            "key." + FoxsTweaks.MODID + ".open_attribute_dial",
+            InputConstants.Type.KEYSYM,
+            InputConstants.UNKNOWN.getValue(),
+            CATEGORY);
+
     /** Opens the Fox's Tweaks settings screen (see {@code client.ConfigScreenKeys}). Unbound by default. */
     public static final KeyMapping OPEN_CONFIG = new KeyMapping(
             "key." + FoxsTweaks.MODID + ".open_config",
@@ -97,6 +104,7 @@ public class FoxsTweaksKeys {
         event.register(USE_TEMPORAL_POUCH);
         event.register(TOGGLE_SHRINK);
         event.register(OPEN_CONFIG);
+        event.register(OPEN_ATTRIBUTE_DIAL);
         event.register(TOGGLE_PERF_HUD);
         event.register(MOVE_PERF_OVERLAY);
     }

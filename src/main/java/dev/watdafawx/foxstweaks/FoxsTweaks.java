@@ -50,6 +50,8 @@ public class FoxsTweaks {
         modBus.addListener(dev.watdafawx.foxstweaks.relics.AutoLevelNetwork::register);
         modBus.addListener(dev.watdafawx.foxstweaks.relics.RelicParticlesNetwork::register);
         modBus.addListener(dev.watdafawx.foxstweaks.shrink.ShrinkNetwork::register);
+        modBus.addListener(dev.watdafawx.foxstweaks.attribute.AttributeDialNetwork::register);
+        dev.watdafawx.foxstweaks.attribute.AttributeDial.ATTACHMENTS.register(modBus);
         modBus.addListener(dev.watdafawx.foxstweaks.perf.PerfNetwork::register);
         modBus.addListener(dev.watdafawx.foxstweaks.anchor.AnchorNetwork::register);
         modBus.addListener(dev.watdafawx.foxstweaks.hologram.HologramNetwork::register);
@@ -118,6 +120,10 @@ public class FoxsTweaks {
         // Dev-only check for the Kaleidoscope Grilling skewer cache; `build.bat runGrillingCheck` sets the property.
         if (FMLEnvironment.dist.isClient() && !FMLEnvironment.production && Boolean.getBoolean("foxstweaks.grillingCheck") && ModList.get().isLoaded("kaleidoscope_grilling"))
             dev.watdafawx.foxstweaks.client.dev.GrillingCheck.install();
+
+        // Dev-only check of the attribute dial screen; `build.bat runAttributeDialCheck` sets the property.
+        if (FMLEnvironment.dist.isClient() && !FMLEnvironment.production && Boolean.getBoolean("foxstweaks.attributeDialCheck"))
+            dev.watdafawx.foxstweaks.client.dev.AttributeDialCheck.install();
 
         // Dev-only check of the Shrink hotkey and settings key; `build.bat runShrinkCheck` sets the property.
         if (FMLEnvironment.dist.isClient() && !FMLEnvironment.production && Boolean.getBoolean("foxstweaks.shrinkCheck") && ModList.get().isLoaded("shrink") && ModList.get().isLoaded(CURIOS))

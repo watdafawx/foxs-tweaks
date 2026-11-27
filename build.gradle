@@ -97,6 +97,15 @@ neoForge {
             systemProperty 'foxstweaks.grillingCheck', 'true'
         }
 
+        // Dev-only check of the attribute dial (client/dev/AttributeDialCheck): flat world, fake gear, drives the real
+        // screen, proves the values on the server player, writes run-attribute-dial/foxstweaks-attributedial-check.txt
+        // + screenshots and quits. No extra mods needed.
+        attributeDialCheck {
+            client()
+            gameDirectory = file('run-attribute-dial')
+            systemProperty 'foxstweaks.attributeDialCheck', 'true'
+        }
+
         // Dev-only check of the Shrink hotkey + settings key (client/dev/ShrinkCheck): flat world, presses the real
         // keys (inventory + Curios slot), screenshots the settings screen, writes run-shrink/foxstweaks-shrink-check.txt
         // and quits. Put shrink, architectury, polylib and curios jars in run-shrink/mods first.

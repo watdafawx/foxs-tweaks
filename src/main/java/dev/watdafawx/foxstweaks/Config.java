@@ -722,6 +722,13 @@ public final class Config {
                     "before Lootr can convert it. Look for 'Loot rolled without a player' in latest.log.")
             .defineInRange("debugLogLootRolls", 0, 0, 1000);
 
+    public static final ModConfigSpec.BooleanValue ATTRIBUTE_DIAL = BUILDER
+            .comment(
+                    "Attribute dial: a screen (inventory button or the 'Attribute Dial' key) that turns any of your own",
+                    "attributes down to 0-100% of what your gear gives you, e.g. a 200 block reach you do not want.",
+                    "Gear is untouched; the dial is one extra multiplier. Off removes every dial on the server.")
+            .define("attributeDial", true);
+
     static {
         BUILDER.pop();
     }
