@@ -108,14 +108,19 @@ public class BiomeWandItem extends Item {
             case WHOLE_BIOME -> {
                 updated = cfg.withPositions(Optional.of(clicked), Optional.empty());
                 if (player instanceof ServerPlayer sp) {
-                    WholeBiomeScanner.Result scan = WholeBiomeScanner.scan(sp.serverLevel(), clicked, ServerConfig.wholeBiomeMaxChunks());
-                    TerraformNetwork.sendWholeBiomePreview(sp, scan);
-                    if (!scan.warningText().isEmpty()) {
-                        msg = scan.warningText() + " Right-click air to confirm anyway.";
-                    } else {
-                        msg = "Whole " + scan.sourceBiomeName() + ": " + scan.totalChunks() + " chunks ("
-                                + scan.loadedChunks() + " loaded, " + scan.unloadedChunks() + " unloaded). Right-click air to confirm.";
-                    }
+                    msg = "Scanning whole biome (reading saved chunks)...";
+                    WholeBiomeScanner.scanAsync(sp.serverLevel(), clicked, ServerConfig.wholeBiomeMaxChunks())
+                            .thenAccept(scan -> sp.server.execute(() -> {
+                                if (sp.isRemoved()) return;
+                                TerraformNetwork.sendWholeBiomePreview(sp, scan);
+                                String doneMsg = !scan.warningText().isEmpty()
+                                        ? scan.warningText() + " Right-click air to confirm anyway."
+                                        : "Whole " + scan.sourceBiomeName() + ": " + scan.totalChunks() + " chunks ("
+                                                + scan.loadedChunks() + " loaded, " + scan.unloadedChunks() + " unloaded). Right-click air to confirm.";
+                                sp.displayClientMessage(
+                                        Component.literal(doneMsg).withStyle(scan.riskyBiome() ? ChatFormatting.GOLD : ChatFormatting.AQUA),
+                                        true);
+                            }));
                 } else {
                     msg = "";
                 }

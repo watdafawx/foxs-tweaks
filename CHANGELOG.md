@@ -1,5 +1,9 @@
 # Changelog
 
+## 1.61.3
+
+- **Fixed `Whole Biome` mode jumping into wrong biomes past view distance:** `WholeBiomeScanner` now reads the actual saved biome palette from unloaded Anvil chunk NBT (`ChunkMap#read`) before falling back to live `BiomeSource` noise for truly ungenerated chunks, and runs the preview scan off-thread so even large saved biomes match the explored map accurately with zero TPS stutter.
+
 ## 1.61.2
 
 - **Fixed patchy skipped columns in Terrain Flattener (`Natural: ON`):** added NeoForge `Tags.Blocks.ORES`, `STONES`, `GRAVELS`, `SANDS`, `SANDSTONE_BLOCKS`, `NETHERRACKS`, `END_STONES`, plus moss, glow lichen, cave vines, dripleaves, dripstone, and amethyst to the natural-block filter so underground ores and modded worldgen blocks no longer cause columns to be skipped while player builds remain protected.
