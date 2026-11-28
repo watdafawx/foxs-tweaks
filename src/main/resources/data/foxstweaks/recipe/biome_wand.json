@@ -1,0 +1,24 @@
+{
+  "type": "minecraft:crafting_shaped",
+  "category": "misc",
+  "pattern": [
+    " G ",
+    " E ",
+    " S "
+  ],
+  "key": {
+    "G": {
+      "item": "minecraft:grass_block"
+    },
+    "E": {
+      "item": "minecraft:emerald"
+    },
+    "S": {
+      "item": "minecraft:stick"
+    }
+  },
+  "result": {
+    "id": "foxstweaks:biome_wand",
+    "count": 1
+  }
+}

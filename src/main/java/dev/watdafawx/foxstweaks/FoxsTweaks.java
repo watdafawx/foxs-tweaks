@@ -55,6 +55,8 @@ public class FoxsTweaks {
         modBus.addListener(dev.watdafawx.foxstweaks.perf.PerfNetwork::register);
         modBus.addListener(dev.watdafawx.foxstweaks.anchor.AnchorNetwork::register);
         modBus.addListener(dev.watdafawx.foxstweaks.hologram.HologramNetwork::register);
+        modBus.addListener(dev.watdafawx.foxstweaks.terraform.TerraformNetwork::register);
+        dev.watdafawx.foxstweaks.terraform.TerraformNetwork.initEvents();
 
         FoxsTweaksComponents.COMPONENTS.register(modBus);
         FoxsTweaksItems.init(modBus);
@@ -69,6 +71,7 @@ public class FoxsTweaks {
         if (FMLEnvironment.dist.isClient()) {
             dev.watdafawx.foxstweaks.client.HologramClient.init();
             modBus.addListener(dev.watdafawx.foxstweaks.client.HologramStructureMesh::registerReload);
+            dev.watdafawx.foxstweaks.client.terraform.TerraformClient.init();
         }
 
         // Settings screen (Mods list "Config" button + hotkey).
@@ -128,6 +131,10 @@ public class FoxsTweaks {
         // Dev-only check of the attribute dial screen; `build.bat runAttributeDialCheck` sets the property.
         if (FMLEnvironment.dist.isClient() && !FMLEnvironment.production && Boolean.getBoolean("foxstweaks.attributeDialCheck"))
             dev.watdafawx.foxstweaks.client.dev.AttributeDialCheck.install();
+
+        // Dev-only end-to-end check of the Biome Changer & Terrain Flattener wands; `build.bat runTerraformCheck`.
+        if (FMLEnvironment.dist.isClient() && !FMLEnvironment.production && Boolean.getBoolean("foxstweaks.terraformCheck"))
+            dev.watdafawx.foxstweaks.client.dev.TerraformCheck.install();
 
         // Dev-only check of the Shrink hotkey and settings key; `build.bat runShrinkCheck` sets the property.
         if (FMLEnvironment.dist.isClient() && !FMLEnvironment.production && Boolean.getBoolean("foxstweaks.shrinkCheck") && ModList.get().isLoaded("shrink") && ModList.get().isLoaded(CURIOS))

@@ -18,6 +18,12 @@ public final class FoxsTweaksItems {
     public static final DeferredItem<Item> HOLOGRAM_WAND = ITEMS.register("hologram_wand",
             () -> new dev.watdafawx.foxstweaks.hologram.HologramItem(new Item.Properties().stacksTo(1)));
 
+    public static final DeferredItem<Item> BIOME_WAND = ITEMS.register("biome_wand",
+            () -> new dev.watdafawx.foxstweaks.terraform.BiomeWandItem(new Item.Properties().stacksTo(1)));
+
+    public static final DeferredItem<Item> TERRAIN_FLATTENER = ITEMS.register("terrain_flattener",
+            () -> new dev.watdafawx.foxstweaks.terraform.FlattenWandItem(new Item.Properties().stacksTo(1)));
+
     public static void init(IEventBus modBus) {
         ITEMS.register(modBus);
         modBus.addListener(FoxsTweaksItems::onCreativeTabs);
@@ -27,6 +33,8 @@ public final class FoxsTweaksItems {
         if (event.getTabKey() == CreativeModeTabs.FUNCTIONAL_BLOCKS) {
             event.accept(SPAWN_ANCHOR.get());
             event.accept(HOLOGRAM_WAND.get());
+            event.accept(BIOME_WAND.get());
+            event.accept(TERRAIN_FLATTENER.get());
         }
     }
 

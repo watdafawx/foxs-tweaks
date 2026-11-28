@@ -1,5 +1,17 @@
 # Changelog
 
+## 1.60.0
+
+- **Biome Changer Wand (`foxstweaks:biome_wand`):** survival-craftable real-time biome painting tool with live grass, foliage, water, sky, and fog color updates.
+  - **Three selection modes:** `Box` (`pos1` → `pos2`), `Radius Brush`, and `Flood-Fill Biome` (selects connected columns of the clicked biome).
+  - **Exact 1×1×1 biome borders (`ExactBiomes` + `BiomeManagerMixin`):** interior 4×4×4 quart cells write directly to vanilla chunk storage while partial border cells store compact per-block overrides, solving vanilla's 4×4×4 bleed with zero cost on untouched chunks.
+  - **Options & GUI:** searchable biome picker with live Grass | Sky color swatches, `Full Y Column` vs `Y-Slice` (preserves cave biomes), toggleable `1x1 Exact Edges`, optional `Clear Snow & Ice`, and disk-backed GZIP Undo.
+  - **Performance-friendly 3D & map previews:** cached outer-perimeter 3D outline/ribbon (never per-block boxes) plus optional live polygon overlays on both **JourneyMap** and **FTB Chunks**.
+- **Terrain Flattener (`foxstweaks:terrain_flattener`):** survival-craftable natural terrain flattening tool (`Box` and `Radius Brush`).
+  - **Configurable gradual flattening:** `Flatness` (`0–100%`), `Smoothness` (`0–100%` blur), `Edge Feather` (`0–100%` smooth border blend), and `Target Y` (`Clicked Y` / `Area Average` / `Custom Y`).
+  - **Generated-terrain look:** preserves surface and subsurface strata (grass/sand/podzol + dirt/sandstone/stone), configurable `Trees` mode (`Remove Trees` / `Keep Trees` / `Replant Saplings`), `Natural Blocks Only` safety filter, tick-budgeted execution, and color-coded 3D wireframe preview.
+- **Zero-RAM persistent Undo (`TerraformUndoStore`):** both tools save up to 5 paletted GZIP-compressed undo snapshots per player under `<world>/data/foxstweaks_undo/`, using 0 bytes of idle server RAM and surviving server restarts.
+
 ## 1.59.3
 
 - **Fixed tick-interpolated mob states & procedural animations:** directly drives renderer fields that normally only update in `tick()` so Creeper swell, Shulker peek, Iron Golem attack/flower, Ravager bite/stun/roar, Evoker/Illusioner spellcasting, Horse rear/eat, Sheep graze, Polar Bear stand, Panda sit/roll/on-back/sneeze, Fox crouch/interested, Cat lying, Wolf beg (plus auto-tame on collar), Allay dance, and Camel/Sniffer/Armadillo state-driven `AnimationState`s all animate visibly.

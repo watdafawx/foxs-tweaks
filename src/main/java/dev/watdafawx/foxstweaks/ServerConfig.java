@@ -226,6 +226,23 @@ public final class ServerConfig {
     public static final ModConfigSpec.IntValue ASSET_MAX_SECONDS = BUILDER.comment("Maximum animation duration in seconds.").defineInRange("assetMaxSeconds", 10, 1, 30);
 
     public static final ModConfigSpec.IntValue ASSET_MAX_PER_PLAYER = BUILDER.comment("Maximum assets owned by each player.").defineInRange("assetMaxPerPlayer", 100, 1, 10000);
+    static {
+        BUILDER.pop();
+        BUILDER.push("terraform");
+    }
+
+    public static final ModConfigSpec.BooleanValue TERRAFORM_ENABLED = BUILDER
+            .comment("Allow the Biome Changer Wand and Terrain Flattener Wand to modify biomes and terrain.")
+            .define("terraformEnabled", true);
+
+    public static final ModConfigSpec.IntValue BIOME_WAND_MAX_RADIUS = BUILDER
+            .comment("Maximum radius (or half-span in Box mode) allowed for the Biome Changer Wand, in blocks.")
+            .defineInRange("biomeWandMaxRadius", 64, 8, 192);
+
+    public static final ModConfigSpec.IntValue FLATTEN_WAND_MAX_RADIUS = BUILDER
+            .comment("Maximum radius (or half-span in Box mode) allowed for the Terrain Flattener Wand, in blocks.")
+            .defineInRange("flattenWandMaxRadius", 48, 8, 128);
+
     static { BUILDER.pop(); }
 
     public static final ModConfigSpec SPEC = BUILDER.build();
@@ -345,6 +362,18 @@ public final class ServerConfig {
 
     public static int hologramAudioMaxPerHologram() {
         return loaded() ? HOLOGRAM_AUDIO_MAX_PER_HOLOGRAM.get() : 64;
+    }
+
+    public static boolean terraformEnabled() {
+        return !loaded() || TERRAFORM_ENABLED.get();
+    }
+
+    public static int biomeWandMaxRadius() {
+        return loaded() ? BIOME_WAND_MAX_RADIUS.get() : 64;
+    }
+
+    public static int flattenWandMaxRadius() {
+        return loaded() ? FLATTEN_WAND_MAX_RADIUS.get() : 48;
     }
 
     private ServerConfig() {

@@ -46,6 +46,20 @@ public final class FoxsTweaksComponents {
                     .networkSynchronized(net.minecraft.network.codec.ByteBufCodecs.BOOL)
                     .build());
 
+    /** Settings and selection state for the Biome Changer Wand. */
+    public static final DeferredHolder<DataComponentType<?>, DataComponentType<dev.watdafawx.foxstweaks.terraform.BiomeWandConfig>> BIOME_WAND =
+            COMPONENTS.register("biome_wand", () -> DataComponentType.<dev.watdafawx.foxstweaks.terraform.BiomeWandConfig>builder()
+                    .persistent(dev.watdafawx.foxstweaks.terraform.BiomeWandConfig.CODEC)
+                    .networkSynchronized(dev.watdafawx.foxstweaks.terraform.BiomeWandConfig.STREAM_CODEC)
+                    .build());
+
+    /** Settings and selection state for the Terrain Flattener Wand. */
+    public static final DeferredHolder<DataComponentType<?>, DataComponentType<dev.watdafawx.foxstweaks.terraform.FlattenWandConfig>> FLATTEN_WAND =
+            COMPONENTS.register("flatten_wand", () -> DataComponentType.<dev.watdafawx.foxstweaks.terraform.FlattenWandConfig>builder()
+                    .persistent(dev.watdafawx.foxstweaks.terraform.FlattenWandConfig.CODEC)
+                    .networkSynchronized(dev.watdafawx.foxstweaks.terraform.FlattenWandConfig.STREAM_CODEC)
+                    .build());
+
     private FoxsTweaksComponents() {
     }
 }

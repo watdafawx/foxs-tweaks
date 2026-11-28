@@ -226,5 +226,19 @@
   "gui.foxstweaks.variant_crafter.mode.all": "All Variants: expose every variant from enabled mods",
   "gui.foxstweaks.variant_crafter.mode.hint": "Click to cycle mode",
   "gui.foxstweaks.variant_crafter.overlay.in_stock": "In-Stock Mode (auto)",
-  "gui.foxstweaks.variant_crafter.overlay.all": "All Enabled Variants"
+  "gui.foxstweaks.variant_crafter.overlay.all": "All Enabled Variants",
+  "item.foxstweaks.biome_wand": "Biome Changer Wand",
+  "item.foxstweaks.biome_wand.desc1": "Right-click block to select area (Box / Brush / Flood-Fill)",
+  "item.foxstweaks.biome_wand.desc2": "Right-click air to confirm & update grass/sky colors live",
+  "item.foxstweaks.biome_wand.desc3": "Shift + Right-click to pick biome, Y-slice, 1x1 edges & undo",
+  "screen.foxstweaks.biome_wand.title": "Biome Changer Wand",
+  "item.foxstweaks.terrain_flattener": "Terrain Flattener",
+  "item.foxstweaks.terrain_flattener.desc1": "Right-click block to select area (Box / Brush)",
+  "item.foxstweaks.terrain_flattener.desc2": "Right-click air to confirm & naturally flatten terrain",
+  "item.foxstweaks.terrain_flattener.desc3": "Shift + Right-click for flatness %, smoothness, feather & trees",
+  "screen.foxstweaks.terrain_flattener.title": "Terrain Flattener",
+  "foxstweaks.configuration.terraform": "Terraform Tools",
+  "foxstweaks.configuration.terraformEnabled": "Terraform Tools Enabled",
+  "foxstweaks.configuration.biomeWandMaxRadius": "Biome Wand Max Radius",
+  "foxstweaks.configuration.flattenWandMaxRadius": "Terrain Flattener Max Radius"
 }
