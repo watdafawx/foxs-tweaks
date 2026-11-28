@@ -276,7 +276,7 @@ public final class HologramCreatorScreen extends Screen {
     }
 
     private void renderTopBar(GuiGraphics g, int mx, int my) {
-        String[] labels = { "Undo", "Redo", "Frame", HologramRenderer.isPaused() ? "Play" : "Pause", "Web" };
+        String[] labels = { "Undo", "Redo", "Frame", HologramRenderer.isPaused() ? "Play" : "Pause", "Copy", "Web" };
         int[] widths = new int[labels.length];
         int total = 0;
         for (int i = 0; i < labels.length; i++) {
@@ -294,17 +294,23 @@ public final class HologramCreatorScreen extends Screen {
                 default -> true;
             };
             final int idx = i;
-            boolean lit = i == 3 ? HologramRenderer.isPaused() : i == 4 && HologramWebBridge.activeFor(this.editor);
+            boolean lit = i == 3 ? HologramRenderer.isPaused() : i == 5 && HologramWebBridge.activeFor(this.editor);
             Hit hit = button(g, mx, my, x, y, widths[i], 15, labels[i], lit, enabled, () -> {
                 switch (idx) {
                     case 0 -> this.editor.undo();
                     case 1 -> this.editor.redo();
                     case 2 -> this.editor.creatorFrameCamera();
                     case 3 -> HologramRenderer.setPaused(!HologramRenderer.isPaused());
+                    case 4 -> {
+                        this.editor.creatorCopyHologram();
+                        toast("Copied — Shift+RClick a block with Wand to paste");
+                    }
                     default -> HologramWebBridge.open(this.editor);
                 }
             });
             if (i == 4)
+                hit.tooltip = "Copy this hologram to clipboard (Shift+RClick any block with the Wand to paste)";
+            else if (i == 5)
                 hit.tooltip = "Open the advanced editor in your browser";
             x += widths[i] + 2;
         }
@@ -707,6 +713,8 @@ public final class HologramCreatorScreen extends Screen {
             y = renderModelShape(g, mx, my, layer, sel, x, y, w);
         if (layer.kind() == HologramLayer.Kind.ENTITY)
             y = renderEntityShape(g, mx, my, layer, sel, x, y, w);
+        if (layer.kind() == HologramLayer.Kind.BLOCK)
+            y = renderBlockShape(g, mx, my, layer, sel, x, y, w);
         float scale = this.editor.creatorScale();
         y = slider(g, mx, my, x, y, w, "Size", String.format(Locale.ROOT, "%.2f×", scale),
                 (scale - 0.1F) / 3.9F, ACCENT, false, v -> this.editor.creatorSetScale(round(0.1F + (float) v * 3.9F, 0.05F)),
@@ -869,6 +877,42 @@ public final class HologramCreatorScreen extends Screen {
                 p.put(HologramEntityStates.ANIM_SPEED_KEY, String.format(Locale.ROOT, "%.2f", clamped));
             return l.withProps(p);
         });
+    }
+
+    /** Editable blockstate properties of a BLOCK layer right inside Creator SHAPE. */
+    private int renderBlockShape(GuiGraphics g, int mx, int my, HologramLayer layer, int sel, int x, int y, int w) {
+        var state = dev.watdafawx.foxstweaks.hologram.HologramStates.resolve(layer.id(), layer.props());
+        if (state == null)
+            return y;
+        var props = dev.watdafawx.foxstweaks.hologram.HologramStates.properties(state);
+        if (props.isEmpty())
+            return y;
+        var defState = state.getBlock().defaultBlockState();
+        int cw = (w - 4) / 2;
+        for (int i = 0; i < props.size(); i++) {
+            var prop = props.get(i);
+            String val = dev.watdafawx.foxstweaks.hologram.HologramStates.valueOf(state, prop);
+            String defVal = dev.watdafawx.foxstweaks.hologram.HologramStates.valueOf(defState, prop);
+            boolean modified = !val.equals(defVal);
+            String text = this.font.plainSubstrByWidth(prop.getName() + ": " + val, cw - 6);
+            int px = x + (i % 2) * (cw + 4);
+            int py = y + (i / 2) * (ROW + 2);
+            int pw = i % 2 == 0 ? cw : w - cw - 4;
+            chip(g, mx, my, px, py, pw, text, modified, () -> {
+                int dir = hasShiftDown() ? -1 : 1;
+                String next = dev.watdafawx.foxstweaks.hologram.HologramStates.cycle(prop, val, dir);
+                this.editor.creatorPushUndo();
+                this.editor.creatorUpdateLayer(sel, l -> {
+                    Map<String, String> nextProps = new LinkedHashMap<>(l.props());
+                    if (next.equals(defVal))
+                        nextProps.remove(prop.getName());
+                    else
+                        nextProps.put(prop.getName(), next);
+                    return l.withProps(nextProps);
+                });
+            }).tooltip = prop.getName() + ": " + val + " (click to cycle, Shift+click reverses)";
+        }
+        return y + ((props.size() + 1) / 2) * (ROW + 2);
     }
 
     // ---- place: position and rotation as numbers (the same values the gizmo drags) ----

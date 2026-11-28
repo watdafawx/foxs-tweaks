@@ -7,30 +7,91 @@ import net.minecraft.world.entity.LivingEntity;
 import net.minecraft.world.entity.Pose;
 import net.minecraft.world.entity.TamableAnimal;
 import net.minecraft.world.entity.ambient.Bat;
+import net.minecraft.world.entity.animal.Cat;
 import net.minecraft.world.entity.animal.Chicken;
 import net.minecraft.world.entity.animal.Fox;
+import net.minecraft.world.entity.animal.IronGolem;
 import net.minecraft.world.entity.animal.Panda;
 import net.minecraft.world.entity.animal.Parrot;
 import net.minecraft.world.entity.animal.PolarBear;
+import net.minecraft.world.entity.animal.Sheep;
 import net.minecraft.world.entity.animal.Squid;
 import net.minecraft.world.entity.animal.Wolf;
 import net.minecraft.world.entity.animal.allay.Allay;
+import net.minecraft.world.entity.animal.armadillo.Armadillo;
 import net.minecraft.world.entity.animal.axolotl.Axolotl;
+import net.minecraft.world.entity.animal.camel.Camel;
 import net.minecraft.world.entity.animal.horse.AbstractHorse;
+import net.minecraft.world.entity.animal.sniffer.Sniffer;
 import net.minecraft.world.entity.boss.enderdragon.EnderDragon;
 import net.minecraft.world.entity.monster.Creeper;
 import net.minecraft.world.entity.monster.EnderMan;
 import net.minecraft.world.entity.monster.Guardian;
+import net.minecraft.world.entity.monster.Ravager;
+import net.minecraft.world.entity.monster.Shulker;
+import net.minecraft.world.entity.monster.SpellcasterIllager;
 import net.minecraft.world.entity.monster.piglin.Piglin;
 
 import javax.annotation.Nullable;
 import java.lang.reflect.Field;
 import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 
 /** Animation-only state sampling. Never invokes tick/aiStep or changes the client world. */
 public final class HologramEntityLife {
+
+    private static final ClassValue<Map<String, Field>> FIELD_CACHE = new ClassValue<>() {
+        @Override
+        protected Map<String, Field> computeValue(Class<?> type) {
+            Map<String, Field> map = new HashMap<>();
+            for (Class<?> c = type; c != null && c != Object.class; c = c.getSuperclass()) {
+                for (Field f : c.getDeclaredFields()) {
+                    if (map.containsKey(f.getName()))
+                        continue;
+                    try {
+                        f.setAccessible(true);
+                        map.put(f.getName(), f);
+                    } catch (Throwable ignored) {
+                    }
+                }
+            }
+            return Map.copyOf(map);
+        }
+    };
+
+    static void setFloat(Object target, String name, float value) {
+        Field f = FIELD_CACHE.get(target.getClass()).get(name);
+        if (f != null) {
+            try {
+                f.setFloat(target, value);
+            } catch (Throwable ignored) {
+            }
+        }
+    }
+
+    @SuppressWarnings("unchecked")
+    static void setSpellId(SpellcasterIllager caster, byte spellId) {
+        Field f = FIELD_CACHE.get(SpellcasterIllager.class).get("DATA_SPELL_CASTING_ID");
+        if (f != null) {
+            try {
+                var acc = (net.minecraft.network.syncher.EntityDataAccessor<Byte>) f.get(null);
+                caster.getEntityData().set(acc, spellId);
+            } catch (Throwable ignored) {
+            }
+        }
+    }
+
+    static void setInt(Object target, String name, int value) {
+        Field f = FIELD_CACHE.get(target.getClass()).get(name);
+        if (f != null) {
+            try {
+                f.setInt(target, value);
+            } catch (Throwable ignored) {
+            }
+        }
+    }
 
     public static List<HologramEffect.Type> offered(String id) {
         List<HologramEffect.Type> out = new ArrayList<>(List.of(HologramEffect.Type.WALK,
@@ -56,7 +117,8 @@ public final class HologramEntityLife {
     }
 
     static void apply(LivingEntity entity, @Nullable HologramEffect movement, @Nullable HologramEffect special,
-                      @Nullable String clip, float clipSpeed, double movementSeconds, double seconds) {
+                      @Nullable String clip, float clipSpeed, Map<String, String> props,
+                      double movementSeconds, double seconds) {
         String activeClip = clip == null ? "" : clip;
         boolean flying = (movement != null && movement.type() == HologramEffect.Type.FLY) || "fly".equals(activeClip);
         boolean swimming = (movement != null && movement.type() == HologramEffect.Type.SWIM) || "swim".equals(activeClip);
@@ -106,10 +168,16 @@ public final class HologramEntityLife {
         if (entity instanceof Axolotl axolotl)
             axolotl.getModelRotationValues().clear();
 
-        // Procedural clip animations for mobs that animate via public fields/setters rather than AnimationState.
+        // Keep tick-interpolated visual state fields active for static props (since hologram entities never tick).
+        applyStaticStateVisuals(entity, props, seconds);
+
+        // Procedural clip animations for mobs that animate via fields/setters rather than AnimationState.
         if (!activeClip.isEmpty()) {
             applyProceduralClip(entity, activeClip, seconds * clipSpeed);
         }
+
+        // State-driven AnimationState mapping (Sniffer/Armadillo/Camel sitting).
+        String stateClip = stateDrivenClip(entity, props);
 
         // Dynamic AnimationState playback: supports every vanilla & modded AnimationState field.
         Map<String, Field> states = HologramEntityStates.animationStateFields(entity.getClass());
@@ -122,12 +190,14 @@ public final class HologramEntityLife {
                     continue;
 
                 boolean matchedClip = !activeClip.isEmpty() && activeClip.equals(clipName);
+                boolean matchedState = !stateClip.isEmpty() && stateClip.equals(clipName);
                 boolean matchedSpecial = special != null && matchesSpecial(special.type(), clipName);
                 boolean active = clipName.equals("idle")
                         || (clipName.equals("fly") && flying)
                         || (clipName.equals("rest") && resting)
                         || matchedSpecial
-                        || matchedClip;
+                        || matchedClip
+                        || matchedState;
 
                 state.stop();
                 if (active) {
@@ -140,13 +210,93 @@ public final class HologramEntityLife {
                         age = seconds;
                     }
                     state.start(0);
-                    float ticks = (matchedClip || matchedSpecial) ? (float) ((age * 20.0) % 80.0) : (float) (age * 20.0);
+                    float ticks = (matchedClip || matchedSpecial || matchedState)
+                            ? (float) ((age * 20.0) % 80.0) : (float) (age * 20.0);
                     state.updateTime(ticks, 1.0F);
                     state.lastTime = (long) Math.floor(seconds * 1000.0);
                 }
             } catch (IllegalAccessException ignored) {
             }
         }
+    }
+
+    private static void applyStaticStateVisuals(LivingEntity entity, Map<String, String> props, double seconds) {
+        if (props == null || props.isEmpty())
+            return;
+        if (entity instanceof Creeper && "true".equalsIgnoreCase(props.get("swelling"))) {
+            setInt(entity, "swell", 24);
+            setInt(entity, "oldSwell", 24);
+        }
+        if (entity instanceof Shulker && props.containsKey("peek")) {
+            float amt = Math.max(0.0F, Math.min(1.0F, parseFloat(props.get("peek"), 0.0F) / 100.0F));
+            setFloat(entity, "currentPeekAmount", amt);
+            setFloat(entity, "currentPeekAmountO", amt);
+        }
+        if (entity instanceof PolarBear && "true".equalsIgnoreCase(props.get("standing"))) {
+            setFloat(entity, "clientSideStandAnimation", 6.0F);
+            setFloat(entity, "clientSideStandAnimationO", 6.0F);
+        }
+        if (entity instanceof Panda) {
+            if ("true".equalsIgnoreCase(props.get("sitting"))) {
+                setFloat(entity, "sitAmount", 1.0F);
+                setFloat(entity, "sitAmountO", 1.0F);
+            }
+            if ("true".equalsIgnoreCase(props.get("on_back"))) {
+                setFloat(entity, "onBackAmount", 1.0F);
+                setFloat(entity, "onBackAmountO", 1.0F);
+            }
+            if ("true".equalsIgnoreCase(props.get("rolling"))) {
+                float p = (float) ((seconds * 1.2) % 1.0);
+                setFloat(entity, "rollAmount", p);
+                setFloat(entity, "rollAmountO", p);
+            }
+        }
+        if (entity instanceof Fox) {
+            if ("true".equalsIgnoreCase(props.get("crouching"))) {
+                setFloat(entity, "crouchAmount", 3.0F);
+                setFloat(entity, "crouchAmountO", 3.0F);
+            }
+            if ("true".equalsIgnoreCase(props.get("pouncing"))) {
+                setFloat(entity, "interestedAngle", 1.0F);
+                setFloat(entity, "interestedAngleO", 1.0F);
+            }
+        }
+        if (entity instanceof Cat && "true".equalsIgnoreCase(props.get("lying"))) {
+            setFloat(entity, "lieDownAmount", 1.0F);
+            setFloat(entity, "lieDownAmountO", 1.0F);
+        }
+        if (entity instanceof Allay && "true".equalsIgnoreCase(props.get("dancing"))) {
+            float spin = (float) ((seconds * 20.0) % 55.0);
+            setFloat(entity, "spinningAnimationTicks", spin);
+            setFloat(entity, "spinningAnimationTicks0", spin);
+        }
+    }
+
+    private static String stateDrivenClip(LivingEntity entity, @Nullable Map<String, String> props) {
+        if (props == null || props.isEmpty())
+            return "";
+        if (entity instanceof Camel && "true".equalsIgnoreCase(props.get("sitting")))
+            return "sit_pose";
+        if (entity instanceof Sniffer && props.containsKey("state")) {
+            return switch (props.get("state")) {
+                case "feeling_happy" -> "feeling_happy";
+                case "scenting" -> "scenting";
+                case "sniffing" -> "sniffing";
+                case "searching" -> "searching";
+                case "digging" -> "digging";
+                case "rising" -> "rising";
+                default -> "";
+            };
+        }
+        if (entity instanceof Armadillo && props.containsKey("state")) {
+            return switch (props.get("state")) {
+                case "rolling" -> "roll_up";
+                case "scared" -> "peek";
+                case "unrolling" -> "roll_out";
+                default -> "";
+            };
+        }
+        return "";
     }
 
     /** Non-living entity procedural animations (e.g. EnderDragon). */
@@ -163,27 +313,71 @@ public final class HologramEntityLife {
 
     private static void applyProceduralClip(LivingEntity entity, String clip, double t) {
         double phase = t - Math.floor(t);
+        float wave = (float) (0.5 - 0.5 * Math.cos(phase * Math.PI * 2.0));
+
         if (entity instanceof EnderDragon dragon && "flap".equals(clip)) {
             float p = (float) ((t * 0.6) - Math.floor(t * 0.6));
             dragon.oFlapTime = p;
             dragon.flapTime = p;
         }
         if (entity instanceof Creeper creeper && "swell".equals(clip)) {
-            creeper.setSwellDir(phase < 0.7 ? 1 : -1);
+            int s = Math.round(wave * 28.0F);
+            creeper.setSwellDir(1);
+            setInt(creeper, "swell", s);
+            setInt(creeper, "oldSwell", s);
+        }
+        if (entity instanceof IronGolem golem) {
+            if ("golem_attack".equals(clip)) {
+                int atk = (int) Math.round((1.0 - phase) * 10.0);
+                setInt(golem, "attackAnimationTick", atk);
+            } else if ("offer_flower".equals(clip)) {
+                golem.offerFlower(true);
+            }
+        }
+        if (entity instanceof Ravager ravager) {
+            if ("bite".equals(clip)) {
+                setInt(ravager, "attackTick", (int) Math.round((1.0 - phase) * 10.0));
+            } else if ("stun".equals(clip)) {
+                setInt(ravager, "stunnedTick", (int) Math.round((1.0 - phase) * 40.0));
+            } else if ("ravager_roar".equals(clip)) {
+                setInt(ravager, "roarTick", (int) Math.round((1.0 - phase) * 20.0));
+            }
+        }
+        if (entity instanceof SpellcasterIllager caster && "cast_spell".equals(clip)) {
+            setSpellId(caster, (byte) 1);
+        }
+        if (entity instanceof Shulker shulker && "peek".equals(clip)) {
+            setFloat(shulker, "currentPeekAmount", wave);
+            setFloat(shulker, "currentPeekAmountO", wave);
         }
         if (entity instanceof AbstractHorse horse) {
-            if ("rear".equals(clip))
-                horse.setStanding(phase < 0.65);
-            else if ("eat".equals(clip))
-                horse.setEating(phase < 0.7);
+            if ("rear".equals(clip)) {
+                horse.setStanding(true);
+                setFloat(horse, "standAnim", wave);
+                setFloat(horse, "standAnimO", wave);
+            } else if ("eat".equals(clip)) {
+                horse.setEating(true);
+                setFloat(horse, "eatAnim", wave);
+                setFloat(horse, "eatAnimO", wave);
+            }
+        }
+        if (entity instanceof Sheep sheep && "graze".equals(clip)) {
+            int eatTick = 4 + (int) Math.round(phase * 36.0);
+            setInt(sheep, "eatAnimationTick", eatTick);
         }
         if (entity instanceof Panda panda) {
-            if ("roll".equals(clip))
+            if ("roll".equals(clip)) {
                 panda.roll(true);
-            else if ("sneeze".equals(clip))
-                panda.sneeze(phase < 0.5);
-            else if ("sit".equals(clip))
+                setFloat(panda, "rollAmount", (float) phase);
+                setFloat(panda, "rollAmountO", (float) phase);
+            } else if ("sneeze".equals(clip)) {
+                panda.sneeze(true);
+                setInt(panda, "sneezeCounter", 1 + (int) Math.round(phase * 19.0));
+            } else if ("sit".equals(clip)) {
                 panda.sit(true);
+                setFloat(panda, "sitAmount", 1.0F);
+                setFloat(panda, "sitAmountO", 1.0F);
+            }
         }
         if (entity instanceof Fox fox) {
             if ("sleep".equals(clip) && !fox.isSleeping()) {
@@ -193,10 +387,15 @@ public final class HologramEntityLife {
                 fox.load(tag);
             } else if ("crouch".equals(clip)) {
                 fox.setIsCrouching(true);
+                setFloat(fox, "crouchAmount", 3.0F * wave);
+                setFloat(fox, "crouchAmountO", 3.0F * wave);
             }
         }
         if (entity instanceof Allay allay && "dance".equals(clip)) {
             allay.setDancing(true);
+            float spin = (float) ((t * 20.0) % 55.0);
+            setFloat(allay, "spinningAnimationTicks", spin);
+            setFloat(allay, "spinningAnimationTicks0", spin);
         }
         if (entity instanceof Piglin piglin && "dance".equals(clip)) {
             piglin.setDancing(true);
@@ -205,13 +404,27 @@ public final class HologramEntityLife {
             enderman.setBeingStaredAt();
         }
         if (entity instanceof PolarBear bear && "stand".equals(clip)) {
-            bear.setStanding(phase < 0.65);
+            bear.setStanding(true);
+            setFloat(bear, "clientSideStandAnimation", 6.0F * wave);
+            setFloat(bear, "clientSideStandAnimationO", 6.0F * wave);
         }
         if (entity instanceof Wolf wolf && "beg".equals(clip)) {
             wolf.setIsInterested(true);
+            setFloat(wolf, "interestedAngle", wave);
+            setFloat(wolf, "interestedAngleO", wave);
         }
         if ("sneak".equals(clip)) {
             entity.setPose(Pose.CROUCHING);
+        }
+    }
+
+    private static float parseFloat(@Nullable String s, float def) {
+        if (s == null || s.isEmpty())
+            return def;
+        try {
+            return Float.parseFloat(s);
+        } catch (NumberFormatException ignored) {
+            return def;
         }
     }
 

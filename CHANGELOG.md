@@ -1,5 +1,15 @@
 # Changelog
 
+## 1.59.3
+
+- **Fixed tick-interpolated mob states & procedural animations:** directly drives renderer fields that normally only update in `tick()` so Creeper swell, Shulker peek, Iron Golem attack/flower, Ravager bite/stun/roar, Evoker/Illusioner spellcasting, Horse rear/eat, Sheep graze, Polar Bear stand, Panda sit/roll/on-back/sneeze, Fox crouch/interested, Cat lying, Wolf beg (plus auto-tame on collar), Allay dance, and Camel/Sniffer/Armadillo state-driven `AnimationState`s all animate visibly.
+- **Hologram Wand & workflow polish:**
+  - **2-step Shift+RClick delete** (3 s confirm) prevents accidental deletion when pasting near an existing hologram.
+  - **Right-click any mob with the Wand** to project it directly into a hologram.
+  - **Wand HUD pill** above the hotbar shows the aimed hologram (`RClick edit · Shift+RClick delete`) or active clipboard (`Shift+RClick block to paste`).
+  - **Creator & Nearby Manager:** added blockstate property chips in Creator `SHAPE`, `Copy` button in Creator top bar, and `On/Off` visibility toggle + `Copy` button on every row in Nearby Manager.
+- **Content Picker polish:** full tile hover tooltips, mod-tinted monogram badges for non-egg entities, 1-click `Reset filters` chip, auto-fit framing for huge/multipart boss mobs (using `getBoundingBoxForCulling()`), scroll-to-zoom (`0.2×`–`3.0×`, right-click resets) on the 3D preview, and clearer `STATE (<mob>)` header while hovering another mob.
+
 ## 1.59.2
 
 - **Player-attached holograms: bone anchors, scale-with-player, presets & Iris/GUI pose fix.**

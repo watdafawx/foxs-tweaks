@@ -52,6 +52,7 @@ public final class HologramClient {
     public static void init() {
         NeoForge.EVENT_BUS.addListener(HologramRenderer::onRenderLevel);
         NeoForge.EVENT_BUS.addListener(HologramClient::onClientTick);
+        NeoForge.EVENT_BUS.addListener(HologramClient::onRenderGui);
         HologramEditorScale.init();
         NeoForge.EVENT_BUS.addListener(HologramClient::onLevelUnload);
         HologramTriggers.install();
@@ -59,6 +60,36 @@ public final class HologramClient {
         HologramGrab.init();
         HologramPlayerPose.install();
         dev.watdafawx.foxstweaks.client.web.HologramWebSession.init();
+    }
+
+    private static void onRenderGui(net.neoforged.neoforge.client.event.RenderGuiEvent.Post event) {
+        Minecraft mc = Minecraft.getInstance();
+        if (mc.screen != null || mc.player == null || mc.level == null)
+            return;
+        boolean holdingWand = mc.player.getMainHandItem().getItem() instanceof dev.watdafawx.foxstweaks.hologram.HologramItem
+                || mc.player.getOffhandItem().getItem() instanceof dev.watdafawx.foxstweaks.hologram.HologramItem;
+        if (!holdingWand)
+            return;
+
+        String line = null;
+        int accent = 0xFF4CC9F0;
+        if (hovered != null) {
+            line = "Hologram: " + hovered.id() + "  ·  RClick edit  ·  Shift+RClick delete";
+        } else if (HologramClipboard.has()) {
+            line = "Clipboard: " + HologramClipboard.label() + "  ·  Shift+RClick block to paste";
+            accent = 0xFFE0B860;
+        }
+        if (line == null)
+            return;
+
+        var g = event.getGuiGraphics();
+        var font = mc.font;
+        int tw = font.width(line);
+        int x = (g.guiWidth() - tw) / 2;
+        int y = g.guiHeight() - 56;
+        g.fill(x - 6, y - 3, x + tw + 6, y + 11, 0xCC0D1117);
+        g.renderOutline(x - 6, y - 3, tw + 12, 14, (accent & 0x00FFFFFF) | 0x66000000);
+        g.drawString(font, line, x, y, accent, false);
     }
 
     public static void acceptSync(HologramSyncPayload payload) {

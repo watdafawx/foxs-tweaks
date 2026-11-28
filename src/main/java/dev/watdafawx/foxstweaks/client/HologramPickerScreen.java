@@ -170,6 +170,7 @@ public class HologramPickerScreen extends Screen {
     private HologramBlockColors.Hue hue;
     private int shapeMask;
     private boolean mobsEggsOnly;
+    private float previewZoom = 1.0F;
     private String searchText = "";
     private EditBox search;
     private String suggestion = "";
@@ -653,6 +654,7 @@ public class HologramPickerScreen extends Screen {
         this.famPage = 0;
         this.swapPage = 0;
         this.rightScroll = 0;
+        this.previewZoom = 1.0F;
     }
 
     /** Switches block while keeping every property the new block also has, with a value it accepts. */
@@ -1007,6 +1009,16 @@ public class HologramPickerScreen extends Screen {
             drawDropdown(g, mx, my);
 
         super.render(g, mx, my, partial);
+
+        if (!this.dropdownOpen && this.hovered != null && !this.orbiting) {
+            Entry h = this.hovered;
+            List<Component> tip = List.of(
+                    Component.literal(h.name()).withStyle(net.minecraft.ChatFormatting.WHITE),
+                    Component.literal(h.id()).withStyle(net.minecraft.ChatFormatting.AQUA),
+                    Component.literal("Click select · 2x-click replace · Shift+click add · RClick fav")
+                            .withStyle(net.minecraft.ChatFormatting.DARK_GRAY));
+            g.renderComponentTooltip(this.font, tip, mx, my);
+        }
     }
 
     // ---------------------------------------------------------------- sidebar
@@ -1134,6 +1146,23 @@ public class HologramPickerScreen extends Screen {
         String closeLabel = "Close (Esc)";
         int closeW = this.font.width(closeLabel) + 10;
         chip(g, mx, my, this.midX + this.midW - closeW - 6, this.py0 + 3, closeW, 13, closeLabel, "close", false, this::onClose);
+        boolean hasFilters = this.modFilter != null || this.hue != null || this.shapeMask != 0
+                || this.mobsEggsOnly || !this.searchText.isEmpty();
+        if (hasFilters) {
+            String resetLabel = "Reset filters";
+            int rw = this.font.width(resetLabel) + 10;
+            chip(g, mx, my, this.midX + this.midW - closeW - rw - 10, this.py0 + 3, rw, 13, resetLabel, "filters:reset",
+                    false, () -> {
+                        this.modFilter = null;
+                        this.hue = null;
+                        this.shapeMask = 0;
+                        this.mobsEggsOnly = false;
+                        if (this.search != null)
+                            this.search.setValue("");
+                        this.scroll = 0;
+                        refilter(false);
+                    });
+        }
 
         // search
         int sy = this.py0 + 18;
@@ -1299,8 +1328,13 @@ public class HologramPickerScreen extends Screen {
                 } else if (!e.icon().isEmpty()) {
                     drawStack(g, e.icon(), x + 4, y + 2);
                 } else {
+                    int hash = Math.abs(e.ns().hashCode());
+                    float h = (hash % 360) / 360.0F;
+                    int badgeRgb = Mth.hsvToRgb(h, 0.38F, 0.32F);
+                    int textRgb = Mth.hsvToRgb(h, 0.45F, 0.88F);
+                    g.fill(x + 4, y + 3, x + TILE - 4, y + TILE - 9, 0xCC000000 | badgeRgb);
                     String letters = e.name().length() >= 2 ? e.name().substring(0, 2) : e.name();
-                    g.drawString(this.font, letters, x + (TILE - this.font.width(letters)) / 2, y + 8, MUTED, false);
+                    g.drawString(this.font, letters, x + (TILE - this.font.width(letters)) / 2, y + 7, 0xFF000000 | textRgb, false);
                 }
             }
             case PARTICLE -> HologramPickerPreview.drawParticleIcon(g, e.id(), x + 4, y + 2, 20, secs);
@@ -1354,9 +1388,14 @@ public class HologramPickerScreen extends Screen {
             this.yaw += (float) ddx * 1.2F;
             this.pitch = Mth.clamp(this.pitch + (float) ddy * 0.8F, -10.0F, 70.0F);
         };
+        orbit.wheel = dir -> this.previewZoom = Mth.clamp(this.previewZoom * (dir < 0 ? 1.15F : 1.0F / 1.15F), 0.2F, 3.0F);
+        orbit.right = () -> this.previewZoom = 1.0F;
         g.pose().pushPose();
         g.pose().translate(0.0F, 0.0F, 300.0F);
-        tiny(g, "drag to orbit", bx + 4, by + this.pvH - 8, DIMMED);
+        String pvHint = Math.abs(this.previewZoom - 1.0F) > 0.02F
+                ? String.format(Locale.ROOT, "drag orbit · scroll zoom (%.1f× · r-click reset)", this.previewZoom)
+                : "drag orbit · scroll zoom";
+        tiny(g, pvHint, bx + 4, by + this.pvH - 8, DIMMED);
         g.pose().popPose();
 
         int y = by + this.pvH + 5;
@@ -1467,7 +1506,9 @@ public class HologramPickerScreen extends Screen {
         }
         List<HologramEntityStates.Prop> eProps = HologramEntityStates.properties(id);
         if (!eProps.isEmpty()) {
-            g.drawString(this.font, "STATE", x, y + 1, MUTED, false);
+            String stateTitle = (this.hovered != null && this.hovered != this.selected)
+                    ? "STATE (" + this.selected.name() + ")" : "STATE";
+            g.drawString(this.font, this.font.plainSubstrByWidth(stateTitle, w), x, y + 1, MUTED, false);
             y += 11;
             int cw = (w - 4) / 2;
             for (int i = 0; i < eProps.size(); i++) {
@@ -1536,7 +1577,7 @@ public class HologramPickerScreen extends Screen {
                         : (e == this.selected ? this.props : Map.of());
                 BlockState state = HologramStates.resolve(e.id(), p);
                 if (state != null)
-                    drawBlock3d(g, state, e.block(), x + w / 2.0F, y + h / 2.0F, size * 0.58F, this.yaw, this.pitch);
+                    drawBlock3d(g, state, e.block(), x + w / 2.0F, y + h / 2.0F, size * 0.58F * this.previewZoom, this.yaw, this.pitch);
             }
             case ENTITY -> {
                 if (e.mobEffect() != null) {
@@ -1556,7 +1597,7 @@ public class HologramPickerScreen extends Screen {
                 int ex = x + (w - fit) / 2;
                 int ey = y + (h - fit) / 2;
                 Map<String, String> p = e == this.selected ? this.props : Map.of();
-                if (!HologramPickerPreview.drawEntityIcon(g, e.id(), p, ex, ey, fit, this.yaw, secs)
+                if (!HologramPickerPreview.drawEntityIcon(g, e.id(), p, ex, ey, fit, this.yaw, secs, this.previewZoom)
                         && !e.icon().isEmpty()) {
                     g.pose().pushPose();
                     g.pose().translate(x + w / 2.0F - 24, y + h / 2.0F - 24, 0.0F);

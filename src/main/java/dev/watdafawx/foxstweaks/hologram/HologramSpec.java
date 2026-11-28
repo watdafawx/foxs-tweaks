@@ -146,6 +146,14 @@ public record HologramSpec(
         return List.copyOf(out);
     }
 
+    public HologramSpec withEnabled(boolean enabled) {
+        return new HologramSpec(this.id, this.pos, this.offsetX, this.offsetY, this.offsetZ,
+                this.yaw, this.pitch, this.roll, this.scale,
+                enabled, this.renderDistance, this.owner, this.ownerName,
+                this.appearRadius, this.appearSeconds, this.appearStyle, this.groups, this.layers,
+                this.timeline, this.attach, this.path);
+    }
+
     public HologramSpec withTimeline(@Nullable HologramTimeline timeline) {
         return new HologramSpec(this.id, this.pos, this.offsetX, this.offsetY, this.offsetZ,
                 this.yaw, this.pitch, this.roll, this.scale,

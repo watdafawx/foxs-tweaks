@@ -179,6 +179,20 @@ public final class Holograms {
         return get(level, spec.id());
     }
 
+    public static HologramSpec createFromEntity(ServerLevel level, BlockPos pos, String entityId,
+                                                CompoundTag entityData, @Nullable Player placer) {
+        HologramLayer first = HologramLayer.entity(entityId, 0.0F)
+                .withData(entityData == null ? new CompoundTag() : entityData);
+        HologramSpec spec = new HologramSpec(newId(level, entityId), pos,
+                0.0F, 0.0F, 0.0F, 0.0F, 0.0F, 0.0F, 1.0F,
+                true, Math.min(48, ServerConfig.hologramsMaxRenderDistance()),
+                placer == null ? null : placer.getUUID(),
+                placer == null ? "" : placer.getGameProfile().getName(),
+                0.0F, 0.6F, HologramSpec.REVEAL_RISE, List.of(), List.of(first));
+        save(level, spec);
+        return get(level, spec.id());
+    }
+
     public static void setLivePreview(ServerLevel level, UUID editor, HologramSpec spec) {
         LIVE_PREVIEWS.computeIfAbsent(level.dimension().location(), k -> new HashMap<>())
                 .put(spec.id(), new LivePreview(editor, spec));

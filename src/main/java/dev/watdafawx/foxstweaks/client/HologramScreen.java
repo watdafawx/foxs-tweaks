@@ -3525,6 +3525,10 @@ public class HologramScreen extends Screen {
         frameCamera();
     }
 
+    void creatorCopyHologram() {
+        HologramClipboard.copy(buildSpec());
+    }
+
     // Placement: the whole hologram (root) or the selected layer, as numbers. Index 0-2 = offset X/Y/Z, 3-5 = yaw/pitch/roll.
 
     boolean creatorRootSelected() {

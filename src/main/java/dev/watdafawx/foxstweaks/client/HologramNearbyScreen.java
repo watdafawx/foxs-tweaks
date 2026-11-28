@@ -163,17 +163,22 @@ public final class HologramNearbyScreen extends Screen {
                     g.fill(rowX, y, rowX + 2, y + ROW_H - 2, ACCENT);
 
                 int delW = 30;
-                int attW = 46;
-                int editW = 32;
+                int attW = 44;
+                int copyW = 32;
+                int onW = 24;
+                int editW = 30;
                 int delX = rowX + rowW - 4 - delW;
                 int attX = delX - 3 - attW;
-                int editX = attX - 3 - editW;
+                int copyX = attX - 3 - copyW;
+                int onX = copyX - 3 - onW;
+                int editX = onX - 3 - editW;
                 int btnY = y + 4;
                 int btnH = 16;
 
                 int textMax = editX - rowX - 10;
-                String title = spec.id();
-                g.drawString(this.font, this.font.plainSubstrByWidth(title, textMax), rowX + 6, y + 4, TEXT, false);
+                String title = spec.id() + (spec.enabled() ? "" : " (off)");
+                g.drawString(this.font, this.font.plainSubstrByWidth(title, textMax), rowX + 6, y + 4,
+                        spec.enabled() ? TEXT : FAINT, false);
 
                 String sub;
                 if (spec.attach() != null) {
@@ -191,6 +196,18 @@ public final class HologramNearbyScreen extends Screen {
                 boolean overEdit = hover && mx >= editX && mx < editX + editW && my >= btnY && my < btnY + btnH;
                 g.fill(editX, btnY, editX + editW, btnY + btnH, overEdit ? 0xFF2A7FA0 : 0xFF1F6A86);
                 g.drawCenteredString(this.font, "Edit", editX + editW / 2, btnY + 4, TEXT);
+
+                // On/Off visibility toggle
+                boolean overOn = hover && mx >= onX && mx < onX + onW && my >= btnY && my < btnY + btnH;
+                g.fill(onX, btnY, onX + onW, btnY + btnH,
+                        spec.enabled() ? (overOn ? 0xFF28503C : 0xFF1E3B2D) : (overOn ? 0xFF3A3038 : 0xFF252028));
+                g.drawCenteredString(this.font, spec.enabled() ? "On" : "Off", onX + onW / 2, btnY + 4,
+                        spec.enabled() ? 0xFF66E890 : FAINT);
+
+                // Copy button
+                boolean overCopy = hover && mx >= copyX && mx < copyX + copyW && my >= btnY && my < btnY + btnH;
+                g.fill(copyX, btnY, copyX + copyW, btnY + btnH, overCopy ? 0xFF2E4054 : 0xFF212C3B);
+                g.drawCenteredString(this.font, "Copy", copyX + copyW / 2, btnY + 4, TEXT);
 
                 // Attach / Detach button
                 boolean overAtt = hover && mx >= attX && mx < attX + attW && my >= btnY && my < btnY + btnH;
@@ -249,9 +266,13 @@ public final class HologramNearbyScreen extends Screen {
             HologramSpec spec = list.get(i).spec();
 
             int delW = 30;
-            int attW = 46;
+            int attW = 44;
+            int copyW = 32;
+            int onW = 24;
             int delX = rowX + rowW - 4 - delW;
             int attX = delX - 3 - attW;
+            int copyX = attX - 3 - copyW;
+            int onX = copyX - 3 - onW;
             int btnY = y + 4;
             int btnH = 16;
 
@@ -269,6 +290,20 @@ public final class HologramNearbyScreen extends Screen {
                 runCmd(spec.isAttached()
                         ? "foxstweaks hologram detach " + spec.id()
                         : "foxstweaks hologram attach " + spec.id());
+                return true;
+            }
+            if (mx >= copyX && mx < copyX + copyW && my >= btnY && my < btnY + btnH) {
+                HologramClipboard.copy(spec);
+                Minecraft mc = Minecraft.getInstance();
+                if (mc.player != null) {
+                    mc.player.displayClientMessage(Component.literal(
+                            "Copied '" + spec.id() + "' — Shift+RClick a block with Wand to paste."), true);
+                }
+                onClose();
+                return true;
+            }
+            if (mx >= onX && mx < onX + onW && my >= btnY && my < btnY + btnH) {
+                HologramNetwork.sendSave(spec.withEnabled(!spec.enabled()));
                 return true;
             }
 

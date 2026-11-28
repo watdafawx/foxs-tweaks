@@ -261,7 +261,7 @@ public final class HologramEntities {
         living.walkAnimation.speedOld = stride;
         living.walkAnimation.setSpeed(stride);
         living.walkAnimation.position = (float) ((animationSeconds * 20 - (seconds * 20 - Math.floor(seconds * 20)) + 1) * stride);
-        HologramEntityLife.apply(living, locomotion, special, clip, clipSpeed, animationSeconds, seconds);
+        HologramEntityLife.apply(living, locomotion, special, clip, clipSpeed, props, animationSeconds, seconds);
 
         float swing = 0.0F;
         if (attackHz > 0.0F) {

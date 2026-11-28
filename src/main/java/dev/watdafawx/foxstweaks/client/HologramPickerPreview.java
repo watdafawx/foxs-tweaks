@@ -115,10 +115,19 @@ public final class HologramPickerPreview {
     /** Draws a live 3D entity with state props & animation clip applied inside {@code (x, y, size, size)}. */
     static boolean drawEntityIcon(GuiGraphics graphics, String entityId, Map<String, String> props,
                                   int x, int y, int size, float yawDegrees, double seconds) {
+        return drawEntityIcon(graphics, entityId, props, x, y, size, yawDegrees, seconds, 1.0F);
+    }
+
+    /** Draws a live 3D entity with state props, animation clip, and manual zoom inside {@code (x, y, size, size)}. */
+    static boolean drawEntityIcon(GuiGraphics graphics, String entityId, Map<String, String> props,
+                                  int x, int y, int size, float yawDegrees, double seconds, float zoom) {
         if (props == null || props.isEmpty()) {
+            Entity entity = HologramEntities.getById(entityId, 0.0, 0.0, 0.0, 0.0F, (float) seconds);
+            if (entity == null)
+                return false;
             graphics.enableScissor(x, y, x + size, y + size);
             try {
-                return drawEntityUnclipped(graphics, entityId, x, y, size, yawDegrees, seconds, null);
+                return drawEntityInstance(graphics, entity, entityId, x, y, size, yawDegrees, zoom, null);
             } finally {
                 graphics.disableScissor();
             }
@@ -131,7 +140,7 @@ public final class HologramPickerPreview {
         HologramEntities.applyAnimations(entity, List.of(), List.of(), props, false, seconds);
         graphics.enableScissor(x, y, x + size, y + size);
         try {
-            return drawEntityInstance(graphics, entity, "picker:" + entityId, x, y, size, yawDegrees, null);
+            return drawEntityInstance(graphics, entity, "picker:" + entityId, x, y, size, yawDegrees, zoom, null);
         } finally {
             graphics.disableScissor();
         }
@@ -167,15 +176,32 @@ public final class HologramPickerPreview {
 
     private static boolean drawEntityInstance(GuiGraphics graphics, Entity entity, String failKey, int x, int y, int size,
                                               float yawDegrees, @Nullable Consumer<Throwable> onFail) {
+        return drawEntityInstance(graphics, entity, failKey, x, y, size, yawDegrees, 1.0F, onFail);
+    }
+
+    private static boolean drawEntityInstance(GuiGraphics graphics, Entity entity, String failKey, int x, int y, int size,
+                                              float yawDegrees, float zoom, @Nullable Consumer<Throwable> onFail) {
         float bbW = Math.max(0.35F, entity.getBbWidth());
         float bbH = Math.max(0.35F, entity.getBbHeight());
+        // Boss / multipart / winged mobs often have much larger culling bounds than their core hitbox.
+        try {
+            var cull = entity.getBoundingBoxForCulling();
+            float cullW = (float) Math.max(cull.getXsize(), cull.getZsize());
+            float cullH = (float) cull.getYsize();
+            if (cullW > bbW * 1.15F && cullW < 40.0F)
+                bbW = Math.max(bbW, cullW * 0.72F);
+            if (cullH > bbH * 1.15F && cullH < 40.0F)
+                bbH = Math.max(bbH, cullH * 0.72F);
+        } catch (Throwable ignored) {
+        }
         float maxDim = Math.max(bbW * 1.15F, bbH);
-        float scale = (size * 0.72F) / maxDim;
+        float fill = (entity.isMultipartEntity() || maxDim > 2.6F) ? 0.54F : 0.72F;
+        float scale = ((size * fill) / maxDim) * Mth.clamp(zoom, 0.2F, 3.0F);
 
         try {
             var pose = graphics.pose();
             pose.pushPose();
-            pose.translate(x + size * 0.5F, y + size * 0.5F + (bbH * scale) * 0.48F, 60.0F);
+            pose.translate(x + size * 0.5F, y + size * 0.5F + (Math.min(bbH, entity.getBbHeight() * 1.35F) * scale) * 0.45F, 60.0F);
             pose.scale(scale, -scale, scale);
 
             Quaternionf rot = new Quaternionf()

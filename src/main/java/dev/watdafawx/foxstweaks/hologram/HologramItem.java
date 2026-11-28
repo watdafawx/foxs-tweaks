@@ -119,8 +119,53 @@ public class HologramItem extends Item {
         return InteractionResultHolder.consume(player.getItemInHand(hand));
     }
 
+    private record ArmedDelete(String id, long untilMs) {
+    }
+
+    private static final long DELETE_ARM_MS = 3000L;
+    private static final java.util.Map<java.util.UUID, ArmedDelete> ARMED_DELETE = new java.util.HashMap<>();
+
+    @Override
+    public InteractionResult interactLivingEntity(ItemStack stack, Player player,
+                                                  net.minecraft.world.entity.LivingEntity target, InteractionHand hand) {
+        if (target instanceof Player)
+            return InteractionResult.PASS;
+        Level level = player.level();
+        if (level.isClientSide())
+            return InteractionResult.SUCCESS;
+        if (!(level instanceof ServerLevel server))
+            return InteractionResult.PASS;
+        if (!ServerConfig.hologramsEnabled()) {
+            player.displayClientMessage(
+                    Component.literal("Holograms are disabled on this server.").withStyle(ChatFormatting.RED), true);
+            return InteractionResult.FAIL;
+        }
+        if (Holograms.capacityLeft(server) <= 0) {
+            player.displayClientMessage(
+                    Component.literal("This dimension has reached its hologram limit.").withStyle(ChatFormatting.RED), true);
+            return InteractionResult.FAIL;
+        }
+        var key = net.minecraft.core.registries.BuiltInRegistries.ENTITY_TYPE.getKey(target.getType());
+        if (key == null)
+            return InteractionResult.PASS;
+        BlockPos pos = target.blockPosition();
+        HologramSpec created = Holograms.createFromEntity(server, pos, key.toString(), new net.minecraft.nbt.CompoundTag(), player);
+        server.playSound(null, pos, SoundEvents.AMETHYST_BLOCK_CHIME, SoundSource.BLOCKS, 0.7F, 1.2F);
+        HologramNetwork.openEditor((ServerPlayer) player, created);
+        return InteractionResult.CONSUME;
+    }
+
     private static InteractionResult useOnHologram(ServerLevel server, Player player, HologramSpec spec) {
         if (player.isShiftKeyDown()) {
+            long now = System.currentTimeMillis();
+            ArmedDelete prev = ARMED_DELETE.get(player.getUUID());
+            if (prev == null || !prev.id().equals(spec.id()) || now > prev.untilMs()) {
+                ARMED_DELETE.put(player.getUUID(), new ArmedDelete(spec.id(), now + DELETE_ARM_MS));
+                player.displayClientMessage(
+                        Component.literal("Sneak + right-click again to delete '" + spec.id() + "'.").withStyle(ChatFormatting.YELLOW), true);
+                return InteractionResult.CONSUME;
+            }
+            ARMED_DELETE.remove(player.getUUID());
             Holograms.remove(server, spec.id());
             server.playSound(null, spec.pos(), SoundEvents.BEACON_DEACTIVATE, SoundSource.BLOCKS, 0.7F, 1.35F);
             player.displayClientMessage(
@@ -128,6 +173,7 @@ public class HologramItem extends Item {
             return InteractionResult.CONSUME;
         }
 
+        ARMED_DELETE.remove(player.getUUID());
         HologramNetwork.openEditor((ServerPlayer) player, spec);
         return InteractionResult.CONSUME;
     }

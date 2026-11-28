@@ -285,8 +285,8 @@ public final class HologramEntityStates {
             }
 
             if (entity instanceof TamableAnimal tame) {
-                if (props.containsKey("tamed"))
-                    tame.setTame(isTrue(props, "tamed"), false);
+                if (props.containsKey("tamed") || props.containsKey("collar"))
+                    tame.setTame(props.containsKey("tamed") ? isTrue(props, "tamed") : true, false);
                 if (props.containsKey("sitting")) {
                     boolean sit = isTrue(props, "sitting");
                     tame.setOrderedToSit(sit);
@@ -386,6 +386,18 @@ public final class HologramEntityStates {
 
             if (entity instanceof Pillager pillager && props.containsKey("charging")) {
                 pillager.setChargingCrossbow(isTrue(props, "charging"));
+            }
+
+            if (entity instanceof SpellcasterIllager caster && props.containsKey("spell")) {
+                byte spellId = switch (props.get("spell")) {
+                    case "summon_vex" -> (byte) 1;
+                    case "fangs" -> (byte) 2;
+                    case "wololo" -> (byte) 3;
+                    case "disappear" -> (byte) 4;
+                    case "blindness" -> (byte) 5;
+                    default -> (byte) 0;
+                };
+                HologramEntityLife.setSpellId(caster, spellId);
             }
 
             if (entity instanceof Strider strider && props.containsKey("suffocating")) {
