@@ -101,7 +101,11 @@ public final class FlattenWandScreen extends Screen {
             }).bounds(x + w - 18, y, 18, h).build());
         } else {
             addRenderableWidget(Button.builder(Component.literal(targetLabel), b -> {
-                cfg = cfg.withTargetYMode(cfg.targetYMode().next());
+                FlattenWandConfig.TargetYMode next = cfg.targetYMode().next();
+                cfg = cfg.withTargetYMode(next);
+                if (next == FlattenWandConfig.TargetYMode.CUSTOM && cfg.pos1().isPresent()) {
+                    cfg = cfg.withCustomY(cfg.pos1().get().getY());
+                }
                 syncConfig(false);
                 rebuildWidgets();
             }).bounds(x, y, w, h).build());

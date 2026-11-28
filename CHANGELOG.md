@@ -1,5 +1,10 @@
 # Changelog
 
+## 1.61.2
+
+- **Fixed patchy skipped columns in Terrain Flattener (`Natural: ON`):** added NeoForge `Tags.Blocks.ORES`, `STONES`, `GRAVELS`, `SANDS`, `SANDSTONE_BLOCKS`, `NETHERRACKS`, `END_STONES`, plus moss, glow lichen, cave vines, dripleaves, dripstone, and amethyst to the natural-block filter so underground ores and modded worldgen blocks no longer cause columns to be skipped while player builds remain protected.
+- **Smarter `Custom Y` default:** switching `Target Y` to `Custom Y` now snaps to your clicked block's Y height instead of starting at `64`.
+
 ## 1.61.1
 
 - **Custom 3D item models & 32×32 shaded textures** for all three tools:
