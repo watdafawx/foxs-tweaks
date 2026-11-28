@@ -217,5 +217,14 @@
   "foxstweaks.configuration.media": "Video Import",
   "foxstweaks.configuration.mediaFfmpegEnabled": "Video Import Enabled",
   "foxstweaks.configuration.mediaFfmpegPath": "ffmpeg Path",
-  "foxstweaks.configuration.mediaConvertTimeoutSeconds": "Video Import Timeout (Seconds)"
+  "foxstweaks.configuration.mediaConvertTimeoutSeconds": "Video Import Timeout (Seconds)",
+  "foxstweaks.configuration.ae2VariantCustomTags": "ME Variant Crafter: Custom Item Tags",
+  "block.foxstweaks.me_variant_crafter": "ME Variant Crafter",
+  "gui.foxstweaks.variant_crafter.mode.title": "Variant Filter Mode",
+  "gui.foxstweaks.variant_crafter.mode.family_filter": "Family Filter: only expose variants of blocks placed in the grid",
+  "gui.foxstweaks.variant_crafter.mode.in_stock": "In-Stock Only: expose variants whose base block is in ME storage",
+  "gui.foxstweaks.variant_crafter.mode.all": "All Variants: expose every variant from enabled mods",
+  "gui.foxstweaks.variant_crafter.mode.hint": "Click to cycle mode",
+  "gui.foxstweaks.variant_crafter.overlay.in_stock": "In-Stock Mode (auto)",
+  "gui.foxstweaks.variant_crafter.overlay.all": "All Enabled Variants"
 }

@@ -81,6 +81,10 @@ public class FoxsTweaks {
         if (ModList.get().isLoaded(RELICS))
             RelicsIntegration.init();
 
+        // ME Variant Crafter (AE2 block-variant autocrafting). Only loads AE2 classes when AE2 is installed.
+        if (ModList.get().isLoaded("ae2"))
+            dev.watdafawx.foxstweaks.ae2variant.Ae2VariantIntegration.init(modBus);
+
         // FTB sidebar clicks on owo-lib screens (Accessories). Client only; imports FTB types.
         if (FMLEnvironment.dist.isClient() && ModList.get().isLoaded("ftblibrary"))
             dev.watdafawx.foxstweaks.client.compat.FtbSidebarRelease.init();
@@ -194,5 +198,10 @@ public class FoxsTweaks {
         // Dev-only check of the settings screen's sections; `build.bat runConfigCheck`.
         if (FMLEnvironment.dist.isClient() && !FMLEnvironment.production && Boolean.getBoolean("foxstweaks.configCheck"))
             dev.watdafawx.foxstweaks.client.dev.ConfigScreenCheck.install();
+
+        // Dev-only check + screenshots of the ME Variant Crafter; `build.bat runVariantCrafterCheck`.
+        if (FMLEnvironment.dist.isClient() && !FMLEnvironment.production
+                && Boolean.getBoolean("foxstweaks.variantCrafterCheck") && ModList.get().isLoaded("ae2"))
+            dev.watdafawx.foxstweaks.ae2variant.client.dev.VariantCrafterCheck.install();
     }
 }

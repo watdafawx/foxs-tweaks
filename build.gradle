@@ -290,6 +290,14 @@ neoForge {
             systemProperty 'foxstweaks.configCheck', 'true'
         }
 
+        // Dev-only check + screenshots of the ME Variant Crafter (ae2variant/client/dev/VariantCrafterCheck):
+        // report + screenshots land in run-variant/. Put AE2 + guideme + variant mods in run-variant/mods.
+        variantCrafterCheck {
+            client()
+            gameDirectory = file('run-variant')
+            systemProperty 'foxstweaks.variantCrafterCheck', 'true'
+        }
+
         // Headless: enough to load datapacks and read the log, e.g. to check what the affix patcher did.
         // Needs the same hand-placed jars as the client, in run-server/mods.
         server {

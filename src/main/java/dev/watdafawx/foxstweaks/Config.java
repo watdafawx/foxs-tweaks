@@ -737,6 +737,16 @@ public final class Config {
                     "Gear is untouched; the dial is one extra multiplier. Off removes every dial on the server.")
             .define("attributeDial", true);
 
+    public static final ModConfigSpec.ConfigValue<java.util.List<? extends String>> AE2_VARIANT_CUSTOM_TAGS = BUILDER
+            .comment(
+                    "Extra item tag patterns for the ME Variant Crafter (requires AE2). Each matching item tag is",
+                    "treated as a 1:1 block-variant group. Supports trailing '*' wildcards, e.g. 'mymod:variants/*'.")
+            .defineListAllowEmpty(
+                    "ae2VariantCustomTags",
+                    java.util.List.of(),
+                    () -> "",
+                    o -> o instanceof String);
+
     static {
         BUILDER.pop();
     }

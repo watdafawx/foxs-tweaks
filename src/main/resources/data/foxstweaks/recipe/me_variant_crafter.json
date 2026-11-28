@@ -1,0 +1,25 @@
+{
+  "neoforge:conditions": [
+    {
+      "type": "neoforge:mod_loaded",
+      "modid": "ae2"
+    }
+  ],
+  "type": "minecraft:crafting_shaped",
+  "pattern": [
+    "ISI",
+    "EFE",
+    "IPI"
+  ],
+  "key": {
+    "I": { "tag": "c:ingots/iron" },
+    "S": { "item": "minecraft:stonecutter" },
+    "E": { "item": "ae2:engineering_processor" },
+    "F": { "item": "ae2:fluix_block" },
+    "P": { "item": "ae2:pattern_provider" }
+  },
+  "result": {
+    "id": "foxstweaks:me_variant_crafter",
+    "count": 1
+  }
+}

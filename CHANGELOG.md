@@ -1,5 +1,12 @@
 # Changelog
 
+## 1.58.0
+
+- **ME Variant Crafter (AE2 block-variant autocrafting).** A single AE2 machine block (`foxstweaks:me_variant_crafter`, 1 channel) that exposes block-variant conversions directly to your ME autocrafting network with zero pattern encoding and zero external pattern providers:
+  - **Built-in mod discovery (no hard dependencies):** Chipped (`ChippedRecipe`), Rechiseled (`ChiselingRecipeManager`, covering Rechiseled:AE2 / Create / Chipped automatically), Chisel Reborn (`ChiselGroupLookup`), Factory Blocks (`factory_blocks:factory`), optional vanilla Stonecutter, plus configurable `ae2VariantCustomTags` for any other variant mod.
+  - **Three exposure modes** to keep your ME Terminal clean: **Family Filter** (default — drop any block into the 63-slot config grid to expose only that block's variant families), **In-Stock Only** (auto-exposes variants whose base block is in ME storage), and **All Variants**.
+  - **Native AE2 GUI & Darkmode support:** extends `AEBaseScreen` using AE2's own `storagebus.png`, `states.png`, and `palette.json`, and uses a 2-layer block model over `ae2:block/crafting/unit`, so both vanilla AE2 and AE2 Darkmode resource packs theme it automatically.
+
 ## 1.57.2
 
 - **Fixed disconnect during `All` batch zip uploads.** Tuned upload bursts to `6` chunks/tick (~3.6 MB/s) with Netty `channel().isWritable()` backpressure so `KeepAlive` packets never starve on busy modded servers, lowered the server `BEGIN` cooldown to `150 ms`, and added a `200 ms` breather (plus automatic rate-limit retry) between batch items.
