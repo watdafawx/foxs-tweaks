@@ -1,5 +1,12 @@
 # Changelog
 
+## 1.61.1
+
+- **Custom 3D item models & 32×32 shaded textures** for all three tools:
+  - **Hologram Wand:** dark-amethyst shaft with gold prongs cradling a floating cyan crystal & amethyst halo.
+  - **Biome Changer Wand:** carved dark-oak scepter with brass cradle, living leaf accents, and an emerald-to-sky biome orb with an orbiting gold ring.
+  - **Terrain Flattener:** leather-wrapped leveling hammer/staff with brushed steel head plate and glowing diamond spirit-level core.
+
 ## 1.61.0
 
 - **Biome Changer Wand — `Whole Biome` mode:** flood-fills an entire biome in every direction past unloaded chunks without loading or generating a single chunk.

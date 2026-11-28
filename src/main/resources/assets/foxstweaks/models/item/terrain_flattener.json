@@ -1,6 +1,96 @@
 {
-  "parent": "minecraft:item/generated",
+  "credit": "Fox's Tweaks 3D Terrain Flattener",
   "textures": {
-    "layer0": "foxstweaks:item/terrain_flattener"
+    "0": "foxstweaks:item/terrain_flattener",
+    "particle": "foxstweaks:item/terrain_flattener"
+  },
+  "elements": [
+    {
+      "name": "pommel",
+      "from": [6.8, 0.6, 6.8],
+      "to": [9.2, 2.0, 9.2],
+      "faces": {
+        "north": {"uv": [8, 8, 16, 16], "texture": "#0"},
+        "east":  {"uv": [8, 8, 16, 16], "texture": "#0"},
+        "south": {"uv": [8, 8, 16, 16], "texture": "#0"},
+        "west":  {"uv": [8, 8, 16, 16], "texture": "#0"},
+        "up":    {"uv": [8, 8, 16, 16], "texture": "#0"},
+        "down":  {"uv": [8, 8, 16, 16], "texture": "#0"}
+      }
+    },
+    {
+      "name": "grip",
+      "from": [7.2, 2.0, 7.2],
+      "to": [8.8, 10.6, 8.8],
+      "faces": {
+        "north": {"uv": [0, 0, 8, 8], "texture": "#0"},
+        "east":  {"uv": [0, 0, 8, 8], "texture": "#0"},
+        "south": {"uv": [0, 0, 8, 8], "texture": "#0"},
+        "west":  {"uv": [0, 0, 8, 8], "texture": "#0"},
+        "up":    {"uv": [0, 0, 8, 8], "texture": "#0"},
+        "down":  {"uv": [0, 0, 8, 8], "texture": "#0"}
+      }
+    },
+    {
+      "name": "neck",
+      "from": [6.5, 10.4, 6.5],
+      "to": [9.5, 12.0, 9.5],
+      "faces": {
+        "north": {"uv": [8, 8, 16, 16], "texture": "#0"},
+        "east":  {"uv": [8, 8, 16, 16], "texture": "#0"},
+        "south": {"uv": [8, 8, 16, 16], "texture": "#0"},
+        "west":  {"uv": [8, 8, 16, 16], "texture": "#0"},
+        "up":    {"uv": [8, 8, 16, 16], "texture": "#0"},
+        "down":  {"uv": [8, 8, 16, 16], "texture": "#0"}
+      }
+    },
+    {
+      "name": "leveling_head_frame",
+      "from": [3.5, 11.8, 6.0],
+      "to": [12.5, 14.8, 10.0],
+      "faces": {
+        "north": {"uv": [8, 8, 16, 16], "texture": "#0"},
+        "east":  {"uv": [8, 0, 16, 8], "texture": "#0"},
+        "south": {"uv": [8, 8, 16, 16], "texture": "#0"},
+        "west":  {"uv": [8, 0, 16, 8], "texture": "#0"},
+        "up":    {"uv": [8, 0, 16, 8], "texture": "#0"},
+        "down":  {"uv": [8, 0, 16, 8], "texture": "#0"}
+      }
+    },
+    {
+      "name": "steel_top_plate",
+      "from": [3.0, 14.4, 5.6],
+      "to": [13.0, 15.6, 10.4],
+      "faces": {
+        "north": {"uv": [8, 0, 16, 8], "texture": "#0"},
+        "east":  {"uv": [8, 0, 16, 8], "texture": "#0"},
+        "south": {"uv": [8, 0, 16, 8], "texture": "#0"},
+        "west":  {"uv": [8, 0, 16, 8], "texture": "#0"},
+        "up":    {"uv": [8, 0, 16, 8], "texture": "#0"},
+        "down":  {"uv": [8, 0, 16, 8], "texture": "#0"}
+      }
+    },
+    {
+      "name": "diamond_level_core",
+      "from": [6.3, 12.4, 5.7],
+      "to": [9.7, 14.1, 10.3],
+      "faces": {
+        "north": {"uv": [0, 8, 8, 16], "texture": "#0"},
+        "east":  {"uv": [0, 8, 8, 16], "texture": "#0"},
+        "south": {"uv": [0, 8, 8, 16], "texture": "#0"},
+        "west":  {"uv": [0, 8, 8, 16], "texture": "#0"},
+        "up":    {"uv": [0, 8, 8, 16], "texture": "#0"},
+        "down":  {"uv": [0, 8, 8, 16], "texture": "#0"}
+      }
+    }
+  ],
+  "display": {
+    "thirdperson_righthand": {"rotation": [0, 90, 0], "translation": [0, 2.5, 0.5], "scale": [0.9, 0.9, 0.9]},
+    "thirdperson_lefthand":  {"rotation": [0, 90, 0], "translation": [0, 2.5, 0.5], "scale": [0.9, 0.9, 0.9]},
+    "firstperson_righthand": {"rotation": [-12, 75, 0], "translation": [1.5, 2.0, 0], "scale": [0.85, 0.85, 0.85]},
+    "firstperson_lefthand":  {"rotation": [-12, 75, 0], "translation": [1.5, 2.0, 0], "scale": [0.85, 0.85, 0.85]},
+    "ground": {"translation": [0, 2, 0], "scale": [0.65, 0.65, 0.65]},
+    "gui":    {"rotation": [20, 35, -38], "translation": [0, 0, 0], "scale": [0.95, 0.95, 0.95]},
+    "fixed":  {"rotation": [0, 0, -45], "scale": [0.95, 0.95, 0.95]}
   }
 }

@@ -1,6 +1,141 @@
 {
-  "parent": "minecraft:item/generated",
+  "credit": "Fox's Tweaks 3D Hologram Wand",
   "textures": {
-    "layer0": "foxstweaks:item/hologram_wand"
+    "0": "foxstweaks:item/hologram_wand",
+    "particle": "foxstweaks:item/hologram_wand"
+  },
+  "elements": [
+    {
+      "name": "pommel",
+      "from": [6.8, 0.5, 6.8],
+      "to": [9.2, 2.2, 9.2],
+      "faces": {
+        "north": {"uv": [8, 0, 16, 8], "texture": "#0"},
+        "east":  {"uv": [8, 0, 16, 8], "texture": "#0"},
+        "south": {"uv": [8, 0, 16, 8], "texture": "#0"},
+        "west":  {"uv": [8, 0, 16, 8], "texture": "#0"},
+        "up":    {"uv": [8, 0, 16, 8], "texture": "#0"},
+        "down":  {"uv": [8, 0, 16, 8], "texture": "#0"}
+      }
+    },
+    {
+      "name": "shaft",
+      "from": [7.2, 2.2, 7.2],
+      "to": [8.8, 10.6, 8.8],
+      "faces": {
+        "north": {"uv": [0, 0, 8, 8], "texture": "#0"},
+        "east":  {"uv": [0, 0, 8, 8], "texture": "#0"},
+        "south": {"uv": [0, 0, 8, 8], "texture": "#0"},
+        "west":  {"uv": [0, 0, 8, 8], "texture": "#0"},
+        "up":    {"uv": [0, 0, 8, 8], "texture": "#0"},
+        "down":  {"uv": [0, 0, 8, 8], "texture": "#0"}
+      }
+    },
+    {
+      "name": "collar",
+      "from": [6.4, 10.2, 6.4],
+      "to": [9.6, 11.6, 9.6],
+      "faces": {
+        "north": {"uv": [8, 0, 16, 8], "texture": "#0"},
+        "east":  {"uv": [8, 0, 16, 8], "texture": "#0"},
+        "south": {"uv": [8, 0, 16, 8], "texture": "#0"},
+        "west":  {"uv": [8, 0, 16, 8], "texture": "#0"},
+        "up":    {"uv": [8, 0, 16, 8], "texture": "#0"},
+        "down":  {"uv": [8, 0, 16, 8], "texture": "#0"}
+      }
+    },
+    {
+      "name": "prong_n",
+      "from": [7.4, 11.4, 5.8],
+      "to": [8.6, 14.6, 6.7],
+      "rotation": {"angle": 22.5, "axis": "x", "origin": [8, 11.4, 6.2]},
+      "faces": {
+        "north": {"uv": [8, 0, 16, 8], "texture": "#0"},
+        "east":  {"uv": [8, 0, 16, 8], "texture": "#0"},
+        "south": {"uv": [8, 0, 16, 8], "texture": "#0"},
+        "west":  {"uv": [8, 0, 16, 8], "texture": "#0"},
+        "up":    {"uv": [8, 0, 16, 8], "texture": "#0"},
+        "down":  {"uv": [8, 0, 16, 8], "texture": "#0"}
+      }
+    },
+    {
+      "name": "prong_s",
+      "from": [7.4, 11.4, 9.3],
+      "to": [8.6, 14.6, 10.2],
+      "rotation": {"angle": -22.5, "axis": "x", "origin": [8, 11.4, 9.8]},
+      "faces": {
+        "north": {"uv": [8, 0, 16, 8], "texture": "#0"},
+        "east":  {"uv": [8, 0, 16, 8], "texture": "#0"},
+        "south": {"uv": [8, 0, 16, 8], "texture": "#0"},
+        "west":  {"uv": [8, 0, 16, 8], "texture": "#0"},
+        "up":    {"uv": [8, 0, 16, 8], "texture": "#0"},
+        "down":  {"uv": [8, 0, 16, 8], "texture": "#0"}
+      }
+    },
+    {
+      "name": "prong_w",
+      "from": [5.8, 11.4, 7.4],
+      "to": [6.7, 14.6, 8.6],
+      "rotation": {"angle": -22.5, "axis": "z", "origin": [6.2, 11.4, 8]},
+      "faces": {
+        "north": {"uv": [8, 0, 16, 8], "texture": "#0"},
+        "east":  {"uv": [8, 0, 16, 8], "texture": "#0"},
+        "south": {"uv": [8, 0, 16, 8], "texture": "#0"},
+        "west":  {"uv": [8, 0, 16, 8], "texture": "#0"},
+        "up":    {"uv": [8, 0, 16, 8], "texture": "#0"},
+        "down":  {"uv": [8, 0, 16, 8], "texture": "#0"}
+      }
+    },
+    {
+      "name": "prong_e",
+      "from": [9.3, 11.4, 7.4],
+      "to": [10.2, 14.6, 8.6],
+      "rotation": {"angle": 22.5, "axis": "z", "origin": [9.8, 11.4, 8]},
+      "faces": {
+        "north": {"uv": [8, 0, 16, 8], "texture": "#0"},
+        "east":  {"uv": [8, 0, 16, 8], "texture": "#0"},
+        "south": {"uv": [8, 0, 16, 8], "texture": "#0"},
+        "west":  {"uv": [8, 0, 16, 8], "texture": "#0"},
+        "up":    {"uv": [8, 0, 16, 8], "texture": "#0"},
+        "down":  {"uv": [8, 0, 16, 8], "texture": "#0"}
+      }
+    },
+    {
+      "name": "holo_core",
+      "from": [6.7, 12.6, 6.7],
+      "to": [9.3, 15.2, 9.3],
+      "rotation": {"angle": 45, "axis": "y", "origin": [8, 13.9, 8]},
+      "faces": {
+        "north": {"uv": [0, 8, 8, 16], "texture": "#0"},
+        "east":  {"uv": [0, 8, 8, 16], "texture": "#0"},
+        "south": {"uv": [0, 8, 8, 16], "texture": "#0"},
+        "west":  {"uv": [0, 8, 8, 16], "texture": "#0"},
+        "up":    {"uv": [0, 8, 8, 16], "texture": "#0"},
+        "down":  {"uv": [0, 8, 8, 16], "texture": "#0"}
+      }
+    },
+    {
+      "name": "amethyst_halo",
+      "from": [6.3, 13.5, 6.3],
+      "to": [9.7, 14.3, 9.7],
+      "rotation": {"angle": 22.5, "axis": "z", "origin": [8, 13.9, 8]},
+      "faces": {
+        "north": {"uv": [8, 8, 16, 16], "texture": "#0"},
+        "east":  {"uv": [8, 8, 16, 16], "texture": "#0"},
+        "south": {"uv": [8, 8, 16, 16], "texture": "#0"},
+        "west":  {"uv": [8, 8, 16, 16], "texture": "#0"},
+        "up":    {"uv": [8, 8, 16, 16], "texture": "#0"},
+        "down":  {"uv": [8, 8, 16, 16], "texture": "#0"}
+      }
+    }
+  ],
+  "display": {
+    "thirdperson_righthand": {"rotation": [0, 0, 0], "translation": [0, 2.5, 0.5], "scale": [0.9, 0.9, 0.9]},
+    "thirdperson_lefthand":  {"rotation": [0, 0, 0], "translation": [0, 2.5, 0.5], "scale": [0.9, 0.9, 0.9]},
+    "firstperson_righthand": {"rotation": [-12, 15, 0], "translation": [1.5, 2.0, 0], "scale": [0.85, 0.85, 0.85]},
+    "firstperson_lefthand":  {"rotation": [-12, 15, 0], "translation": [1.5, 2.0, 0], "scale": [0.85, 0.85, 0.85]},
+    "ground": {"translation": [0, 2, 0], "scale": [0.65, 0.65, 0.65]},
+    "gui":    {"rotation": [20, 45, -40], "translation": [0, 0, 0], "scale": [1.0, 1.0, 1.0]},
+    "fixed":  {"rotation": [0, 0, -45], "scale": [1.0, 1.0, 1.0]}
   }
 }

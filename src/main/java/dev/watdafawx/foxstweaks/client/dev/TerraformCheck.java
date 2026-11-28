@@ -92,6 +92,8 @@ public final class TerraformCheck {
                         .withPositions(Optional.of(new BlockPos(1, -61, 1)), Optional.of(new BlockPos(5, -61, 5)));
                 BiomeWandItem.setConfig(wand, cfg);
                 p.setItemInHand(InteractionHand.MAIN_HAND, wand);
+                p.getInventory().setItem(1, new ItemStack(FoxsTweaksItems.TERRAIN_FLATTENER.get()));
+                p.getInventory().setItem(2, new ItemStack(FoxsTweaksItems.HOLOGRAM_WAND.get()));
             });
         });
 
