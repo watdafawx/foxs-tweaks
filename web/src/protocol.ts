@@ -203,10 +203,19 @@ export interface PropDef {
   stepped: boolean;
 }
 
+export interface EntityDef {
+  id: string;
+  name: string;
+  animations?: string[];
+  clips?: string[];
+  props?: number[];
+  defaults?: Record<string, string>;
+}
+
 export interface Registries {
-  properties: { name: string; values: string[] }[];
+  properties: { name: string; label?: string; values: string[] }[];
   blocks: BlockDef[];
-  entities: { id: string; name: string; animations?: string[] }[];
+  entities: EntityDef[];
   particles: string[];
   effects: EffectDef[];
   triggers: { name: string; label: string; pulse: boolean }[];

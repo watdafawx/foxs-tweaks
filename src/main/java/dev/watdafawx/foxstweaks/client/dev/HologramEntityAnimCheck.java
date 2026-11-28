@@ -90,6 +90,72 @@ public final class HologramEntityAnimCheck {
             var a = HologramEntities.get("one", layer, 0, 0, 0, 0, 1);
             var b = HologramEntities.get("two", layer, 0, 0, 0, 0, 1);
             check("independent same-type entities and ids", a != b && a.getId() != b.getId(), "shared controller key");
+
+            // Mob state checks
+            var sheep = (net.minecraft.world.entity.animal.Sheep) HologramEntities.get("st-sheep",
+                    HologramLayer.entity("minecraft:sheep", 0).withUid("s")
+                            .withProps(Map.of("color", "pink", "sheared", "true")),
+                    0, 0, 0, 0, 1);
+            check("sheep state (pink + sheared)", sheep != null
+                    && sheep.getColor() == net.minecraft.world.item.DyeColor.PINK && sheep.isSheared(),
+                    String.valueOf(sheep));
+
+            var creeper = (net.minecraft.world.entity.monster.Creeper) HologramEntities.get("st-creeper",
+                    HologramLayer.entity("minecraft:creeper", 0).withUid("c")
+                            .withProps(Map.of("powered", "true")),
+                    0, 0, 0, 0, 1);
+            check("creeper state (charged)", creeper != null && creeper.isPowered(), String.valueOf(creeper));
+
+            var wolf = (net.minecraft.world.entity.animal.Wolf) HologramEntities.get("st-wolf",
+                    HologramLayer.entity("minecraft:wolf", 0).withUid("w")
+                            .withProps(Map.of("baby", "true", "tamed", "true", "sitting", "true", "angry", "true")),
+                    0, 0, 0, 0, 1);
+            check("wolf state (baby+tamed+sitting+angry)", wolf != null
+                    && wolf.isBaby() && wolf.isTame() && wolf.isInSittingPose() && wolf.isAngry(),
+                    String.valueOf(wolf));
+
+            var fox = (net.minecraft.world.entity.animal.Fox) HologramEntities.get("st-fox",
+                    HologramLayer.entity("minecraft:fox", 0).withUid("f")
+                            .withProps(Map.of("variant", "snow", "sleeping", "true")),
+                    0, 0, 0, 0, 1);
+            check("fox state (snow + sleeping)", fox != null
+                    && fox.getVariant() == net.minecraft.world.entity.animal.Fox.Type.SNOW && fox.isSleeping(),
+                    String.valueOf(fox));
+
+            var slime = (net.minecraft.world.entity.monster.Slime) HologramEntities.get("st-slime",
+                    HologramLayer.entity("minecraft:slime", 0).withUid("sl")
+                            .withProps(Map.of("size", "4")),
+                    0, 0, 0, 0, 1);
+            check("slime state (size 4)", slime != null && slime.getSize() == 4,
+                    slime == null ? "null" : "size=" + slime.getSize());
+
+            var golem = (net.minecraft.world.entity.animal.IronGolem) HologramEntities.get("st-golem",
+                    HologramLayer.entity("minecraft:iron_golem", 0).withUid("g")
+                            .withProps(Map.of("cracks", "high")),
+                    0, 0, 0, 0, 1);
+            check("iron_golem state (high cracks)", golem != null
+                    && golem.getCrackiness() == net.minecraft.world.entity.Crackiness.Level.HIGH,
+                    golem == null ? "null" : String.valueOf(golem.getCrackiness()));
+
+            // Dynamic AnimationState discovery & clip playback checks
+            check("warden discovers sonic_boom clip",
+                    HologramEntityStates.animations("minecraft:warden").contains("sonic_boom"),
+                    String.valueOf(HologramEntityStates.animations("minecraft:warden")));
+            check("breeze discovers shoot clip",
+                    HologramEntityStates.animations("minecraft:breeze").contains("shoot"),
+                    String.valueOf(HologramEntityStates.animations("minecraft:breeze")));
+            check("camel discovers dash clip",
+                    HologramEntityStates.animations("minecraft:camel").contains("dash"),
+                    String.valueOf(HologramEntityStates.animations("minecraft:camel")));
+
+            // Path auto-walk check
+            var walker = (LivingEntity) HologramEntities.get("st-walk",
+                    HologramLayer.entity("minecraft:zombie", 0).withUid("wk"),
+                    0, 0, 0, 0, 1);
+            HologramEntities.applyAnimations(walker, List.of(), List.of(), Map.of(), true, 1.5);
+            check("path auto-walk drives walkAnimation", walker != null && walker.walkAnimation.speed() > 0.5F,
+                    walker == null ? "null" : "speed=" + walker.walkAnimation.speed());
+
             log("GeckoLib/AzureLib: NOT VERIFIED (no mod fixture)");
             log("done: " + (failures == 0 ? "ALL PASS" : failures + " FAILURE(S)"));
             try {

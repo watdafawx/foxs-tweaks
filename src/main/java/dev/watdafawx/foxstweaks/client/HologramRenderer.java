@@ -695,7 +695,7 @@ public final class HologramRenderer {
                 var entity = HologramEntities.get(spec.id(), layer, 0.0, 0.0, 0.0, 0.0F, (float) seconds);
                 if (entity == null)
                     return;
-                HologramEntities.applyAnimations(entity, effects, gEffects, seconds);
+                HologramEntities.applyAnimations(entity, effects, gEffects, layer.props(), movingOnPath, seconds);
                 pose.pushPose();
                 pose.translate(offX, offY, offZ);
                 pose.mulPose(Axis.YP.rotationDegrees(lAngleY));

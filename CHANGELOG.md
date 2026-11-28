@@ -1,5 +1,12 @@
 # Changelog
 
+## 1.59.0
+
+- **Mob state & expanded animations for entity holograms.**
+  - **Editable mob states** across the Creator (`Shape`), Studio (left panel under `Entities`), and Web editor (`Mob state & animation`): baby, tamed, sitting, angry, saddled, chest, pose, on fire, invisible, plus mob-specific variants and states (Sheep wool color & `jeb_` rainbow / sheared, Creeper charged / swelling, Wolf/Cat/Frog/Axolotl/Fox/Horse/Llama/Parrot/Rabbit/Panda/Mooshroom/Boat variants, collars & carpets, Villager job/biome/level, Bee pollen/stung, Goat horns/screaming, Snow/Iron Golem pumpkin/cracks/flower, Slime/Phantom size, Pufferfish puff, Shulker color/peek, Enderman/Ghast/Vex/Pillager/Evoker/Strider/Sniffer/Armadillo/Bat/Polar Bear/Camel/Allay/Tropical Fish/Armor Stand).
+  - **Dynamic & procedural mob animations:** automatically discovers every `AnimationState` clip on vanilla and modded entities (Warden `sonic_boom`/`digging`/`emerge`, Breeze `shoot`/`inhale`/`long_jump`/`slide`, Camel `dash`/`sit`, Sniffer, Frog, Armadillo, etc.) plus procedural clips (`flap`, `swell`, `rear`, `eat`, `dance`, `scream`, `roll`, `sneeze`, `sit`, `sleep`, `crouch`, `stand`, `beg`) with playback speed control.
+  - **Path auto-walk for entities:** entity holograms following a path automatically play a walk cycle when no explicit locomotion effect or clip is set.
+
 ## 1.58.0
 
 - **ME Variant Crafter (AE2 block-variant autocrafting).** A single AE2 machine block (`foxstweaks:me_variant_crafter`, 1 channel) that exposes block-variant conversions directly to your ME autocrafting network with zero pattern encoding and zero external pattern providers:

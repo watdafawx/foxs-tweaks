@@ -86,21 +86,14 @@ public final class HologramEntities {
     }
 
     private static void applyEntityProps(Entity entity, Map<String, String> props) {
-        if ("true".equalsIgnoreCase(props.get("invisible")))
-            entity.setInvisible(true);
-        String effectRaw = props.get("effect");
-        if (effectRaw != null && !effectRaw.isEmpty() && entity instanceof LivingEntity living) {
-            ResourceLocation loc = ResourceLocation.tryParse(effectRaw);
-            if (loc != null) {
-                BuiltInRegistries.MOB_EFFECT.getHolder(loc).ifPresent(holder -> {
-                    try {
-                        living.forceAddEffect(new net.minecraft.world.effect.MobEffectInstance(
-                                holder, 20 * 60 * 60, 0, false, true, true), null);
-                    } catch (Throwable ignored) {
-                    }
-                });
-            }
-        }
+        HologramEntityStates.applyProps(entity, props);
+        // Keep hologram safety invariants after any NBT-backed state patch.
+        entity.setNoGravity(true);
+        entity.setSilent(true);
+        entity.setInvulnerable(true);
+        entity.setDeltaMovement(0.0, 0.0, 0.0);
+        if (entity instanceof Mob mob)
+            mob.setNoAi(true);
     }
 
     @Nullable
@@ -172,8 +165,20 @@ public final class HologramEntities {
     /** Pure clock sampling: no entity tick, AI, movement, sounds or particle events. */
     public static void applyAnimations(Entity entity, List<HologramEffect> layerEffects,
                                        List<HologramEffect> groupEffects, double seconds) {
-        if (!(entity instanceof LivingEntity living))
+        applyAnimations(entity, layerEffects, groupEffects, Map.of(), false, seconds);
+    }
+
+    /** Pure clock sampling with entity state props and path movement. */
+    public static void applyAnimations(Entity entity, List<HologramEffect> layerEffects,
+                                       List<HologramEffect> groupEffects, Map<String, String> props,
+                                       boolean movingOnPath, double seconds) {
+        String clip = props == null ? "" : props.getOrDefault(HologramEntityStates.ANIM_KEY, "");
+        float clipSpeed = props == null ? 1.0F : HologramEntityStates.animSpeed(props);
+
+        if (!(entity instanceof LivingEntity living)) {
+            HologramEntityLife.applyNonLiving(entity, clip, clipSpeed, seconds);
             return;
+        }
 
         float walk = -1.0F;
         float attackHz = 0.0F;
@@ -212,16 +217,51 @@ public final class HologramEntities {
             }
         }
 
+        // Clip-driven basic animations (from the Shape -> Anim selector).
+        if (!clip.isEmpty()) {
+            switch (clip) {
+                case "walk", "fly", "swim" -> {
+                    if (walk < 0.0F)
+                        walk = 0.7F;
+                }
+                case "run" -> {
+                    if (walk < 0.0F)
+                        walk = 1.0F;
+                }
+                case "swing" -> {
+                    if (attackHz <= 0.0F)
+                        attackHz = 1.5F * clipSpeed;
+                }
+                case "hurt" -> {
+                    if (hurtHz <= 0.0F)
+                        hurtHz = 1.2F * clipSpeed;
+                }
+                case "die" -> {
+                    if (deathHz <= 0.0F)
+                        deathHz = 0.5F * clipSpeed;
+                }
+                case "sneak" -> sneak = true;
+                default -> {
+                }
+            }
+        }
+
+        // Entities following a HologramPath auto-walk when no explicit locomotion or clip is set.
+        if (movingOnPath && walk < 0.0F && clip.isEmpty())
+            walk = 0.75F;
+
         float stride = Math.max(0, Math.min(1, walk));
-        double animationSeconds = locomotion == null ? seconds : seconds * locomotion.speed() + locomotion.phase();
-        if (locomotion != null && locomotion.type() == HologramEffect.Type.RUN)
+        double animationSeconds = locomotion != null
+                ? seconds * locomotion.speed() + locomotion.phase()
+                : seconds * clipSpeed;
+        if ((locomotion != null && locomotion.type() == HologramEffect.Type.RUN) || "run".equals(clip))
             animationSeconds *= 1.8;
 
         // Vanilla interpolates position - speed * (1-partial). Set both endpoints, including on seeks.
         living.walkAnimation.speedOld = stride;
         living.walkAnimation.setSpeed(stride);
         living.walkAnimation.position = (float) ((animationSeconds * 20 - (seconds * 20 - Math.floor(seconds * 20)) + 1) * stride);
-        HologramEntityLife.apply(living, locomotion, special, animationSeconds, seconds);
+        HologramEntityLife.apply(living, locomotion, special, clip, clipSpeed, animationSeconds, seconds);
 
         float swing = 0.0F;
         if (attackHz > 0.0F) {
@@ -252,10 +292,17 @@ public final class HologramEntities {
             death = c < 0.85 ? 1 + (int) (Math.min(1.0, c / 0.5) * 20.0) : 0;
         }
         living.deathTime = death;
-        living.setHealth(death > 0 ? 0 : living.getMaxHealth());
+        if (death > 0) {
+            living.setHealth(0);
+        } else if (props == null || !props.containsKey("cracks")) {
+            living.setHealth(living.getMaxHealth());
+        }
 
+        Pose configured = props == null ? null : HologramEntityStates.configuredPose(props);
         if (sneak)
             living.setPose(Pose.CROUCHING);
+        else if (configured != null)
+            living.setPose(configured);
         else if (living.getPose() == Pose.CROUCHING)
             living.setPose(Pose.STANDING);
     }
@@ -283,6 +330,7 @@ public final class HologramEntities {
     public static void clear() {
         CACHE.clear();
         FAILED_INSTANCES.clear();
+        HologramEntityStates.clear();
     }
 
     private HologramEntities() {

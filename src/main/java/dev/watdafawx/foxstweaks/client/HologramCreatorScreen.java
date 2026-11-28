@@ -26,8 +26,10 @@ import org.lwjgl.glfw.GLFW;
 
 import java.util.ArrayList;
 import java.util.EnumSet;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Locale;
+import java.util.Map;
 import java.util.Set;
 import java.util.function.DoubleConsumer;
 
@@ -688,6 +690,8 @@ public final class HologramCreatorScreen extends Screen {
         }
         if (layer.kind() == HologramLayer.Kind.MODEL)
             y = renderModelShape(g, mx, my, layer, sel, x, y, w);
+        if (layer.kind() == HologramLayer.Kind.ENTITY)
+            y = renderEntityShape(g, mx, my, layer, sel, x, y, w);
         float scale = this.editor.creatorScale();
         y = slider(g, mx, my, x, y, w, "Size", String.format(Locale.ROOT, "%.2f×", scale),
                 (scale - 0.1F) / 3.9F, ACCENT, false, v -> this.editor.creatorSetScale(round(0.1F + (float) v * 3.9F, 0.05F)),
@@ -774,6 +778,82 @@ public final class HologramCreatorScreen extends Screen {
 
     private void setModelHeight(int sel, float height) {
         this.editor.creatorUpdateLayer(sel, l -> l.withModel(l.model().withHeight(height)));
+    }
+
+    /** Animation clip and editable mob state properties of an ENTITY layer. */
+    private int renderEntityShape(GuiGraphics g, int mx, int my, HologramLayer layer, int sel, int x, int y, int w) {
+        List<String> clips = HologramEntityStates.animations(layer.id());
+        if (!clips.isEmpty()) {
+            String curAnim = layer.props().getOrDefault(HologramEntityStates.ANIM_KEY, "");
+            String label = curAnim.isEmpty() ? "idle" : curAnim.replace('_', ' ');
+            chip(g, mx, my, x, y, w, this.font.plainSubstrByWidth("Anim: " + label, w - 8), !curAnim.isEmpty(), () -> {
+                List<String> cycle = new ArrayList<>();
+                cycle.add("");
+                cycle.addAll(clips);
+                int idx = cycle.indexOf(curAnim);
+                int dir = hasShiftDown() ? -1 : 1;
+                String next = cycle.get(Math.floorMod(idx + dir, cycle.size()));
+                this.editor.creatorPushUndo();
+                this.editor.creatorUpdateLayer(sel, l -> {
+                    Map<String, String> p = new LinkedHashMap<>(l.props());
+                    if (next.isEmpty())
+                        p.remove(HologramEntityStates.ANIM_KEY);
+                    else
+                        p.put(HologramEntityStates.ANIM_KEY, next);
+                    return l.withProps(p);
+                });
+            }).tooltip = "Click to cycle mob animation (" + clips.size() + " available). Shift+click reverses.";
+            y += ROW + 2;
+            if (!curAnim.isEmpty()) {
+                float spd = HologramEntityStates.animSpeed(layer.props());
+                y = slider(g, mx, my, x, y, w, "Speed", String.format(Locale.ROOT, "%.1f\u00D7", spd),
+                        (spd - 0.1F) / 3.9F, ACCENT, false,
+                        v -> setEntityAnimSpeed(sel, round(0.1F + (float) v * 3.9F, 0.1F)),
+                        d -> setEntityAnimSpeed(sel, Mth.clamp(HologramEntityStates.animSpeed(layer.props()) + (float) d * wheelStep(0.1F), 0.1F, 4.0F)),
+                        "Mob animation playback speed.");
+            }
+        }
+        List<HologramEntityStates.Prop> props = HologramEntityStates.properties(layer.id());
+        if (!props.isEmpty()) {
+            int cw = (w - 4) / 2;
+            for (int i = 0; i < props.size(); i++) {
+                HologramEntityStates.Prop prop = props.get(i);
+                String val = HologramEntityStates.valueOf(layer.props(), prop);
+                boolean modified = !val.equals(prop.defaultValue());
+                String displayVal = val.replace('_', ' ');
+                String text = this.font.plainSubstrByWidth(prop.label() + ": " + displayVal, cw - 6);
+                int px = x + (i % 2) * (cw + 4);
+                int py = y + (i / 2) * (ROW + 2);
+                int pw = i % 2 == 0 ? cw : w - cw - 4;
+                chip(g, mx, my, px, py, pw, text, modified, () -> {
+                    int dir = hasShiftDown() ? -1 : 1;
+                    String next = HologramEntityStates.cycle(prop, val, dir);
+                    this.editor.creatorPushUndo();
+                    this.editor.creatorUpdateLayer(sel, l -> {
+                        Map<String, String> nextProps = new LinkedHashMap<>(l.props());
+                        if (next.equals(prop.defaultValue()))
+                            nextProps.remove(prop.key());
+                        else
+                            nextProps.put(prop.key(), next);
+                        return l.withProps(nextProps);
+                    });
+                }).tooltip = prop.label() + ": " + displayVal + " (click to cycle, Shift+click reverses)";
+            }
+            y += ((props.size() + 1) / 2) * (ROW + 2);
+        }
+        return y;
+    }
+
+    private void setEntityAnimSpeed(int sel, float speed) {
+        float clamped = Mth.clamp(speed, 0.1F, 4.0F);
+        this.editor.creatorUpdateLayer(sel, l -> {
+            Map<String, String> p = new LinkedHashMap<>(l.props());
+            if (Math.abs(clamped - 1.0F) < 0.01F)
+                p.remove(HologramEntityStates.ANIM_SPEED_KEY);
+            else
+                p.put(HologramEntityStates.ANIM_SPEED_KEY, String.format(Locale.ROOT, "%.2f", clamped));
+            return l.withProps(p);
+        });
     }
 
     // ---- place: position and rotation as numbers (the same values the gizmo drags) ----

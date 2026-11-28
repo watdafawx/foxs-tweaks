@@ -183,6 +183,7 @@ function TargetInspector({ t }: { t: Target }) {
     <div class="inspector">
       {t.kind === 'layer' ? <LayerHeader l={t.l} index={t.index} /> : <GroupHeader g={t.g} />}
       {t.kind === 'layer' && t.l.kind === 'BLOCK' && <BlockProps l={t.l} index={t.index} />}
+      {t.kind === 'layer' && t.l.kind === 'ENTITY' && <EntityProps l={t.l} index={t.index} />}
       {t.kind === 'layer' && t.l.kind === 'IMAGE' && <ImageSection l={t.l} index={t.index} />}
       {t.kind === 'layer' && t.l.kind === 'MODEL' && <ModelSection l={t.l} index={t.index} />}
       <Section title="Transform">
@@ -580,6 +581,68 @@ function BlockProps({ l, index }: { l: Layer; index: number }) {
                 value={value}
                 options={p.values.map((v) => ({ value: v, label: v }))}
                 onChange={(v) => edit((s) => (s.layers[index].props[p.name] = v))}
+              />
+            )}
+          </Row>
+        );
+      })}
+    </Section>
+  );
+}
+
+function EntityProps({ l, index }: { l: Layer; index: number }) {
+  const reg = S.registries!;
+  const def = reg.entities.find((e) => e.id === l.id);
+  const clips = def?.clips ?? [];
+  const propIds = def?.props ?? [];
+  if (!clips.length && !propIds.length) return null;
+  const anim = l.props.anim ?? '';
+  const animSpeed = Number(l.props.anim_speed ?? 1) || 1;
+  return (
+    <Section title="Mob state & animation">
+      {clips.length > 0 && (
+        <>
+          <Row label="Animation">
+            <SelectField
+              value={anim}
+              options={[
+                { value: '', label: 'idle' },
+                ...clips.map((c) => ({ value: c, label: c.replace(/_/g, ' ') })),
+              ]}
+              onChange={(v) => setImageProp(index, 'anim', v || undefined)}
+            />
+          </Row>
+          {anim && (
+            <NumRow
+              rowLabel="Anim speed"
+              label="×"
+              value={animSpeed}
+              min={0.1}
+              max={4}
+              step={0.1}
+              decimals={1}
+              onChange={(v, g) => setImageProp(index, 'anim_speed', Math.abs(v - 1) < 0.01 ? undefined : fmt(v), g)}
+            />
+          )}
+        </>
+      )}
+      {propIds.map((pi) => {
+        const p = reg.properties[pi];
+        const defVal = def?.defaults?.[p.name] ?? p.values[0];
+        const value = l.props[p.name] ?? defVal;
+        const label = p.label ?? p.name.replace(/_/g, ' ');
+        return (
+          <Row key={p.name} label={label}>
+            {p.values.length === 2 && p.values.includes('true') ? (
+              <Toggle
+                value={value === 'true'}
+                onChange={(v) => setImageProp(index, p.name, String(v) === defVal ? undefined : String(v))}
+              />
+            ) : (
+              <SelectField
+                value={value}
+                options={p.values.map((v) => ({ value: v, label: v.replace(/_/g, ' ') }))}
+                onChange={(v) => setImageProp(index, p.name, v === defVal ? undefined : v)}
               />
             )}
           </Row>

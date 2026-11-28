@@ -99,12 +99,44 @@ final class HologramWebRegistries {
         BuiltInRegistries.ENTITY_TYPE.entrySet().stream()
                 .sorted(Comparator.comparing(e -> e.getKey().location().toString()))
                 .forEach(e -> {
+                    String entityId = e.getKey().location().toString();
                     JsonObject j = new JsonObject();
-                    j.addProperty("id", e.getKey().location().toString());
+                    j.addProperty("id", entityId);
                     j.addProperty("name", e.getValue().getDescription().getString());
                     JsonArray animations = new JsonArray();
-                    dev.watdafawx.foxstweaks.client.HologramEntityLife.offered(e.getKey().location().toString()).forEach(t -> animations.add(t.name()));
+                    dev.watdafawx.foxstweaks.client.HologramEntityLife.offered(entityId).forEach(t -> animations.add(t.name()));
                     j.add("animations", animations);
+                    List<String> clips = dev.watdafawx.foxstweaks.client.HologramEntityStates.animations(entityId);
+                    if (!clips.isEmpty()) {
+                        JsonArray clipArr = new JsonArray();
+                        clips.forEach(clipArr::add);
+                        j.add("clips", clipArr);
+                    }
+                    List<dev.watdafawx.foxstweaks.client.HologramEntityStates.Prop> eProps =
+                            dev.watdafawx.foxstweaks.client.HologramEntityStates.properties(entityId);
+                    if (!eProps.isEmpty()) {
+                        JsonArray epIdx = new JsonArray();
+                        JsonObject epDef = new JsonObject();
+                        for (var p : eProps) {
+                            String sig = p.key() + "=" + String.join(",", p.values());
+                            Integer idx = propIndex.get(sig);
+                            if (idx == null) {
+                                idx = propTable.size();
+                                propIndex.put(sig, idx);
+                                JsonObject def = new JsonObject();
+                                def.addProperty("name", p.key());
+                                def.addProperty("label", p.label());
+                                JsonArray vals = new JsonArray();
+                                p.values().forEach(vals::add);
+                                def.add("values", vals);
+                                propTable.add(def);
+                            }
+                            epIdx.add(idx);
+                            epDef.addProperty(p.key(), p.defaultValue());
+                        }
+                        j.add("props", epIdx);
+                        j.add("defaults", epDef);
+                    }
                     entities.add(j);
                 });
         o.add("entities", entities);

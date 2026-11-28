@@ -2445,9 +2445,31 @@ public class HologramScreen extends Screen {
                             this.leftX + this.leftW - 12 - this.font.width(value), y + 3, ACCENT, false);
                 }
             }
+        } else if (this.pickMode == PICK_ENTITIES) {
+            HologramLayer cur = currentLayer();
+            String entityId = (cur != null && cur.kind() == HologramLayer.Kind.ENTITY) ? cur.id() : this.pickedEntityId;
+            graphics.drawString(this.font, this.font.plainSubstrByWidth(entityId, this.leftW - 16),
+                    this.leftX + 8, infoY, ACCENT, false);
+            if (cur != null && cur.kind() == HologramLayer.Kind.ENTITY) {
+                List<String[]> rows = entityPropRows(cur);
+                for (int i = 0; i < Math.min(rows.size(), PROP_ROWS); i++) {
+                    String[] row = rows.get(i);
+                    int y = infoY + 12 + i * PROP_PITCH;
+                    boolean hot = mouseX >= this.leftX + 8 && mouseX < this.leftX + this.leftW - 8
+                            && mouseY >= y && mouseY < y + PROP_PITCH - 2;
+                    graphics.fill(this.leftX + 8, y, this.leftX + this.leftW - 8, y + PROP_PITCH - 2,
+                            hot ? SURFACE_HOT : SURFACE);
+                    graphics.drawString(this.font, row[0], this.leftX + 12, y + 3, MUTED, false);
+                    String value = this.font.plainSubstrByWidth(row[1], this.leftW - 76);
+                    graphics.drawString(this.font, value,
+                            this.leftX + this.leftW - 12 - this.font.width(value), y + 3, ACCENT, false);
+                }
+            } else {
+                graphics.drawString(this.font, "Click: set selected layer", this.leftX + 8, infoY + 14, MUTED, false);
+                graphics.drawString(this.font, "+ Add below: new layer", this.leftX + 8, infoY + 26, MUTED, false);
+            }
         } else {
-            String picked = this.pickMode == PICK_ENTITIES ? this.pickedEntityId : this.pickedParticleId;
-            graphics.drawString(this.font, this.font.plainSubstrByWidth(picked, this.leftW - 16),
+            graphics.drawString(this.font, this.font.plainSubstrByWidth(this.pickedParticleId, this.leftW - 16),
                     this.leftX + 8, infoY, ACCENT, false);
             graphics.drawString(this.font, "Click: set selected layer", this.leftX + 8, infoY + 14, MUTED, false);
             graphics.drawString(this.font, "+ Add below: new layer", this.leftX + 8, infoY + 26, MUTED, false);
@@ -2759,6 +2781,21 @@ public class HologramScreen extends Screen {
                 return true;
             }
         }
+        if (this.pickMode == PICK_ENTITIES) {
+            HologramLayer cur = currentLayer();
+            if (cur != null && cur.kind() == HologramLayer.Kind.ENTITY) {
+                int infoY = gridY + gridH + 6;
+                int count = Math.min(entityPropRows(cur).size(), PROP_ROWS);
+                for (int i = 0; i < count; i++) {
+                    int y = infoY + 12 + i * PROP_PITCH;
+                    if (mouseX >= this.leftX + 8 && mouseX < this.leftX + this.leftW - 8
+                            && mouseY >= y && mouseY < y + PROP_PITCH - 2) {
+                        cycleEntityPropRow(cur, i, button == 1 ? -1 : 1);
+                        return true;
+                    }
+                }
+            }
+        }
         return false;
     }
 
@@ -2881,6 +2918,20 @@ public class HologramScreen extends Screen {
                         if (mouseX >= this.leftX + 8 && mouseX < this.leftX + this.leftW - 8
                                 && mouseY >= y && mouseY < y + PROP_PITCH - 2) {
                             cycleProperty(properties.get(i), state, dir);
+                            return true;
+                        }
+                    }
+                }
+            } else if (this.pickMode == PICK_ENTITIES) {
+                HologramLayer cur = currentLayer();
+                if (cur != null && cur.kind() == HologramLayer.Kind.ENTITY) {
+                    int infoY = gridTop() + gridHeight() + 6;
+                    int count = Math.min(entityPropRows(cur).size(), PROP_ROWS);
+                    for (int i = 0; i < count; i++) {
+                        int y = infoY + 12 + i * PROP_PITCH;
+                        if (mouseX >= this.leftX + 8 && mouseX < this.leftX + this.leftW - 8
+                                && mouseY >= y && mouseY < y + PROP_PITCH - 2) {
+                            cycleEntityPropRow(cur, i, dir);
                             return true;
                         }
                     }
@@ -3113,6 +3164,58 @@ public class HologramScreen extends Screen {
         String next = HologramStates.cycle(property, current, direction);
         Map<String, String> nextProps = new LinkedHashMap<>(cur.props());
         nextProps.put(property.getName(), next);
+        updateCurrentLayer(l -> l.withProps(nextProps));
+        refresh();
+    }
+
+    private List<String[]> entityPropRows(HologramLayer layer) {
+        List<String[]> rows = new ArrayList<>();
+        List<String> clips = HologramEntityStates.animations(layer.id());
+        if (!clips.isEmpty()) {
+            String anim = layer.props().getOrDefault(HologramEntityStates.ANIM_KEY, "");
+            rows.add(new String[] { "anim", anim.isEmpty() ? "idle" : anim });
+        }
+        for (HologramEntityStates.Prop prop : HologramEntityStates.properties(layer.id())) {
+            rows.add(new String[] { prop.key(), HologramEntityStates.valueOf(layer.props(), prop) });
+        }
+        return rows;
+    }
+
+    private void cycleEntityPropRow(HologramLayer cur, int rowIndex, int direction) {
+        if (direction == 0)
+            return;
+        List<String> clips = HologramEntityStates.animations(cur.id());
+        boolean hasAnim = !clips.isEmpty();
+        if (hasAnim && rowIndex == 0) {
+            List<String> cycle = new ArrayList<>();
+            cycle.add("");
+            cycle.addAll(clips);
+            String curAnim = cur.props().getOrDefault(HologramEntityStates.ANIM_KEY, "");
+            int idx = cycle.indexOf(curAnim);
+            String next = cycle.get(Math.floorMod((idx < 0 ? 0 : idx) + direction, cycle.size()));
+            pushUndo();
+            Map<String, String> nextProps = new LinkedHashMap<>(cur.props());
+            if (next.isEmpty())
+                nextProps.remove(HologramEntityStates.ANIM_KEY);
+            else
+                nextProps.put(HologramEntityStates.ANIM_KEY, next);
+            updateCurrentLayer(l -> l.withProps(nextProps));
+            refresh();
+            return;
+        }
+        int propIdx = hasAnim ? rowIndex - 1 : rowIndex;
+        List<HologramEntityStates.Prop> props = HologramEntityStates.properties(cur.id());
+        if (propIdx < 0 || propIdx >= props.size())
+            return;
+        HologramEntityStates.Prop prop = props.get(propIdx);
+        String current = HologramEntityStates.valueOf(cur.props(), prop);
+        String next = HologramEntityStates.cycle(prop, current, direction);
+        pushUndo();
+        Map<String, String> nextProps = new LinkedHashMap<>(cur.props());
+        if (next.equals(prop.defaultValue()))
+            nextProps.remove(prop.key());
+        else
+            nextProps.put(prop.key(), next);
         updateCurrentLayer(l -> l.withProps(nextProps));
         refresh();
     }
