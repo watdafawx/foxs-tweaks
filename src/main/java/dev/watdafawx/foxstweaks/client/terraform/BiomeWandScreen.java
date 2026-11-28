@@ -98,17 +98,20 @@ public final class BiomeWandScreen extends Screen {
             ry += 24;
         }
 
-        // Full Y Column vs Y-Slice
-        addRenderableWidget(Button.builder(
-                Component.literal(cfg.fullColumn() ? "Height: Full Y Column" : "Height: Y-Slice (" + cfg.sliceMinY() + ".." + cfg.sliceMaxY() + ")"),
-                b -> {
-                    cfg = cfg.withFullColumn(!cfg.fullColumn());
-                    syncConfig(false);
-                    rebuildWidgets();
-                }).bounds(rx, ry, rw, 20).build());
+        // Height mode: Surface (Keep Caves) / Full Y Column / Custom Y-Slice
+        String heightLabel = switch (cfg.heightMode()) {
+            case SURFACE -> "Height: Surface (Keep Caves)";
+            case FULL -> "Height: Full Y Column";
+            case SLICE -> "Height: Y-Slice (" + cfg.sliceMinY() + ".." + cfg.sliceMaxY() + ")";
+        };
+        addRenderableWidget(Button.builder(Component.literal(heightLabel), b -> {
+            cfg = cfg.withHeightMode(cfg.heightMode().next());
+            syncConfig(false);
+            rebuildWidgets();
+        }).bounds(rx, ry, rw, 20).build());
         ry += 24;
 
-        if (!cfg.fullColumn()) {
+        if (cfg.heightMode() == BiomeWandConfig.HeightMode.SLICE) {
             int hw = (rw - 4) / 2;
             addRenderableWidget(Button.builder(Component.literal("Min Y: " + cfg.sliceMinY()), b -> {
                 int next = hasShiftDown() ? cfg.sliceMinY() - 8 : cfg.sliceMinY() + 8;

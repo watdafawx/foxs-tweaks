@@ -1,5 +1,11 @@
 # Changelog
 
+## 1.60.2
+
+- **Biome Changer Wand — `Surface (Keep Caves)` mode (new default):** automatically paints from 8 blocks below each column's ground surface up to world top, so mountains, valleys, grass, and sky update without guessing Y-slice numbers while caves underneath stay untouched (`Full Y Column` and `Custom Y-Slice` remain available).
+- **Bigger Flood-Fill range:** raised default `biomeWandMaxRadius` from `64` to `256` (configurable up to `512` in `foxstweaks-server.toml`), with adaptive flood-fill stepping for fast selection across loaded chunks.
+- **FTB Chunks map preview polish:** replaced the rectangular bounding-box fill with a scanline polygon fill so irregular flood-fill and circular brush previews hug the exact outline.
+
 ## 1.60.1
 
 - **Terrain Flattener safety toggle:** added independent `Protect BEs: ON/OFF` toggle (default `ON`) alongside `Natural: ON/OFF`, plus a live warning when disabled so chests/machines aren't accidentally overwritten without inventory restoration.

@@ -57,6 +57,9 @@ public final class ExactBiomes extends SavedData {
         /** Length 256 (localZ << 4 | localX), 1-based palette index, 0 = none. Null if no column overrides. */
         @Nullable
         public final short[] columns;
+        /** Optional length 256 min-Y floor for each column override (Surface Keep Caves mode). Null = full Y column. */
+        @Nullable
+        public final short[] columnMinY;
         /** Packed ((y + Y_BIAS) << 8) | (localZ << 4) | localX -> 1-based palette index. Null if empty. */
         @Nullable
         public final Int2IntMap blocks;
@@ -65,8 +68,13 @@ public final class ExactBiomes extends SavedData {
         private volatile Holder<Biome>[] resolved;
 
         public ChunkSnapshot(ResourceLocation[] palette, @Nullable short[] columns, @Nullable Int2IntMap blocks) {
+            this(palette, columns, null, blocks);
+        }
+
+        public ChunkSnapshot(ResourceLocation[] palette, @Nullable short[] columns, @Nullable short[] columnMinY, @Nullable Int2IntMap blocks) {
             this.palette = palette;
             this.columns = columns;
+            this.columnMinY = columnMinY;
             this.blocks = blocks;
         }
 
@@ -84,7 +92,11 @@ public final class ExactBiomes extends SavedData {
                 idx = blocks.get(key);
             }
             if (idx == 0 && columns != null) {
-                idx = columns[(localZ << 4) | localX];
+                int colIdx = (localZ << 4) | localX;
+                int c = columns[colIdx];
+                if (c > 0 && (columnMinY == null || pos.getY() >= columnMinY[colIdx])) {
+                    idx = c;
+                }
             }
             if (idx <= 0 || idx > palette.length) {
                 return null;
@@ -116,6 +128,8 @@ public final class ExactBiomes extends SavedData {
         @Nullable
         private short[] columns;
         @Nullable
+        private short[] columnMinY;
+        @Nullable
         private Int2IntOpenHashMap blocks;
 
         public MutableChunk() {
@@ -130,6 +144,9 @@ public final class ExactBiomes extends SavedData {
             }
             if (snap.columns != null) {
                 m.columns = Arrays.copyOf(snap.columns, 256);
+            }
+            if (snap.columnMinY != null) {
+                m.columnMinY = Arrays.copyOf(snap.columnMinY, 256);
             }
             if (snap.blocks != null && !snap.blocks.isEmpty()) {
                 m.blocks = new Int2IntOpenHashMap(snap.blocks);
@@ -148,18 +165,30 @@ public final class ExactBiomes extends SavedData {
         }
 
         public void setColumn(int localX, int localZ, @Nullable ResourceLocation biomeId) {
+            setColumnAbove(localX, localZ, Short.MIN_VALUE, biomeId);
+        }
+
+        public void setColumnAbove(int localX, int localZ, int minY, @Nullable ResourceLocation biomeId) {
             int colIdx = ((localZ & 15) << 4) | (localX & 15);
             if (biomeId == null) {
-                if (columns != null) {
-                    columns[colIdx] = 0;
-                }
+                if (columns != null) columns[colIdx] = 0;
+                if (columnMinY != null) columnMinY[colIdx] = Short.MIN_VALUE;
             } else {
                 if (columns == null) columns = new short[256];
                 columns[colIdx] = (short) intern(biomeId);
+                if (minY > Short.MIN_VALUE) {
+                    if (columnMinY == null) {
+                        columnMinY = new short[256];
+                        Arrays.fill(columnMinY, Short.MIN_VALUE);
+                    }
+                    columnMinY[colIdx] = (short) Math.max(Short.MIN_VALUE, Math.min(Short.MAX_VALUE, minY));
+                } else if (columnMinY != null) {
+                    columnMinY[colIdx] = Short.MIN_VALUE;
+                }
             }
-            // Clear any 3D overrides in this column when overriding the full column.
+            // Clear any 3D overrides in this column at or above minY.
             if (blocks != null && !blocks.isEmpty()) {
-                blocks.int2IntEntrySet().removeIf(e -> (e.getIntKey() & 0xFF) == colIdx);
+                blocks.int2IntEntrySet().removeIf(e -> (e.getIntKey() & 0xFF) == colIdx && ((e.getIntKey() >>> 8) - Y_BIAS) >= minY);
             }
         }
 
@@ -226,7 +255,18 @@ public final class ExactBiomes extends SavedData {
                 }
                 if (outBlocks.isEmpty()) outBlocks = null;
             }
-            return new ChunkSnapshot(compact.toArray(ResourceLocation[]::new), outCols, outBlocks);
+            boolean anyMinY = false;
+            short[] outMinY = null;
+            if (hasCol && columnMinY != null) {
+                for (int i = 0; i < 256; i++) {
+                    if (outCols[i] != 0 && columnMinY[i] > Short.MIN_VALUE) {
+                        anyMinY = true;
+                        break;
+                    }
+                }
+                if (anyMinY) outMinY = Arrays.copyOf(columnMinY, 256);
+            }
+            return new ChunkSnapshot(compact.toArray(ResourceLocation[]::new), outCols, outMinY, outBlocks);
         }
     }
 
@@ -247,6 +287,13 @@ public final class ExactBiomes extends SavedData {
             if (hasCols) {
                 for (int i = 0; i < 256; i++) {
                     buf.writeVarInt(s.columns[i]);
+                }
+            }
+            boolean hasMinY = s.columnMinY != null;
+            buf.writeBoolean(hasMinY);
+            if (hasMinY) {
+                for (int i = 0; i < 256; i++) {
+                    buf.writeShort(s.columnMinY[i]);
                 }
             }
             int blockCount = s.blocks == null ? 0 : s.blocks.size();
@@ -273,6 +320,13 @@ public final class ExactBiomes extends SavedData {
                     cols[i] = (short) buf.readVarInt();
                 }
             }
+            short[] minY = null;
+            if (buf.readBoolean()) {
+                minY = new short[256];
+                for (int i = 0; i < 256; i++) {
+                    minY[i] = buf.readShort();
+                }
+            }
             int blockCount = buf.readVarInt();
             Int2IntOpenHashMap blocks = null;
             if (blockCount > 0) {
@@ -284,7 +338,7 @@ public final class ExactBiomes extends SavedData {
                     blocks.put(k, v);
                 }
             }
-            return new ChunkPacketData(chunkPos, new ChunkSnapshot(pal, cols, blocks));
+            return new ChunkPacketData(chunkPos, new ChunkSnapshot(pal, cols, minY, blocks));
         }
     }
 
@@ -392,6 +446,11 @@ public final class ExactBiomes extends SavedData {
                 for (int i = 0; i < 256; i++) colInts[i] = s.columns[i];
                 ct.putIntArray("col", colInts);
             }
+            if (s.columnMinY != null) {
+                int[] minInts = new int[256];
+                for (int i = 0; i < 256; i++) minInts[i] = s.columnMinY[i];
+                ct.putIntArray("cmy", minInts);
+            }
             if (s.blocks != null && !s.blocks.isEmpty()) {
                 int[] keys = new int[s.blocks.size()];
                 int[] vals = new int[s.blocks.size()];
@@ -429,6 +488,14 @@ public final class ExactBiomes extends SavedData {
                     for (int j = 0; j < 256; j++) cols[j] = (short) colInts[j];
                 }
             }
+            short[] minY = null;
+            if (ct.contains("cmy", Tag.TAG_INT_ARRAY)) {
+                int[] minInts = ct.getIntArray("cmy");
+                if (minInts.length == 256) {
+                    minY = new short[256];
+                    for (int j = 0; j < 256; j++) minY[j] = (short) minInts[j];
+                }
+            }
             Int2IntOpenHashMap blocks = null;
             if (ct.contains("bk", Tag.TAG_INT_ARRAY) && ct.contains("bv", Tag.TAG_INT_ARRAY)) {
                 int[] keys = ct.getIntArray("bk");
@@ -442,7 +509,7 @@ public final class ExactBiomes extends SavedData {
                     }
                 }
             }
-            ChunkSnapshot snap = new ChunkSnapshot(pal, cols, blocks);
+            ChunkSnapshot snap = new ChunkSnapshot(pal, cols, minY, blocks);
             if (!snap.isEmpty()) {
                 data.chunks.put(chunkKey, snap);
             }

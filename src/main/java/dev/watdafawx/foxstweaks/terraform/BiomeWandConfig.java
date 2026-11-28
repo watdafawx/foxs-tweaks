@@ -12,14 +12,15 @@ import java.util.Optional;
 
 /**
  * Stored as a DataComponent on the Biome Wand item. Holds the selection mode, target biome,
- * vertical range, precision/snow options, and current selection points.
+ * vertical range mode (Surface / Full Column / Custom Y-Slice), precision/snow options, and
+ * current selection points.
  */
 public record BiomeWandConfig(
         Mode mode,
         ResourceLocation targetBiome,
         int brushRadius,
         int floodRadius,
-        boolean fullColumn,
+        HeightMode heightMode,
         int sliceMinY,
         int sliceMaxY,
         boolean exactEdges,
@@ -49,14 +50,36 @@ public record BiomeWandConfig(
         }
     }
 
+    public enum HeightMode {
+        SURFACE("Surface (Keep Caves)"),
+        FULL("Full Y Column"),
+        SLICE("Custom Y-Slice");
+
+        public final String label;
+
+        HeightMode(String label) {
+            this.label = label;
+        }
+
+        public HeightMode next() {
+            HeightMode[] vals = values();
+            return vals[(ordinal() + 1) % vals.length];
+        }
+
+        public static HeightMode byOrdinal(int ord) {
+            HeightMode[] vals = values();
+            return vals[Math.floorMod(ord, vals.length)];
+        }
+    }
+
     public static final ResourceLocation DEFAULT_BIOME = ResourceLocation.withDefaultNamespace("cherry_grove");
 
     public static final BiomeWandConfig DEFAULT = new BiomeWandConfig(
             Mode.BOX,
             DEFAULT_BIOME,
             16,
-            64,
-            true,
+            128,
+            HeightMode.SURFACE,
             60,
             128,
             true,
@@ -69,8 +92,8 @@ public record BiomeWandConfig(
             Codec.INT.xmap(Mode::byOrdinal, Mode::ordinal).optionalFieldOf("mode", Mode.BOX).forGetter(BiomeWandConfig::mode),
             ResourceLocation.CODEC.optionalFieldOf("target_biome", DEFAULT_BIOME).forGetter(BiomeWandConfig::targetBiome),
             Codec.INT.optionalFieldOf("brush_radius", 16).forGetter(BiomeWandConfig::brushRadius),
-            Codec.INT.optionalFieldOf("flood_radius", 64).forGetter(BiomeWandConfig::floodRadius),
-            Codec.BOOL.optionalFieldOf("full_column", true).forGetter(BiomeWandConfig::fullColumn),
+            Codec.INT.optionalFieldOf("flood_radius", 128).forGetter(BiomeWandConfig::floodRadius),
+            Codec.INT.xmap(HeightMode::byOrdinal, HeightMode::ordinal).optionalFieldOf("height_mode", HeightMode.SURFACE).forGetter(BiomeWandConfig::heightMode),
             Codec.INT.optionalFieldOf("slice_min_y", 60).forGetter(BiomeWandConfig::sliceMinY),
             Codec.INT.optionalFieldOf("slice_max_y", 128).forGetter(BiomeWandConfig::sliceMaxY),
             Codec.BOOL.optionalFieldOf("exact_edges", true).forGetter(BiomeWandConfig::exactEdges),
@@ -87,7 +110,7 @@ public record BiomeWandConfig(
         buf.writeResourceLocation(c.targetBiome);
         buf.writeVarInt(c.brushRadius);
         buf.writeVarInt(c.floodRadius);
-        buf.writeBoolean(c.fullColumn);
+        buf.writeVarInt(c.heightMode.ordinal());
         buf.writeVarInt(c.sliceMinY);
         buf.writeVarInt(c.sliceMaxY);
         buf.writeBoolean(c.exactEdges);
@@ -101,15 +124,19 @@ public record BiomeWandConfig(
         ResourceLocation biome = buf.readResourceLocation();
         int brushRadius = buf.readVarInt();
         int floodRadius = buf.readVarInt();
-        boolean fullColumn = buf.readBoolean();
+        HeightMode heightMode = HeightMode.byOrdinal(buf.readVarInt());
         int sliceMinY = buf.readVarInt();
         int sliceMaxY = buf.readVarInt();
         boolean exactEdges = buf.readBoolean();
         boolean clearSnow = buf.readBoolean();
         Optional<BlockPos> pos1 = ByteBufCodecs.optional(BlockPos.STREAM_CODEC).decode(buf);
         Optional<BlockPos> pos2 = ByteBufCodecs.optional(BlockPos.STREAM_CODEC).decode(buf);
-        return new BiomeWandConfig(mode, biome, brushRadius, floodRadius, fullColumn, sliceMinY, sliceMaxY,
+        return new BiomeWandConfig(mode, biome, brushRadius, floodRadius, heightMode, sliceMinY, sliceMaxY,
                 exactEdges, clearSnow, pos1, pos2);
+    }
+
+    public boolean fullColumn() {
+        return heightMode == HeightMode.FULL;
     }
 
     public boolean hasSelection() {
@@ -120,39 +147,43 @@ public record BiomeWandConfig(
     }
 
     public BiomeWandConfig withMode(Mode m) {
-        return new BiomeWandConfig(m, targetBiome, brushRadius, floodRadius, fullColumn, sliceMinY, sliceMaxY, exactEdges, clearSnow, Optional.empty(), Optional.empty());
+        return new BiomeWandConfig(m, targetBiome, brushRadius, floodRadius, heightMode, sliceMinY, sliceMaxY, exactEdges, clearSnow, Optional.empty(), Optional.empty());
     }
 
     public BiomeWandConfig withTargetBiome(ResourceLocation biome) {
-        return new BiomeWandConfig(mode, biome, brushRadius, floodRadius, fullColumn, sliceMinY, sliceMaxY, exactEdges, clearSnow, pos1, pos2);
+        return new BiomeWandConfig(mode, biome, brushRadius, floodRadius, heightMode, sliceMinY, sliceMaxY, exactEdges, clearSnow, pos1, pos2);
     }
 
     public BiomeWandConfig withBrushRadius(int r) {
-        return new BiomeWandConfig(mode, targetBiome, r, floodRadius, fullColumn, sliceMinY, sliceMaxY, exactEdges, clearSnow, pos1, pos2);
+        return new BiomeWandConfig(mode, targetBiome, r, floodRadius, heightMode, sliceMinY, sliceMaxY, exactEdges, clearSnow, pos1, pos2);
     }
 
     public BiomeWandConfig withFloodRadius(int r) {
-        return new BiomeWandConfig(mode, targetBiome, brushRadius, r, fullColumn, sliceMinY, sliceMaxY, exactEdges, clearSnow, pos1, pos2);
+        return new BiomeWandConfig(mode, targetBiome, brushRadius, r, heightMode, sliceMinY, sliceMaxY, exactEdges, clearSnow, pos1, pos2);
+    }
+
+    public BiomeWandConfig withHeightMode(HeightMode hm) {
+        return new BiomeWandConfig(mode, targetBiome, brushRadius, floodRadius, hm, sliceMinY, sliceMaxY, exactEdges, clearSnow, pos1, pos2);
     }
 
     public BiomeWandConfig withFullColumn(boolean fc) {
-        return new BiomeWandConfig(mode, targetBiome, brushRadius, floodRadius, fc, sliceMinY, sliceMaxY, exactEdges, clearSnow, pos1, pos2);
+        return withHeightMode(fc ? HeightMode.FULL : HeightMode.SLICE);
     }
 
     public BiomeWandConfig withSliceY(int minY, int maxY) {
-        return new BiomeWandConfig(mode, targetBiome, brushRadius, floodRadius, fullColumn, Math.min(minY, maxY), Math.max(minY, maxY), exactEdges, clearSnow, pos1, pos2);
+        return new BiomeWandConfig(mode, targetBiome, brushRadius, floodRadius, heightMode, Math.min(minY, maxY), Math.max(minY, maxY), exactEdges, clearSnow, pos1, pos2);
     }
 
     public BiomeWandConfig withExactEdges(boolean ee) {
-        return new BiomeWandConfig(mode, targetBiome, brushRadius, floodRadius, fullColumn, sliceMinY, sliceMaxY, ee, clearSnow, pos1, pos2);
+        return new BiomeWandConfig(mode, targetBiome, brushRadius, floodRadius, heightMode, sliceMinY, sliceMaxY, ee, clearSnow, pos1, pos2);
     }
 
     public BiomeWandConfig withClearSnow(boolean cs) {
-        return new BiomeWandConfig(mode, targetBiome, brushRadius, floodRadius, fullColumn, sliceMinY, sliceMaxY, exactEdges, cs, pos1, pos2);
+        return new BiomeWandConfig(mode, targetBiome, brushRadius, floodRadius, heightMode, sliceMinY, sliceMaxY, exactEdges, cs, pos1, pos2);
     }
 
     public BiomeWandConfig withPositions(Optional<BlockPos> p1, Optional<BlockPos> p2) {
-        return new BiomeWandConfig(mode, targetBiome, brushRadius, floodRadius, fullColumn, sliceMinY, sliceMaxY, exactEdges, clearSnow, p1, p2);
+        return new BiomeWandConfig(mode, targetBiome, brushRadius, floodRadius, heightMode, sliceMinY, sliceMaxY, exactEdges, clearSnow, p1, p2);
     }
 
     public BiomeWandConfig cleared() {

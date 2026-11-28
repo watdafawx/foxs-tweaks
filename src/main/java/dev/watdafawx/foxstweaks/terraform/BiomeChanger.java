@@ -98,23 +98,39 @@ public final class BiomeChanger {
                 int chunkMinX = cx << 4;
                 int chunkMinZ = cz << 4;
                 boolean[] fullInsideQuart = new boolean[16]; // (lqz << 2) | lqx
+                int[] quartMinQY = new int[16]; // per-quart minimum quart-Y for SURFACE mode
+                BiomeWandConfig.HeightMode hMode = cfg.heightMode();
 
                 for (int lqz = 0; lqz < 4; lqz++) {
                     for (int lqx = 0; lqx < 4; lqx++) {
                         int baseX = chunkMinX + (lqx << 2);
                         int baseZ = chunkMinZ + (lqz << 2);
                         int insideCount = 0;
+                        int minSurfY = Integer.MAX_VALUE;
                         for (int dz = 0; dz < 4; dz++) {
                             for (int dx = 0; dx < 4; dx++) {
-                                if (sel.contains(baseX + dx, baseZ + dz)) insideCount++;
+                                if (sel.contains(baseX + dx, baseZ + dz)) {
+                                    insideCount++;
+                                    if (hMode == BiomeWandConfig.HeightMode.SURFACE) {
+                                        int sy = chunk.getHeight(Heightmap.Types.MOTION_BLOCKING_NO_LEAVES, (lqx << 2) + dx, (lqz << 2) + dz);
+                                        if (sy < minSurfY) minSurfY = sy;
+                                    }
+                                }
                             }
                         }
                         if (insideCount == 0) continue;
 
                         if (insideCount == 16 || !cfg.exactEdges()) {
                             // Full quart column (or 4x4 mode): write to vanilla quart storage
-                            fullInsideQuart[(lqz << 2) | lqx] = true;
-                            if (cfg.fullColumn()) {
+                            int qIdx = (lqz << 2) | lqx;
+                            fullInsideQuart[qIdx] = true;
+                            if (hMode == BiomeWandConfig.HeightMode.SURFACE) {
+                                int floorY = Math.max(level.getMinBuildHeight(), minSurfY - 8);
+                                quartMinQY[qIdx] = QuartPos.fromBlock(floorY);
+                            } else {
+                                quartMinQY[qIdx] = minQY;
+                            }
+                            if (hMode != BiomeWandConfig.HeightMode.SLICE) {
                                 // Clear any stale exact overrides in this interior quart
                                 for (int dz = 0; dz < 4; dz++) {
                                     for (int dx = 0; dx < 4; dx++) {
@@ -134,8 +150,11 @@ public final class BiomeChanger {
                                     if (!sel.contains(wx, wz)) continue;
                                     int lx = (lqx << 2) + dx;
                                     int lz = (lqz << 2) + dz;
-                                    if (cfg.fullColumn()) {
+                                    if (hMode == BiomeWandConfig.HeightMode.FULL) {
                                         mutExact.setColumn(lx, lz, targetId);
+                                    } else if (hMode == BiomeWandConfig.HeightMode.SURFACE) {
+                                        int sy = chunk.getHeight(Heightmap.Types.MOTION_BLOCKING_NO_LEAVES, lx, lz);
+                                        mutExact.setColumnAbove(lx, lz, Math.max(level.getMinBuildHeight(), sy - 8), targetId);
                                     } else {
                                         for (int y = sel.minY; y <= sel.maxY; y++) {
                                             mutExact.setBlock(lx, y, lz, targetId);
@@ -161,20 +180,22 @@ public final class BiomeChanger {
                     // Snapshot & mutate quart cells
                     final int chunkQX = cx << 2;
                     final int chunkQZ = cz << 2;
-                    int fullMinQY = cfg.fullColumn() ? minQY : QuartPos.fromBlock(sel.minY + 3);
-                    int fullMaxQY = cfg.fullColumn() ? maxQY : QuartPos.fromBlock(sel.maxY - 3);
+                    int fullMinQY = hMode == BiomeWandConfig.HeightMode.SLICE ? QuartPos.fromBlock(sel.minY + 3) : minQY;
+                    int fullMaxQY = hMode == BiomeWandConfig.HeightMode.SLICE ? QuartPos.fromBlock(sel.maxY - 3) : maxQY;
 
                     BiomeResolver resolver = (qx, qy, qz, sampler) -> {
                         int lqx = qx - chunkQX;
                         int lqz = qz - chunkQZ;
                         Holder<Biome> existing = chunk.getNoiseBiome(qx, qy, qz);
-                        if (lqx >= 0 && lqx < 4 && lqz >= 0 && lqz < 4
-                                && fullInsideQuart[(lqz << 2) | lqx]
-                                && qy >= fullMinQY && qy <= fullMaxQY) {
-                            if (!existing.equals(targetHolder)) {
-                                chunkBackups.add(new TerraformUndoStore.QuartEntry(qx, qy, qz, existing));
+                        if (lqx >= 0 && lqx < 4 && lqz >= 0 && lqz < 4) {
+                            int qIdx = (lqz << 2) | lqx;
+                            int effMinQY = hMode == BiomeWandConfig.HeightMode.SURFACE ? quartMinQY[qIdx] : fullMinQY;
+                            if (fullInsideQuart[qIdx] && qy >= effMinQY && qy <= fullMaxQY) {
+                                if (!existing.equals(targetHolder)) {
+                                    chunkBackups.add(new TerraformUndoStore.QuartEntry(qx, qy, qz, existing));
+                                }
+                                return targetHolder;
                             }
-                            return targetHolder;
                         }
                         return existing;
                     };
@@ -183,7 +204,7 @@ public final class BiomeChanger {
                     vanillaTouched = true;
 
                     // If Y-slice mode with exactEdges, also handle top/bottom partial Y quart bands
-                    if (!cfg.fullColumn() && cfg.exactEdges()) {
+                    if (hMode == BiomeWandConfig.HeightMode.SLICE && cfg.exactEdges()) {
                         for (int lqz = 0; lqz < 4; lqz++) {
                             for (int lqx = 0; lqx < 4; lqx++) {
                                 if (!fullInsideQuart[(lqz << 2) | lqx]) continue;

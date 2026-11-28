@@ -61,8 +61,12 @@ public final class BiomeSelection {
 
         int worldMinY = level.getMinBuildHeight();
         int worldMaxY = level.getMaxBuildHeight() - 1;
-        int minY = cfg.fullColumn() ? worldMinY : Math.max(worldMinY, Math.min(cfg.sliceMinY(), cfg.sliceMaxY()));
-        int maxY = cfg.fullColumn() ? worldMaxY : Math.min(worldMaxY, Math.max(cfg.sliceMinY(), cfg.sliceMaxY()));
+        int minY = cfg.heightMode() == BiomeWandConfig.HeightMode.SLICE
+                ? Math.max(worldMinY, Math.min(cfg.sliceMinY(), cfg.sliceMaxY()))
+                : worldMinY;
+        int maxY = cfg.heightMode() == BiomeWandConfig.HeightMode.SLICE
+                ? Math.min(worldMaxY, Math.max(cfg.sliceMinY(), cfg.sliceMaxY()))
+                : worldMaxY;
 
         return switch (cfg.mode()) {
             case BOX -> computeBox(cfg.pos1().orElseThrow(), cfg.pos2().orElseThrow(), minY, maxY, maxRadiusCap);
@@ -115,7 +119,7 @@ public final class BiomeSelection {
      */
     private static BiomeSelection computeFloodFill(Level level, BlockPos seed, int maxRadius, int minY, int maxY) {
         int r = Math.max(4, maxRadius);
-        int step = r > 48 ? 2 : 1;
+        int step = r > 128 ? 4 : (r > 48 ? 2 : 1);
         int seedY = seed.getY();
         Holder<Biome> seedBiome = level.getBiome(seed);
         var seedKey = seedBiome.unwrapKey().orElse(null);

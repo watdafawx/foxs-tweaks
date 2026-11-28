@@ -171,6 +171,11 @@ public final class TerraformUndoStore {
                         for (int i = 0; i < 256; i++) cols[i] = s.columns[i];
                         ct.putIntArray("col", cols);
                     }
+                    if (s.columnMinY != null) {
+                        int[] cmy = new int[256];
+                        for (int i = 0; i < 256; i++) cmy[i] = s.columnMinY[i];
+                        ct.putIntArray("cmy", cmy);
+                    }
                     if (s.blocks != null && !s.blocks.isEmpty()) {
                         int[] bk = new int[s.blocks.size()];
                         int[] bv = new int[s.blocks.size()];
@@ -260,6 +265,14 @@ public final class TerraformUndoStore {
                         for (int j = 0; j < 256; j++) cols[j] = (short) ci[j];
                     }
                 }
+                short[] cmy = null;
+                if (ct.contains("cmy", Tag.TAG_INT_ARRAY)) {
+                    int[] mi = ct.getIntArray("cmy");
+                    if (mi.length == 256) {
+                        cmy = new short[256];
+                        for (int j = 0; j < 256; j++) cmy[j] = (short) mi[j];
+                    }
+                }
                 Int2IntOpenHashMap blocks = null;
                 if (ct.contains("bk", Tag.TAG_INT_ARRAY) && ct.contains("bv", Tag.TAG_INT_ARRAY)) {
                     int[] bk = ct.getIntArray("bk");
@@ -271,7 +284,7 @@ public final class TerraformUndoStore {
                         for (int j = 0; j < n; j++) blocks.put(bk[j], bv[j]);
                     }
                 }
-                prevExact.put(cKey, new ExactBiomes.ChunkSnapshot(pal, cols, blocks));
+                prevExact.put(cKey, new ExactBiomes.ChunkSnapshot(pal, cols, cmy, blocks));
             }
 
             Map<BlockPos, BlockState> prevSnow = root.contains("snow", Tag.TAG_COMPOUND)

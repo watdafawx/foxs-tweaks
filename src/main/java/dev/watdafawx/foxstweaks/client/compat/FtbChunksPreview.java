@@ -52,13 +52,27 @@ public final class FtbChunksPreview {
         int fillColor = 0x44000000 | preview.rgb();
         int borderColor = 0xEE000000 | preview.rgb();
 
-        // Translucent fill over bounding box (fast, clean, and clipped to panel)
-        int fx0 = Math.max(panelX, minSX);
+        // Scanline-fill the actual polygon shape (hugs circles and irregular flood-fill biomes)
         int fy0 = Math.max(panelY, minSY);
-        int fx1 = Math.min(panelX + panelW, maxSX);
         int fy1 = Math.min(panelY + panelH, maxSY);
-        if (fx1 > fx0 && fy1 > fy0) {
-            graphics.fill(fx0, fy0, fx1, fy1, fillColor);
+        int n = sx.length;
+        int[] xs = new int[n];
+        for (int py = fy0; py < fy1; py++) {
+            int hits = 0;
+            for (int i = 0, j = n - 1; i < n; j = i++) {
+                int y0 = sy[i], y1 = sy[j];
+                if ((y0 <= py && y1 > py) || (y1 <= py && y0 > py)) {
+                    xs[hits++] = sx[i] + (py - y0) * (sx[j] - sx[i]) / (y1 - y0);
+                }
+            }
+            java.util.Arrays.sort(xs, 0, hits);
+            for (int i = 0; i + 1 < hits; i += 2) {
+                int xStart = Math.max(panelX, xs[i]);
+                int xEnd = Math.min(panelX + panelW, xs[i + 1]);
+                if (xEnd > xStart) {
+                    graphics.fill(xStart, py, xEnd, py + 1, fillColor);
+                }
+            }
         }
 
         // Draw crisp polygon perimeter segments

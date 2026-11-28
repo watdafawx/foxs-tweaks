@@ -151,8 +151,8 @@ public final class TerraformPreviewRenderer {
             line(vc, mat, pose, e.x1, e.y1, e.z1, e.x1, e.y1 + 2.5F, e.z1, r, g, b, 0.4F);
         }
 
-        // If Y-slice mode, also draw subtle top/bottom corner bounds
-        if (!cfg.fullColumn() && cachedBiomeSel != null) {
+        // If Custom Y-slice mode, also draw subtle top/bottom corner bounds
+        if (cfg.heightMode() == BiomeWandConfig.HeightMode.SLICE && cachedBiomeSel != null) {
             drawYBandBox(poseStack, vc, cachedBiomeSel.minX, cachedBiomeSel.minY, cachedBiomeSel.minZ,
                     cachedBiomeSel.maxX() + 1, cachedBiomeSel.maxY + 1, cachedBiomeSel.maxZ() + 1,
                     r, g, b, 0.35F);
