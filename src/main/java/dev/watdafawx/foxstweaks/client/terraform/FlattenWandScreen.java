@@ -32,8 +32,8 @@ public final class FlattenWandScreen extends Screen {
 
     @Override
     protected void init() {
-        panelX = (width - panelW) / 2;
-        panelY = (height - panelH) / 2;
+        panelX = 12;
+        panelY = Math.max(8, (height - panelH) / 2);
         int x = panelX + 12;
         int w = panelW - 24;
         int y = panelY + 20;
@@ -108,16 +108,22 @@ public final class FlattenWandScreen extends Screen {
         }
         y += step;
 
-        // Tree handling option
-        addRenderableWidget(Button.builder(Component.literal("Trees: " + cfg.treeMode().label), b -> {
+        // Tree & Water handling options (side-by-side compact row)
+        int halfW = (w - 4) / 2;
+        addRenderableWidget(Button.builder(Component.literal("Trees: " + shortTreeLabel(cfg.treeMode())), b -> {
             cfg = cfg.withTreeMode(cfg.treeMode().next());
             syncConfig(false);
             rebuildWidgets();
-        }).bounds(x, y, w, h).build());
+        }).bounds(x, y, halfW, h).build());
+
+        addRenderableWidget(Button.builder(Component.literal("Water: " + cfg.waterMode().label), b -> {
+            cfg = cfg.withWaterMode(cfg.waterMode().next());
+            syncConfig(false);
+            rebuildWidgets();
+        }).bounds(x + halfW + 4, y, halfW, h).build());
         y += step;
 
         // Natural blocks only & Protect block entities (side-by-side compact row)
-        int halfW = (w - 4) / 2;
         addRenderableWidget(Button.builder(Component.literal("Natural: " + (cfg.naturalOnly() ? "ON" : "OFF")), b -> {
             cfg = cfg.withNaturalOnly(!cfg.naturalOnly());
             syncConfig(false);
@@ -154,14 +160,29 @@ public final class FlattenWandScreen extends Screen {
         }).bounds(x + bw + 4, by, bw, h).build());
     }
 
+    private static String shortTreeLabel(FlattenWandConfig.TreeMode m) {
+        return switch (m) {
+            case REMOVE -> "Remove";
+            case KEEP -> "Keep";
+            case REPLANT -> "Replant";
+        };
+    }
+
     private void syncConfig(boolean applyNow) {
+        net.minecraft.client.Minecraft mc = net.minecraft.client.Minecraft.getInstance();
+        if (mc.player != null) {
+            ItemStack held = mc.player.getItemInHand(hand);
+            if (held.getItem() instanceof FlattenWandItem) {
+                FlattenWandItem.setConfig(held, cfg);
+            }
+        }
         PacketDistributor.sendToServer(new TerraformNetwork.UpdateFlattenWandPayload(hand == InteractionHand.MAIN_HAND, cfg, applyNow));
     }
 
     @Override
     public void renderBackground(GuiGraphics g, int mouseX, int mouseY, float partialTick) {
-        g.fill(0, 0, width, height, 0x88000000);
-        g.fill(panelX, panelY, panelX + panelW, panelY + panelH, 0xEC161920);
+        // No fullscreen dim so the live 3D terrain wireframe stays fully visible while dragging sliders
+        g.fill(panelX, panelY, panelX + panelW, panelY + panelH, 0xD8161920);
         g.renderOutline(panelX, panelY, panelW, panelH, 0xFF3B4354);
     }
 

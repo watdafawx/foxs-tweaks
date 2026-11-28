@@ -46,6 +46,7 @@ public final class TerrainFlattener {
             int targetY,
             int[] oldH,
             int[] newH,
+            int[] waterTop,
             boolean[] inMask,
             boolean[] hasTree
     ) {
@@ -107,6 +108,8 @@ public final class TerrainFlattener {
         int total = width * depth;
 
         int[] oldH = new int[total];
+        int[] waterTop = new int[total];
+        java.util.Arrays.fill(waterTop, Integer.MIN_VALUE);
         boolean[] inMask = new boolean[total];
         boolean[] hasTree = new boolean[total];
         float[] weight = new float[total];
@@ -151,11 +154,15 @@ public final class TerrainFlattener {
                 int minBuild = level.getMinBuildHeight();
                 boolean foundTree = false;
                 int groundY = minBuild;
+                int highestWater = Integer.MIN_VALUE;
 
                 for (int y = Math.min(top, level.getMaxBuildHeight() - 1); y >= minBuild; y--) {
                     mp.set(wx, y, wz);
                     BlockState st = level.getBlockState(mp);
-                    if (st.isAir() || isVegetation(st)) {
+                    if (st.isAir() || isVegetation(st) || isWaterOrAquatic(st)) {
+                        if (!st.getFluidState().isEmpty() && highestWater == Integer.MIN_VALUE) {
+                            highestWater = y;
+                        }
                         if (st.is(BlockTags.LOGS) || st.is(BlockTags.LEAVES)) {
                             foundTree = true;
                         }
@@ -166,6 +173,7 @@ public final class TerrainFlattener {
                 }
 
                 oldH[idx] = groundY;
+                waterTop[idx] = highestWater;
                 hasTree[idx] = foundTree;
                 sumH += groundY;
                 countH++;
@@ -235,13 +243,17 @@ public final class TerrainFlattener {
                 newH[i] = oldH[i];
                 continue;
             }
+            if (cfg.waterMode() == FlattenWandConfig.WaterMode.KEEP && waterTop[i] != Integer.MIN_VALUE) {
+                newH[i] = oldH[i];
+                continue;
+            }
             float base = Mth.lerp(smoothMix, (float) oldH[i], smoothed[i]);
             float flattened = Mth.lerp(flatness, base, (float) targetY);
             float blended = Mth.lerp(weight[i], (float) oldH[i], flattened);
             newH[i] = Mth.clamp(Math.round(blended), level.getMinBuildHeight() + 1, level.getMaxBuildHeight() - 2);
         }
 
-        return new Plan(minX, minZ, width, depth, targetY, oldH, newH, inMask, hasTree);
+        return new Plan(minX, minZ, width, depth, targetY, oldH, newH, waterTop, inMask, hasTree);
     }
 
     private static float computeFeatherWeight(float distFromEdgeNorm, float feather) {
@@ -289,13 +301,20 @@ public final class TerrainFlattener {
 
             int oldY = job.plan.oldH[idx];
             int newY = job.plan.newH[idx];
+            int wTop = job.plan.waterTop[idx];
             boolean treeCol = job.plan.hasTree[idx];
+            boolean hasWater = wTop != Integer.MIN_VALUE;
 
-            if (oldY == newY && !(treeCol && job.cfg.treeMode() == FlattenWandConfig.TreeMode.REMOVE)) {
+            if (hasWater && job.cfg.waterMode() == FlattenWandConfig.WaterMode.KEEP) {
+                continue;
+            }
+            if (oldY == newY
+                    && !(treeCol && job.cfg.treeMode() == FlattenWandConfig.TreeMode.REMOVE)
+                    && !(hasWater && job.cfg.waterMode() != FlattenWandConfig.WaterMode.KEEP)) {
                 continue;
             }
 
-            if (applyColumn(job, wx, wz, oldY, newY, treeCol)) {
+            if (applyColumn(job, wx, wz, oldY, newY, wTop, treeCol)) {
                 job.changedColumns++;
             }
             processed++;
@@ -318,14 +337,14 @@ public final class TerrainFlattener {
         }
     }
 
-    private static boolean applyColumn(ActiveJob job, int wx, int wz, int oldY, int newY, boolean treeCol) {
+    private static boolean applyColumn(ActiveJob job, int wx, int wz, int oldY, int newY, int waterTop, boolean treeCol) {
         ServerLevel level = job.level;
         BlockPos.MutableBlockPos mp = new BlockPos.MutableBlockPos();
 
         // Safety: skip column if protected block entity or non-natural block is in the edited range
         if (job.cfg.protectBlockEntities() || job.cfg.naturalOnly()) {
             int checkLow = Math.min(oldY, newY) - 4;
-            int checkHigh = Math.max(oldY, newY) + 1;
+            int checkHigh = Math.max(Math.max(oldY, newY), waterTop == Integer.MIN_VALUE ? oldY : waterTop) + 1;
             for (int y = checkLow; y <= checkHigh; y++) {
                 mp.set(wx, y, wz);
                 if (job.cfg.protectBlockEntities() && level.getBlockEntity(mp) != null) return false;
@@ -338,7 +357,8 @@ public final class TerrainFlattener {
 
         // Capture surface strata (top block + 3 subsurface blocks) so the result looks naturally generated
         BlockState surface = level.getBlockState(mp.set(wx, oldY, wz));
-        if (surface.isAir() || isVegetation(surface) || surface.is(Blocks.WATER)) {
+        if (surface.isAir() || isVegetation(surface) || isWaterOrAquatic(surface)
+                || (waterTop != Integer.MIN_VALUE && job.cfg.waterMode() == FlattenWandConfig.WaterMode.FILL && (surface.is(Blocks.DIRT) || surface.is(Blocks.GRAVEL) || surface.is(Blocks.CLAY)))) {
             surface = Blocks.GRASS_BLOCK.defaultBlockState();
         }
         BlockState sub1 = pickSubsurface(level.getBlockState(mp.set(wx, oldY - 1, wz)), surface);
@@ -348,7 +368,7 @@ public final class TerrainFlattener {
 
         // Detect tree sapling if REPLANT mode is active
         BlockState saplingToPlant = null;
-        int topScan = level.getHeight(Heightmap.Types.MOTION_BLOCKING, wx, wz) + 2;
+        int topScan = Math.max(level.getHeight(Heightmap.Types.MOTION_BLOCKING, wx, wz), waterTop == Integer.MIN_VALUE ? oldY : waterTop) + 2;
         if (treeCol && job.cfg.treeMode() != FlattenWandConfig.TreeMode.KEEP) {
             for (int y = oldY + 1; y <= Math.min(topScan, level.getMaxBuildHeight() - 1); y++) {
                 mp.set(wx, y, wz);
@@ -360,12 +380,12 @@ public final class TerrainFlattener {
                     setTracked(job, mp, Blocks.AIR.defaultBlockState());
                 }
             }
-        } else if (newY != oldY) {
-            // Clear small surface grass/flowers/snow above oldY
-            for (int y = oldY + 1; y <= Math.min(oldY + 3, level.getMaxBuildHeight() - 1); y++) {
+        } else if (newY != oldY || waterTop != Integer.MIN_VALUE) {
+            // Clear small surface grass/flowers/snow/sugarcane/water above oldY
+            for (int y = oldY + 1; y <= Math.min(Math.max(oldY + 3, topScan), level.getMaxBuildHeight() - 1); y++) {
                 mp.set(wx, y, wz);
                 BlockState st = level.getBlockState(mp);
-                if (isGroundCover(st)) {
+                if (isGroundCover(st) || (isWaterOrAquatic(st) && job.cfg.waterMode() != FlattenWandConfig.WaterMode.KEEP)) {
                     setTracked(job, mp, Blocks.AIR.defaultBlockState());
                 }
             }
@@ -389,6 +409,15 @@ public final class TerrainFlattener {
             if (newY - 2 >= oldY) setTracked(job, mp.set(wx, newY - 2, wz), sub2);
             if (newY - 1 >= oldY) setTracked(job, mp.set(wx, newY - 1, wz), sub1);
             setTracked(job, mp.set(wx, newY, wz), surface);
+        } else if (waterTop != Integer.MIN_VALUE && job.cfg.waterMode() == FlattenWandConfig.WaterMode.FILL) {
+            setTracked(job, mp.set(wx, newY, wz), surface);
+        }
+
+        // Smooth Pond mode: refill still source water up to original waterTop (eliminating flowing currents)
+        if (waterTop != Integer.MIN_VALUE && job.cfg.waterMode() == FlattenWandConfig.WaterMode.LEVEL && newY < waterTop) {
+            for (int y = newY + 1; y <= waterTop; y++) {
+                setTracked(job, mp.set(wx, y, wz), Blocks.WATER.defaultBlockState());
+            }
         }
 
         if (saplingToPlant != null && (surface.is(BlockTags.DIRT) || surface.is(Blocks.GRASS_BLOCK))) {
@@ -442,17 +471,26 @@ public final class TerrainFlattener {
         return st.is(BlockTags.LOGS) || st.is(BlockTags.LEAVES) || isGroundCover(st);
     }
 
+    private static boolean isWaterOrAquatic(BlockState st) {
+        return !st.getFluidState().isEmpty()
+                || st.is(Blocks.WATER)
+                || st.is(Blocks.SEAGRASS) || st.is(Blocks.TALL_SEAGRASS)
+                || st.is(Blocks.KELP) || st.is(Blocks.KELP_PLANT)
+                || st.is(Blocks.LILY_PAD);
+    }
+
     private static boolean isGroundCover(BlockState st) {
         return st.is(BlockTags.FLOWERS) || st.is(BlockTags.REPLACEABLE)
                 || st.is(BlockTags.SAPLINGS) || st.is(Blocks.SNOW)
                 || st.is(Blocks.SHORT_GRASS) || st.is(Blocks.TALL_GRASS)
                 || st.is(Blocks.FERN) || st.is(Blocks.LARGE_FERN)
                 || st.is(Blocks.DEAD_BUSH) || st.is(Blocks.VINE)
-                || st.is(Blocks.PINK_PETALS);
+                || st.is(Blocks.PINK_PETALS) || st.is(Blocks.SUGAR_CANE);
     }
 
     private static boolean isNaturalOrVegetation(BlockState st) {
         return isVegetation(st)
+                || isWaterOrAquatic(st)
                 || st.is(BlockTags.DIRT)
                 || st.is(BlockTags.BASE_STONE_OVERWORLD)
                 || st.is(BlockTags.SAND)

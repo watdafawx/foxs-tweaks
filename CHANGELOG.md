@@ -1,5 +1,11 @@
 # Changelog
 
+## 1.60.3
+
+- **Live side-docked GUIs (no dim):** moved both the Biome Changer Wand and Terrain Flattener screens to the left edge with no dark backdrop, and updated the local preview immediately as you drag sliders or pick biomes so you can watch the 3D wireframe/outline change live without closing the GUI.
+- **Extended reach while holding either tool:** holding the Biome Changer Wand or Terrain Flattener in your main hand grants `+28` block interaction reach (~32.5 blocks total) so you can pick distant corners and hills effortlessly.
+- **Terrain Flattener water handling (`Water` mode):** scans real terrain through ponds/streams and lets you choose `Fill/Drain` (drains water/kelp/seagrass cleanly and fills to target surface), `Keep Water` (skips water columns), or `Smooth Pond` (flattens the bed and refills still water source blocks to eliminate flowing currents).
+
 ## 1.60.2
 
 - **Biome Changer Wand — `Surface (Keep Caves)` mode (new default):** automatically paints from 8 blocks below each column's ground surface up to world top, so mountains, valleys, grass, and sky update without guessing Y-slice numbers while caves underneath stay untouched (`Full Y Column` and `Custom Y-Slice` remain available).

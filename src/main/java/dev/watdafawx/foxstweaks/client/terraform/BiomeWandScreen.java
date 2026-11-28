@@ -54,8 +54,8 @@ public final class BiomeWandScreen extends Screen {
 
     @Override
     protected void init() {
-        panelX = (width - panelW) / 2;
-        panelY = (height - panelH) / 2;
+        panelX = 12;
+        panelY = Math.max(8, (height - panelH) / 2);
         listX = panelX + 10;
         listY = panelY + 44;
 
@@ -197,13 +197,20 @@ public final class BiomeWandScreen extends Screen {
     }
 
     private void syncConfig(boolean applyNow) {
+        Minecraft mc = Minecraft.getInstance();
+        if (mc.player != null) {
+            ItemStack held = mc.player.getItemInHand(hand);
+            if (held.getItem() instanceof BiomeWandItem) {
+                BiomeWandItem.setConfig(held, cfg);
+            }
+        }
         PacketDistributor.sendToServer(new TerraformNetwork.UpdateBiomeWandPayload(hand == InteractionHand.MAIN_HAND, cfg, applyNow));
     }
 
     @Override
     public void renderBackground(GuiGraphics g, int mouseX, int mouseY, float partialTick) {
-        g.fill(0, 0, width, height, 0x88000000);
-        g.fill(panelX, panelY, panelX + panelW, panelY + panelH, 0xEC161920);
+        // No fullscreen dim so the live 3D biome preview stays fully visible while adjusting settings
+        g.fill(panelX, panelY, panelX + panelW, panelY + panelH, 0xD8161920);
         g.renderOutline(panelX, panelY, panelW, panelH, 0xFF3B4354);
     }
 
