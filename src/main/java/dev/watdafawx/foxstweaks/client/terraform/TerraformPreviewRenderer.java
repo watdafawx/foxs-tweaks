@@ -53,16 +53,29 @@ public final class TerraformPreviewRenderer {
     private static BiomeSelection cachedBiomeSel;
     private static List<Edge3D> cachedBiomeEdges = List.of();
     private static int cachedBiomeColor = 0x55EE77;
+    @Nullable
+    private static volatile dev.watdafawx.foxstweaks.terraform.TerraformNetwork.WholeBiomePreviewPayload wholeBiomePreview;
 
     @Nullable
     private static FlattenWandConfig cachedFlattenCfg;
     @Nullable
     private static TerrainFlattener.Plan cachedFlattenPlan;
 
+    public static void setWholeBiomePreview(@Nullable dev.watdafawx.foxstweaks.terraform.TerraformNetwork.WholeBiomePreviewPayload payload) {
+        wholeBiomePreview = payload;
+        cachedBiomeCfg = null; // force map polygon refresh
+    }
+
+    @Nullable
+    public static dev.watdafawx.foxstweaks.terraform.TerraformNetwork.WholeBiomePreviewPayload wholeBiomePreview() {
+        return wholeBiomePreview;
+    }
+
     public static void clearCache() {
         cachedBiomeCfg = null;
         cachedBiomeSel = null;
         cachedBiomeEdges = List.of();
+        wholeBiomePreview = null;
         cachedFlattenCfg = null;
         cachedFlattenPlan = null;
     }
@@ -118,7 +131,17 @@ public final class TerraformPreviewRenderer {
             cachedBiomeSel = BiomeSelection.compute(level, cfg, ServerConfig.biomeWandMaxRadius());
             cachedBiomeColor = resolveBiomePreviewColor(level, cfg);
             cachedBiomeEdges = buildCachedEdges3D(level, cachedBiomeSel);
-            if (cachedBiomeSel != null) {
+            var wb = wholeBiomePreview;
+            if (cfg.mode() == BiomeWandConfig.Mode.WHOLE_BIOME
+                    && wb != null
+                    && wb.dimension().equals(level.dimension())
+                    && cfg.pos1().isPresent()
+                    && wb.seed().equals(cfg.pos1().get())
+                    && wb.polygon().size() >= 3) {
+                MapPreviewBridge.update(level.dimension(), wb.polygon(), cachedBiomeColor,
+                        "Whole " + wb.sourceBiome() + " -> " + cfg.targetBiome().getPath()
+                                + " (" + wb.totalChunks() + " chunks)");
+            } else if (cachedBiomeSel != null) {
                 int refY = cfg.pos1().map(BlockPos::getY).orElse(64);
                 List<BlockPos> poly = cachedBiomeSel.buildMapOutlinePolygon(refY);
                 MapPreviewBridge.update(level.dimension(), poly, cachedBiomeColor,

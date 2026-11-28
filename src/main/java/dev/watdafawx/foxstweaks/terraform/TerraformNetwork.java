@@ -102,8 +102,58 @@ public final class TerraformNetwork {
         }
     }
 
+    public record WholeBiomePreviewPayload(
+            ResourceKey<Level> dimension,
+            net.minecraft.core.BlockPos seed,
+            List<net.minecraft.core.BlockPos> polygon,
+            int totalChunks,
+            int loadedChunks,
+            int unloadedChunks,
+            String sourceBiome,
+            String warningText
+    ) implements CustomPacketPayload {
+        public static final Type<WholeBiomePreviewPayload> TYPE =
+                new Type<>(ResourceLocation.fromNamespaceAndPath(FoxsTweaks.MODID, "whole_biome_preview"));
+
+        public static final StreamCodec<RegistryFriendlyByteBuf, WholeBiomePreviewPayload> STREAM_CODEC =
+                StreamCodec.of(WholeBiomePreviewPayload::encode, WholeBiomePreviewPayload::decode);
+
+        private static void encode(RegistryFriendlyByteBuf buf, WholeBiomePreviewPayload p) {
+            ResourceKey.streamCodec(Registries.DIMENSION).encode(buf, p.dimension);
+            net.minecraft.core.BlockPos.STREAM_CODEC.encode(buf, p.seed);
+            net.minecraft.core.BlockPos.STREAM_CODEC.apply(ByteBufCodecs.list()).encode(buf, p.polygon);
+            buf.writeVarInt(p.totalChunks);
+            buf.writeVarInt(p.loadedChunks);
+            buf.writeVarInt(p.unloadedChunks);
+            buf.writeUtf(p.sourceBiome);
+            buf.writeUtf(p.warningText);
+        }
+
+        private static WholeBiomePreviewPayload decode(RegistryFriendlyByteBuf buf) {
+            ResourceKey<Level> dim = ResourceKey.streamCodec(Registries.DIMENSION).decode(buf);
+            net.minecraft.core.BlockPos seed = net.minecraft.core.BlockPos.STREAM_CODEC.decode(buf);
+            List<net.minecraft.core.BlockPos> poly = net.minecraft.core.BlockPos.STREAM_CODEC.apply(ByteBufCodecs.list()).decode(buf);
+            int total = buf.readVarInt();
+            int loaded = buf.readVarInt();
+            int unloaded = buf.readVarInt();
+            String src = buf.readUtf();
+            String warn = buf.readUtf();
+            return new WholeBiomePreviewPayload(dim, seed, poly, total, loaded, unloaded, src, warn);
+        }
+
+        @Override
+        public Type<? extends CustomPacketPayload> type() {
+            return TYPE;
+        }
+    }
+
     public static void initEvents() {
         NeoForge.EVENT_BUS.addListener((ServerTickEvent.Post e) -> TerrainFlattener.onServerTick());
+        NeoForge.EVENT_BUS.addListener((net.neoforged.neoforge.event.level.ChunkEvent.Load e) -> {
+            if (e.getLevel() instanceof ServerLevel sl && e.getChunk() instanceof net.minecraft.world.level.chunk.LevelChunk lc) {
+                PendingBiomeChanges.get(sl).applyIfPending(sl, lc);
+            }
+        });
         NeoForge.EVENT_BUS.addListener((PlayerEvent.PlayerLoggedInEvent e) -> {
             if (e.getEntity() instanceof ServerPlayer sp) syncAllToPlayer(sp);
         });
@@ -120,6 +170,7 @@ public final class TerraformNetwork {
     public static void register(RegisterPayloadHandlersEvent event) {
         PayloadRegistrar reg = event.registrar(PROTOCOL);
         reg.playToClient(ExactBiomeSyncPayload.TYPE, ExactBiomeSyncPayload.STREAM_CODEC, TerraformNetwork::handleExactSync);
+        reg.playToClient(WholeBiomePreviewPayload.TYPE, WholeBiomePreviewPayload.STREAM_CODEC, TerraformNetwork::handleWholeBiomePreview);
         reg.playToServer(UpdateBiomeWandPayload.TYPE, UpdateBiomeWandPayload.STREAM_CODEC, TerraformNetwork::handleUpdateBiomeWand);
         reg.playToServer(UpdateFlattenWandPayload.TYPE, UpdateFlattenWandPayload.STREAM_CODEC, TerraformNetwork::handleUpdateFlattenWand);
         reg.playToServer(TerraformUndoPayload.TYPE, TerraformUndoPayload.STREAM_CODEC, TerraformNetwork::handleUndo);
@@ -133,6 +184,27 @@ public final class TerraformNetwork {
 
     public static void broadcastExactBiomes(ServerLevel level, boolean fullReplace, List<ExactBiomes.ChunkPacketData> updates) {
         PacketDistributor.sendToPlayersInDimension(level, new ExactBiomeSyncPayload(level.dimension(), fullReplace, updates));
+    }
+
+    public static void sendWholeBiomePreview(ServerPlayer player, WholeBiomeScanner.Result scan) {
+        PacketDistributor.sendToPlayer(player, new WholeBiomePreviewPayload(
+                player.serverLevel().dimension(),
+                scan.seed(),
+                scan.mapPolygon(),
+                scan.totalChunks(),
+                scan.loadedChunks(),
+                scan.unloadedChunks(),
+                scan.sourceBiomeName(),
+                scan.warningText()
+        ));
+    }
+
+    private static void handleWholeBiomePreview(WholeBiomePreviewPayload payload, IPayloadContext ctx) {
+        ctx.enqueueWork(() -> {
+            if (FMLEnvironment.dist.isClient()) {
+                dev.watdafawx.foxstweaks.client.terraform.TerraformPreviewRenderer.setWholeBiomePreview(payload);
+            }
+        });
     }
 
     private static void handleExactSync(ExactBiomeSyncPayload payload, IPayloadContext ctx) {

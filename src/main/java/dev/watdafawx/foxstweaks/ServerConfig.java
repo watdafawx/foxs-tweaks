@@ -239,6 +239,10 @@ public final class ServerConfig {
             .comment("Maximum radius (or half-span in Box mode) allowed for the Biome Changer Wand, in blocks.")
             .defineInRange("biomeWandMaxRadius", 256, 8, 512);
 
+    public static final ModConfigSpec.IntValue WHOLE_BIOME_MAX_CHUNKS = BUILDER
+            .comment("Safety cap on chunks scanned by Whole Biome mode (4096 chunks ≈ 1000x1000 blocks).")
+            .defineInRange("wholeBiomeMaxChunks", 4096, 64, 16384);
+
     public static final ModConfigSpec.IntValue FLATTEN_WAND_MAX_RADIUS = BUILDER
             .comment("Maximum radius (or half-span in Box mode) allowed for the Terrain Flattener Wand, in blocks.")
             .defineInRange("flattenWandMaxRadius", 48, 8, 128);
@@ -370,6 +374,10 @@ public final class ServerConfig {
 
     public static int biomeWandMaxRadius() {
         return loaded() ? BIOME_WAND_MAX_RADIUS.get() : 256;
+    }
+
+    public static int wholeBiomeMaxChunks() {
+        return loaded() ? WHOLE_BIOME_MAX_CHUNKS.get() : 4096;
     }
 
     public static int flattenWandMaxRadius() {

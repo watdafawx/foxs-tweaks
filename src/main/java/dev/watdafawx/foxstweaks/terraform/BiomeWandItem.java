@@ -105,6 +105,21 @@ public class BiomeWandItem extends Item {
                 String fromBiome = level.getBiome(clicked).unwrapKey().map(k -> k.location().getPath()).orElse("biome");
                 msg = "Selected " + fromBiome + " -> " + cfg.targetBiome().getPath() + ". Right-click air to confirm.";
             }
+            case WHOLE_BIOME -> {
+                updated = cfg.withPositions(Optional.of(clicked), Optional.empty());
+                if (player instanceof ServerPlayer sp) {
+                    WholeBiomeScanner.Result scan = WholeBiomeScanner.scan(sp.serverLevel(), clicked, ServerConfig.wholeBiomeMaxChunks());
+                    TerraformNetwork.sendWholeBiomePreview(sp, scan);
+                    if (!scan.warningText().isEmpty()) {
+                        msg = scan.warningText() + " Right-click air to confirm anyway.";
+                    } else {
+                        msg = "Whole " + scan.sourceBiomeName() + ": " + scan.totalChunks() + " chunks ("
+                                + scan.loadedChunks() + " loaded, " + scan.unloadedChunks() + " unloaded). Right-click air to confirm.";
+                    }
+                } else {
+                    msg = "";
+                }
+            }
             default -> {
                 updated = cfg;
                 msg = "";

@@ -240,5 +240,6 @@
   "foxstweaks.configuration.terraform": "Terraform Tools",
   "foxstweaks.configuration.terraformEnabled": "Terraform Tools Enabled",
   "foxstweaks.configuration.biomeWandMaxRadius": "Biome Wand Max Radius",
+  "foxstweaks.configuration.wholeBiomeMaxChunks": "Whole Biome Mode Max Chunks",
   "foxstweaks.configuration.flattenWandMaxRadius": "Terrain Flattener Max Radius"
 }

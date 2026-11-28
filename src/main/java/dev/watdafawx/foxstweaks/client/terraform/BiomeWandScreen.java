@@ -249,6 +249,21 @@ public final class BiomeWandScreen extends Screen {
 
         // Legend under list
         g.drawString(font, "Swatches: Grass | Sky", listX, listY + listH + 6, 0xFF8892A4);
+
+        // Whole Biome summary & Ocean / Huge biome warning below panel
+        if (cfg.mode() == BiomeWandConfig.Mode.WHOLE_BIOME) {
+            var wb = TerraformPreviewRenderer.wholeBiomePreview();
+            if (wb != null && cfg.pos1().isPresent() && wb.seed().equals(cfg.pos1().get())) {
+                String info = "Whole " + wb.sourceBiome() + ": " + wb.totalChunks() + " chunks ("
+                        + wb.loadedChunks() + " loaded, " + wb.unloadedChunks() + " queued)";
+                g.drawString(font, info, panelX + 4, panelY + panelH + 4, 0xFFAEE2FF);
+                if (!wb.warningText().isEmpty()) {
+                    g.drawString(font, wb.warningText() + " Confirm is up to you.", panelX + 4, panelY + panelH + 15, 0xFFFF7755);
+                }
+            } else {
+                g.drawString(font, "Right-click any block to scan the whole biome.", panelX + 4, panelY + panelH + 4, 0xFF99A3B5);
+            }
+        }
     }
 
     @Override

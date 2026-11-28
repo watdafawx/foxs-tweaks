@@ -60,6 +60,11 @@ public final class BiomeChanger {
         Holder<Biome> targetHolder = targetOpt.get();
         ResourceLocation targetId = cfg.targetBiome();
 
+        if (cfg.mode() == BiomeWandConfig.Mode.WHOLE_BIOME) {
+            applyWholeBiome(player, level, cfg, targetHolder, targetId);
+            return;
+        }
+
         BiomeSelection sel = BiomeSelection.compute(level, cfg, ServerConfig.biomeWandMaxRadius());
         if (sel == null || sel.selectedColumns == 0) {
             player.displayClientMessage(Component.literal("Select an area first.").withStyle(ChatFormatting.YELLOW), true);
@@ -291,6 +296,134 @@ public final class BiomeChanger {
                 true);
     }
 
+    private static void applyWholeBiome(ServerPlayer player, ServerLevel level, BiomeWandConfig cfg,
+                                        Holder<Biome> targetHolder, ResourceLocation targetId) {
+        if (cfg.pos1().isEmpty()) {
+            player.displayClientMessage(Component.literal("Right-click a block in the biome first.").withStyle(ChatFormatting.YELLOW), true);
+            return;
+        }
+        WholeBiomeScanner.Result scan = WholeBiomeScanner.scan(level, cfg.pos1().get(), ServerConfig.wholeBiomeMaxChunks());
+        if (scan.totalChunks() == 0) {
+            player.displayClientMessage(Component.literal("No biome found at selection.").withStyle(ChatFormatting.YELLOW), true);
+            return;
+        }
+
+        BiomeWandConfig.HeightMode hMode = cfg.heightMode();
+        int minBuild = level.getMinBuildHeight();
+        int maxBuild = level.getMaxBuildHeight() - 1;
+        int fullMinQY = hMode == BiomeWandConfig.HeightMode.SLICE
+                ? QuartPos.fromBlock(Math.max(minBuild, Math.min(cfg.sliceMinY(), cfg.sliceMaxY())))
+                : QuartPos.fromBlock(minBuild);
+        int fullMaxQY = hMode == BiomeWandConfig.HeightMode.SLICE
+                ? QuartPos.fromBlock(Math.min(maxBuild, Math.max(cfg.sliceMinY(), cfg.sliceMaxY())))
+                : QuartPos.fromBlock(maxBuild);
+
+        Map<Long, List<TerraformUndoStore.QuartEntry>> quartBackups = new HashMap<>();
+        Map<BlockPos, BlockState> prevSnow = new HashMap<>();
+        List<ChunkAccess> modifiedLoaded = new ArrayList<>();
+        PendingBiomeChanges pending = PendingBiomeChanges.get(level);
+        long batchId = System.nanoTime();
+        int queuedUnloaded = 0;
+
+        for (var entry : scan.chunkQuartMasks().long2ShortEntrySet()) {
+            long cKey = entry.getLongKey();
+            short mask = entry.getShortValue();
+            if (mask == 0) continue;
+            int cx = ChunkPos.getX(cKey);
+            int cz = ChunkPos.getZ(cKey);
+
+            if (!level.hasChunk(cx, cz)) {
+                pending.add(cKey, new PendingBiomeChanges.Stamp(batchId, mask, targetId, hMode, cfg.sliceMinY(), cfg.sliceMaxY()));
+                queuedUnloaded++;
+                continue;
+            }
+
+            LevelChunk chunk = level.getChunk(cx, cz);
+            int[] quartMinQY = new int[16];
+            if (hMode == BiomeWandConfig.HeightMode.SURFACE) {
+                for (int lqz = 0; lqz < 4; lqz++) {
+                    for (int lqx = 0; lqx < 4; lqx++) {
+                        int qIdx = (lqz << 2) | lqx;
+                        if ((mask & (1 << qIdx)) == 0) continue;
+                        int minSurf = Integer.MAX_VALUE;
+                        for (int dz = 0; dz < 4; dz++) {
+                            for (int dx = 0; dx < 4; dx++) {
+                                int sy = chunk.getHeight(Heightmap.Types.MOTION_BLOCKING_NO_LEAVES, (lqx << 2) + dx, (lqz << 2) + dz);
+                                if (sy < minSurf) minSurf = sy;
+                            }
+                        }
+                        quartMinQY[qIdx] = QuartPos.fromBlock(Math.max(minBuild, minSurf - 8));
+                    }
+                }
+            }
+
+            List<TerraformUndoStore.QuartEntry> backups = new ArrayList<>();
+            final int chunkQX = cx << 2;
+            final int chunkQZ = cz << 2;
+            chunk.fillBiomesFromNoise((qx, qy, qz, sampler) -> {
+                int lqx = qx - chunkQX;
+                int lqz = qz - chunkQZ;
+                Holder<Biome> existing = chunk.getNoiseBiome(qx, qy, qz);
+                if (lqx >= 0 && lqx < 4 && lqz >= 0 && lqz < 4) {
+                    int qIdx = (lqz << 2) | lqx;
+                    if ((mask & (1 << qIdx)) != 0) {
+                        int effMin = hMode == BiomeWandConfig.HeightMode.SURFACE ? quartMinQY[qIdx] : fullMinQY;
+                        if (qy >= effMin && qy <= fullMaxQY) {
+                            if (!existing.equals(targetHolder)) {
+                                backups.add(new TerraformUndoStore.QuartEntry(qx, qy, qz, existing));
+                            }
+                            return targetHolder;
+                        }
+                    }
+                }
+                return existing;
+            }, level.getChunkSource().randomState().sampler());
+            chunk.setUnsaved(true);
+            modifiedLoaded.add(chunk);
+            if (!backups.isEmpty()) quartBackups.put(cKey, backups);
+
+            if (cfg.clearSnow()) {
+                BlockPos.MutableBlockPos mp = new BlockPos.MutableBlockPos();
+                int chunkMinX = cx << 4;
+                int chunkMinZ = cz << 4;
+                for (int lqz = 0; lqz < 4; lqz++) {
+                    for (int lqx = 0; lqx < 4; lqx++) {
+                        if ((mask & (1 << ((lqz << 2) | lqx))) == 0) continue;
+                        for (int dz = 0; dz < 4; dz++) {
+                            for (int dx = 0; dx < 4; dx++) {
+                                int lx = (lqx << 2) + dx;
+                                int lz = (lqz << 2) + dz;
+                                int surfY = chunk.getHeight(Heightmap.Types.MOTION_BLOCKING, lx, lz);
+                                for (int y = surfY - 2; y <= surfY + 1; y++) {
+                                    mp.set(chunkMinX + lx, y, chunkMinZ + lz);
+                                    BlockState st = level.getBlockState(mp);
+                                    if (st.is(Blocks.SNOW)) {
+                                        prevSnow.put(mp.immutable(), st);
+                                        level.setBlock(mp, Blocks.AIR.defaultBlockState(), Block.UPDATE_CLIENTS);
+                                    } else if (st.is(Blocks.ICE)) {
+                                        prevSnow.put(mp.immutable(), st);
+                                        level.setBlock(mp, Blocks.WATER.defaultBlockState(), Block.UPDATE_CLIENTS);
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
+        TerraformUndoStore.saveBiome(level, player.getUUID(), quartBackups, Map.of(), prevSnow, queuedUnloaded > 0 ? batchId : 0L);
+
+        if (!modifiedLoaded.isEmpty()) {
+            level.getChunkSource().chunkMap.resendBiomesForChunks(modifiedLoaded);
+        }
+
+        level.playSound(null, player.blockPosition(), SoundEvents.EXPERIENCE_ORB_PICKUP, SoundSource.PLAYERS, 0.8F, 1.15F);
+        String msg = "Whole Biome -> " + targetId.getPath() + ": " + modifiedLoaded.size() + " loaded chunks"
+                + (queuedUnloaded > 0 ? " + " + queuedUnloaded + " unloaded queued!" : "!");
+        player.displayClientMessage(Component.literal(msg).withStyle(ChatFormatting.GREEN), true);
+    }
+
     public static boolean undo(ServerPlayer player) {
         ServerLevel level = player.serverLevel();
         TerraformUndoStore.BiomeUndo entry = TerraformUndoStore.popBiome(level, player.getUUID());
@@ -333,6 +466,10 @@ public final class BiomeChanger {
                 LevelChunk chunk = level.getChunk(cp.x, cp.z);
                 if (!modified.contains(chunk)) modified.add(chunk);
             }
+        }
+
+        if (entry.pendingBatchId() != 0L) {
+            PendingBiomeChanges.get(level).cancelBatch(entry.pendingBatchId());
         }
 
         for (Map.Entry<BlockPos, BlockState> e : entry.prevSnow().entrySet()) {

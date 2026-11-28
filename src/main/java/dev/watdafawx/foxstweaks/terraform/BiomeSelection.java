@@ -72,6 +72,7 @@ public final class BiomeSelection {
             case BOX -> computeBox(cfg.pos1().orElseThrow(), cfg.pos2().orElseThrow(), minY, maxY, maxRadiusCap);
             case BRUSH -> computeBrush(cfg.pos1().orElseThrow(), Math.min(cfg.brushRadius(), maxRadiusCap), minY, maxY);
             case FLOOD_FILL -> computeFloodFill(level, cfg.pos1().orElseThrow(), Math.min(cfg.floodRadius(), maxRadiusCap), minY, maxY);
+            case WHOLE_BIOME -> computeFloodFill(level, cfg.pos1().orElseThrow(), Math.min(256, maxRadiusCap), minY, maxY);
         };
     }
 

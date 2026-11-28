@@ -31,7 +31,8 @@ public record BiomeWandConfig(
     public enum Mode {
         BOX("Box"),
         BRUSH("Radius Brush"),
-        FLOOD_FILL("Flood-Fill Biome");
+        FLOOD_FILL("Flood-Fill (Radius)"),
+        WHOLE_BIOME("Whole Biome");
 
         public final String label;
 
@@ -142,7 +143,7 @@ public record BiomeWandConfig(
     public boolean hasSelection() {
         return switch (mode) {
             case BOX -> pos1.isPresent() && pos2.isPresent();
-            case BRUSH, FLOOD_FILL -> pos1.isPresent();
+            case BRUSH, FLOOD_FILL, WHOLE_BIOME -> pos1.isPresent();
         };
     }
 

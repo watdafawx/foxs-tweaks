@@ -56,7 +56,8 @@ public final class TerraformUndoStore {
             ResourceKey<Level> dimension,
             Map<Long, List<QuartEntry>> vanillaQuarts,
             Map<Long, ExactBiomes.ChunkSnapshot> prevExact,
-            Map<BlockPos, BlockState> prevSnow
+            Map<BlockPos, BlockState> prevSnow,
+            long pendingBatchId
     ) {
     }
 
@@ -116,12 +117,21 @@ public final class TerraformUndoStore {
                                  Map<Long, List<QuartEntry>> vanillaQuarts,
                                  Map<Long, ExactBiomes.ChunkSnapshot> prevExact,
                                  Map<BlockPos, BlockState> prevSnow) {
+        saveBiome(level, playerId, vanillaQuarts, prevExact, prevSnow, 0L);
+    }
+
+    public static void saveBiome(ServerLevel level, UUID playerId,
+                                 Map<Long, List<QuartEntry>> vanillaQuarts,
+                                 Map<Long, ExactBiomes.ChunkSnapshot> prevExact,
+                                 Map<BlockPos, BlockState> prevSnow,
+                                 long pendingBatchId) {
         try {
             Path dir = playerDir(level.getServer(), playerId);
             Files.createDirectories(dir);
 
             CompoundTag root = new CompoundTag();
             root.putString("dim", level.dimension().location().toString());
+            if (pendingBatchId != 0L) root.putLong("pbatch", pendingBatchId);
 
             // 1. Vanilla quart backups (paletted by biome id)
             List<String> biomePal = new ArrayList<>();
@@ -216,7 +226,7 @@ public final class TerraformUndoStore {
             CompoundTag root = NbtIo.readCompressed(latest, net.minecraft.nbt.NbtAccounter.unlimitedHeap());
             ResourceKey<Level> dim = ResourceKey.create(Registries.DIMENSION, ResourceLocation.parse(root.getString("dim")));
             if (!level.dimension().equals(dim)) {
-                return new BiomeUndo(dim, Map.of(), Map.of(), Map.of());
+                return new BiomeUndo(dim, Map.of(), Map.of(), Map.of(), 0L);
             }
 
             Registry<Biome> biomeReg = level.registryAccess().registryOrThrow(Registries.BIOME);
@@ -291,8 +301,9 @@ public final class TerraformUndoStore {
                     ? readBlockMap(root, "snow", level.holderLookup(Registries.BLOCK))
                     : Map.of();
 
+            long pendingBatchId = root.getLong("pbatch");
             Files.deleteIfExists(latest);
-            return new BiomeUndo(dim, quarts, prevExact, prevSnow);
+            return new BiomeUndo(dim, quarts, prevExact, prevSnow, pendingBatchId);
         } catch (IOException ex) {
             LOG.error("Failed to read biome undo snapshot {}", latest, ex);
             return null;

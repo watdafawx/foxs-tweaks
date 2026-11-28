@@ -1,5 +1,12 @@
 # Changelog
 
+## 1.61.0
+
+- **Biome Changer Wand — `Whole Biome` mode:** flood-fills an entire biome in every direction past unloaded chunks without loading or generating a single chunk.
+  - **Pure-math whole-biome scan (`WholeBiomeScanner`):** reads loaded chunks where present and Minecraft's `BiomeSource#getNoiseBiome(...)` everywhere else, up to `wholeBiomeMaxChunks` (default `4096` chunks ≈ 1,000×1,000 blocks).
+  - **Full-biome map preview & huge-biome warning:** sends the full outer polygon to JourneyMap and FTB Chunks (even beyond render distance) and shows a clear warning for Oceans, Nether Wastes, or huge biomes (>500 chunks) while leaving confirmation up to you.
+  - **Zero-lag lazy apply (`PendingBiomeChanges`):** loaded chunks change immediately; unloaded chunks are saved as compact stamps and automatically applied on `ChunkEvent.Load` before clients ever see them (and Undo cancels still-pending chunks too).
+
 ## 1.60.3
 
 - **Live side-docked GUIs (no dim):** moved both the Biome Changer Wand and Terrain Flattener screens to the left edge with no dark backdrop, and updated the local preview immediately as you drag sliders or pick biomes so you can watch the 3D wireframe/outline change live without closing the GUI.
