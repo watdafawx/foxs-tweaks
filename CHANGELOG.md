@@ -1,5 +1,9 @@
 # Changelog
 
+## 1.60.1
+
+- **Terrain Flattener safety toggle:** added independent `Protect BEs: ON/OFF` toggle (default `ON`) alongside `Natural: ON/OFF`, plus a live warning when disabled so chests/machines aren't accidentally overwritten without inventory restoration.
+
 ## 1.60.0
 
 - **Biome Changer Wand (`foxstweaks:biome_wand`):** survival-craftable real-time biome painting tool with live grass, foliage, water, sky, and fog color updates.

@@ -322,15 +322,17 @@ public final class TerrainFlattener {
         ServerLevel level = job.level;
         BlockPos.MutableBlockPos mp = new BlockPos.MutableBlockPos();
 
-        // Safety: skip if column has a block entity or non-natural surface when naturalOnly is enabled
-        if (job.cfg.naturalOnly()) {
+        // Safety: skip column if protected block entity or non-natural block is in the edited range
+        if (job.cfg.protectBlockEntities() || job.cfg.naturalOnly()) {
             int checkLow = Math.min(oldY, newY) - 4;
             int checkHigh = Math.max(oldY, newY) + 1;
             for (int y = checkLow; y <= checkHigh; y++) {
                 mp.set(wx, y, wz);
-                if (level.getBlockEntity(mp) != null) return false;
-                BlockState st = level.getBlockState(mp);
-                if (!st.isAir() && !isNaturalOrVegetation(st)) return false;
+                if (job.cfg.protectBlockEntities() && level.getBlockEntity(mp) != null) return false;
+                if (job.cfg.naturalOnly()) {
+                    BlockState st = level.getBlockState(mp);
+                    if (!st.isAir() && !isNaturalOrVegetation(st)) return false;
+                }
             }
         }
 

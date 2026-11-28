@@ -116,12 +116,19 @@ public final class FlattenWandScreen extends Screen {
         }).bounds(x, y, w, h).build());
         y += step;
 
-        // Natural blocks only safety
-        addRenderableWidget(Button.builder(Component.literal("Natural Blocks Only: " + (cfg.naturalOnly() ? "ON" : "OFF")), b -> {
+        // Natural blocks only & Protect block entities (side-by-side compact row)
+        int halfW = (w - 4) / 2;
+        addRenderableWidget(Button.builder(Component.literal("Natural: " + (cfg.naturalOnly() ? "ON" : "OFF")), b -> {
             cfg = cfg.withNaturalOnly(!cfg.naturalOnly());
             syncConfig(false);
             rebuildWidgets();
-        }).bounds(x, y, w, h).build());
+        }).bounds(x, y, halfW, h).build());
+
+        addRenderableWidget(Button.builder(Component.literal("Protect BEs: " + (cfg.protectBlockEntities() ? "ON" : "OFF")), b -> {
+            cfg = cfg.withProtectBlockEntities(!cfg.protectBlockEntities());
+            syncConfig(false);
+            rebuildWidgets();
+        }).bounds(x + halfW + 4, y, halfW, h).build());
 
         // Bottom actions
         int by = panelY + panelH - 22;
@@ -162,6 +169,11 @@ public final class FlattenWandScreen extends Screen {
     public void render(GuiGraphics g, int mouseX, int mouseY, float partialTick) {
         super.render(g, mouseX, mouseY, partialTick);
         g.drawString(font, title, panelX + 12, panelY + 7, 0xFFEAECEF);
+        if (!cfg.protectBlockEntities()) {
+            g.drawCenteredString(font, "Warning: Chests/machines lose inventory on Undo!", panelX + panelW / 2, panelY + panelH + 4, 0xFFFF6655);
+        } else if (!cfg.naturalOnly()) {
+            g.drawCenteredString(font, "Note: Player blocks may be overwritten (BEs protected)", panelX + panelW / 2, panelY + panelH + 4, 0xFFFFCC55);
+        }
     }
 
     @Override

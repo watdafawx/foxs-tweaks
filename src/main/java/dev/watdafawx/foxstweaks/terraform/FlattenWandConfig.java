@@ -24,6 +24,7 @@ public record FlattenWandConfig(
         float feather,
         TreeMode treeMode,
         boolean naturalOnly,
+        boolean protectBlockEntities,
         Optional<BlockPos> pos1,
         Optional<BlockPos> pos2
 ) {
@@ -102,6 +103,7 @@ public record FlattenWandConfig(
             0.35F,
             TreeMode.REMOVE,
             true,
+            true,
             Optional.empty(),
             Optional.empty()
     );
@@ -116,6 +118,7 @@ public record FlattenWandConfig(
             Codec.FLOAT.optionalFieldOf("feather", 0.35F).forGetter(FlattenWandConfig::feather),
             Codec.INT.xmap(TreeMode::byOrdinal, TreeMode::ordinal).optionalFieldOf("tree_mode", TreeMode.REMOVE).forGetter(FlattenWandConfig::treeMode),
             Codec.BOOL.optionalFieldOf("natural_only", true).forGetter(FlattenWandConfig::naturalOnly),
+            Codec.BOOL.optionalFieldOf("protect_block_entities", true).forGetter(FlattenWandConfig::protectBlockEntities),
             BlockPos.CODEC.optionalFieldOf("pos1").forGetter(FlattenWandConfig::pos1),
             BlockPos.CODEC.optionalFieldOf("pos2").forGetter(FlattenWandConfig::pos2)
     ).apply(inst, FlattenWandConfig::new));
@@ -133,6 +136,7 @@ public record FlattenWandConfig(
         buf.writeFloat(c.feather);
         buf.writeVarInt(c.treeMode.ordinal());
         buf.writeBoolean(c.naturalOnly);
+        buf.writeBoolean(c.protectBlockEntities);
         ByteBufCodecs.optional(BlockPos.STREAM_CODEC).encode(buf, c.pos1);
         ByteBufCodecs.optional(BlockPos.STREAM_CODEC).encode(buf, c.pos2);
     }
@@ -147,10 +151,11 @@ public record FlattenWandConfig(
         float feather = buf.readFloat();
         TreeMode treeMode = TreeMode.byOrdinal(buf.readVarInt());
         boolean naturalOnly = buf.readBoolean();
+        boolean protectBlockEntities = buf.readBoolean();
         Optional<BlockPos> pos1 = ByteBufCodecs.optional(BlockPos.STREAM_CODEC).decode(buf);
         Optional<BlockPos> pos2 = ByteBufCodecs.optional(BlockPos.STREAM_CODEC).decode(buf);
         return new FlattenWandConfig(mode, radius, targetYMode, customY, flatness, smoothness, feather,
-                treeMode, naturalOnly, pos1, pos2);
+                treeMode, naturalOnly, protectBlockEntities, pos1, pos2);
     }
 
     public boolean hasSelection() {
@@ -161,43 +166,47 @@ public record FlattenWandConfig(
     }
 
     public FlattenWandConfig withMode(Mode m) {
-        return new FlattenWandConfig(m, radius, targetYMode, customY, flatness, smoothness, feather, treeMode, naturalOnly, Optional.empty(), Optional.empty());
+        return new FlattenWandConfig(m, radius, targetYMode, customY, flatness, smoothness, feather, treeMode, naturalOnly, protectBlockEntities, Optional.empty(), Optional.empty());
     }
 
     public FlattenWandConfig withRadius(int r) {
-        return new FlattenWandConfig(mode, r, targetYMode, customY, flatness, smoothness, feather, treeMode, naturalOnly, pos1, pos2);
+        return new FlattenWandConfig(mode, r, targetYMode, customY, flatness, smoothness, feather, treeMode, naturalOnly, protectBlockEntities, pos1, pos2);
     }
 
     public FlattenWandConfig withTargetYMode(TargetYMode t) {
-        return new FlattenWandConfig(mode, radius, t, customY, flatness, smoothness, feather, treeMode, naturalOnly, pos1, pos2);
+        return new FlattenWandConfig(mode, radius, t, customY, flatness, smoothness, feather, treeMode, naturalOnly, protectBlockEntities, pos1, pos2);
     }
 
     public FlattenWandConfig withCustomY(int y) {
-        return new FlattenWandConfig(mode, radius, targetYMode, y, flatness, smoothness, feather, treeMode, naturalOnly, pos1, pos2);
+        return new FlattenWandConfig(mode, radius, targetYMode, y, flatness, smoothness, feather, treeMode, naturalOnly, protectBlockEntities, pos1, pos2);
     }
 
     public FlattenWandConfig withFlatness(float f) {
-        return new FlattenWandConfig(mode, radius, targetYMode, customY, f, smoothness, feather, treeMode, naturalOnly, pos1, pos2);
+        return new FlattenWandConfig(mode, radius, targetYMode, customY, f, smoothness, feather, treeMode, naturalOnly, protectBlockEntities, pos1, pos2);
     }
 
     public FlattenWandConfig withSmoothness(float s) {
-        return new FlattenWandConfig(mode, radius, targetYMode, customY, flatness, s, feather, treeMode, naturalOnly, pos1, pos2);
+        return new FlattenWandConfig(mode, radius, targetYMode, customY, flatness, s, feather, treeMode, naturalOnly, protectBlockEntities, pos1, pos2);
     }
 
     public FlattenWandConfig withFeather(float f) {
-        return new FlattenWandConfig(mode, radius, targetYMode, customY, flatness, smoothness, f, treeMode, naturalOnly, pos1, pos2);
+        return new FlattenWandConfig(mode, radius, targetYMode, customY, flatness, smoothness, f, treeMode, naturalOnly, protectBlockEntities, pos1, pos2);
     }
 
     public FlattenWandConfig withTreeMode(TreeMode tm) {
-        return new FlattenWandConfig(mode, radius, targetYMode, customY, flatness, smoothness, feather, tm, naturalOnly, pos1, pos2);
+        return new FlattenWandConfig(mode, radius, targetYMode, customY, flatness, smoothness, feather, tm, naturalOnly, protectBlockEntities, pos1, pos2);
     }
 
     public FlattenWandConfig withNaturalOnly(boolean n) {
-        return new FlattenWandConfig(mode, radius, targetYMode, customY, flatness, smoothness, feather, treeMode, n, pos1, pos2);
+        return new FlattenWandConfig(mode, radius, targetYMode, customY, flatness, smoothness, feather, treeMode, n, protectBlockEntities, pos1, pos2);
+    }
+
+    public FlattenWandConfig withProtectBlockEntities(boolean p) {
+        return new FlattenWandConfig(mode, radius, targetYMode, customY, flatness, smoothness, feather, treeMode, naturalOnly, p, pos1, pos2);
     }
 
     public FlattenWandConfig withPositions(Optional<BlockPos> p1, Optional<BlockPos> p2) {
-        return new FlattenWandConfig(mode, radius, targetYMode, customY, flatness, smoothness, feather, treeMode, naturalOnly, p1, p2);
+        return new FlattenWandConfig(mode, radius, targetYMode, customY, flatness, smoothness, feather, treeMode, naturalOnly, protectBlockEntities, p1, p2);
     }
 
     public FlattenWandConfig cleared() {
