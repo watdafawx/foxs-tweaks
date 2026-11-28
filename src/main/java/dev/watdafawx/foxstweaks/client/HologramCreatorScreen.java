@@ -162,6 +162,9 @@ public final class HologramCreatorScreen extends Screen {
     private int reorderTo = -1;
     /** Full-list index of the expanded stack row, or -1. */
     private int expanded = -1;
+    /** Last layer row clicked (for double-click -> open picker). */
+    private int lastRowClickIdx = -1;
+    private long lastRowClickMs;
     /** Which gradient stop the wheel edits: 0 bottom, 1 top. */
     private int gradStop;
     private float hue, sat = 1.0F, val = 1.0F;
@@ -243,7 +246,7 @@ public final class HologramCreatorScreen extends Screen {
         renderLeft(g, mx, my);
         renderRight(g, mx, my);
 
-        String hint = "R-drag look · M-drag pan · Scroll zoom · WASD fly · 1-4 handles · F frame · Ctrl+Z undo";
+        String hint = "Del remove · Ctrl+D dup · Ctrl+S save · B browse · H hide · P pause · 1-4 handles · F frame · Ctrl+Z undo";
         int midL = this.leftX + this.leftW + 6;
         int midR = this.rightX - 6;
         if (this.font.width(hint) <= midR - midL) {
@@ -342,19 +345,19 @@ public final class HologramCreatorScreen extends Screen {
         int sel = this.editor.creatorSelectedLayer();
         int bx = x + w - 8;
         bx -= 14;
-        iconButton(g, mx, my, bx, y - 3, 14, 13, "✕", layers.size() > 1 && sel >= 0, "Remove layer", () -> {
+        iconButton(g, mx, my, bx, y - 3, 14, 13, "✕", layers.size() > 1 && sel >= 0, "Remove layer (Del)", () -> {
             this.editor.creatorRemoveLayer(this.editor.creatorSelectedLayer());
             this.expanded = -1;
         });
         bx -= 16;
         iconButton(g, mx, my, bx, y - 3, 14, 13, "⧉", sel >= 0 && layers.size() < HologramLayer.MAX_LAYERS,
-                "Duplicate layer", () -> this.editor.creatorDuplicateLayer(this.editor.creatorSelectedLayer()));
+                "Duplicate layer (Ctrl+D)", () -> this.editor.creatorDuplicateLayer(this.editor.creatorSelectedLayer()));
         bx -= 16;
         iconButton(g, mx, my, bx, y - 3, 14, 13, "\u2316", layers.size() < HologramLayer.MAX_LAYERS,
                 "Grab from world: click a block or mob (Shift = several)", () -> this.editor.creatorGrab(this));
         bx -= 16;
         iconButton(g, mx, my, bx, y - 3, 14, 13, "+", true,
-                "Browse blocks, mobs and particles (replace this layer or add one)", () -> this.editor.creatorOpenPicker(this));
+                "Browse blocks, mobs and particles (B)", () -> this.editor.creatorOpenPicker(this));
         bx -= 16;
         iconButton(g, mx, my, bx, y - 3, 14, 13, "▣", layers.size() < HologramLayer.MAX_LAYERS,
                 "Pictures: add an image, GIF or video from this world's library, or upload one", this::openPictures);
@@ -430,12 +433,24 @@ public final class HologramCreatorScreen extends Screen {
                 g.drawString(this.font, chip, x + w - 6 - cw, ry + 4, VIOLET, false);
             }
             Hit row = hit(x + 16, ry, w - 18, 15);
-            if (!name.equals(fullName))
-                row.tooltip = fullName;
+            row.tooltip = !name.equals(fullName)
+                    ? fullName + " · double-click to swap · right-click to hide"
+                    : "Double-click to swap · right-click to hide";
             row.click = () -> {
+                long now = System.currentTimeMillis();
+                boolean dbl = li == this.lastRowClickIdx && now - this.lastRowClickMs < 350L;
+                this.lastRowClickIdx = li;
+                this.lastRowClickMs = now;
                 this.editor.creatorSelectLayer(li);
                 this.expanded = -1;
                 this.hsvSource = -1;
+                if (dbl && !layer.fixedContent())
+                    this.editor.creatorOpenPicker(this);
+            };
+            row.rightClick = () -> {
+                this.editor.creatorPushUndo();
+                this.editor.creatorUpdateLayer(li, l -> l.withVisible(!l.visible()));
+                toast(layer.visible() ? "Hidden " + fullName : "Visible " + fullName);
             };
             if (showMove) {
                 // After the row's own hit: later hits win, so these buttons stay clickable on top of it.
@@ -1707,6 +1722,86 @@ public final class HologramCreatorScreen extends Screen {
         if (key == GLFW.GLFW_KEY_F) {
             this.editor.creatorFrameCamera();
             return true;
+        }
+        if (key == GLFW.GLFW_KEY_DELETE || key == GLFW.GLFW_KEY_BACKSPACE) {
+            int sel = this.editor.creatorSelectedLayer();
+            List<HologramLayer> layers = this.editor.creatorLayers();
+            if (!this.editor.creatorRootSelected() && sel >= 0 && sel < layers.size()) {
+                if (layers.size() > 1) {
+                    String removed = layers.get(sel).shortName();
+                    this.editor.creatorRemoveLayer(sel);
+                    this.expanded = -1;
+                    this.hsvSource = -1;
+                    toast("Removed " + removed);
+                } else {
+                    toast("Can't remove the last layer");
+                }
+                return true;
+            }
+        }
+        if (key == GLFW.GLFW_KEY_D && hasControlDown()) {
+            int sel = this.editor.creatorSelectedLayer();
+            List<HologramLayer> layers = this.editor.creatorLayers();
+            if (!this.editor.creatorRootSelected() && sel >= 0 && layers.size() < HologramLayer.MAX_LAYERS) {
+                this.editor.creatorDuplicateLayer(sel);
+                toast("Duplicated layer");
+                return true;
+            }
+        }
+        if (key == GLFW.GLFW_KEY_S && hasControlDown()) {
+            this.editor.saveAndClose();
+            return true;
+        }
+        if (key == GLFW.GLFW_KEY_B && !hasControlDown()) {
+            this.editor.creatorOpenPicker(this);
+            return true;
+        }
+        if (key == GLFW.GLFW_KEY_H && !hasControlDown()) {
+            int sel = this.editor.creatorSelectedLayer();
+            List<HologramLayer> layers = this.editor.creatorLayers();
+            if (!this.editor.creatorRootSelected() && sel >= 0 && sel < layers.size()) {
+                boolean wasVis = layers.get(sel).visible();
+                this.editor.creatorPushUndo();
+                this.editor.creatorUpdateLayer(sel, l -> l.withVisible(!l.visible()));
+                toast(wasVis ? "Layer hidden" : "Layer visible");
+                return true;
+            }
+        }
+        if (key == GLFW.GLFW_KEY_G && !hasControlDown()) {
+            int sel = this.editor.creatorSelectedLayer();
+            List<HologramLayer> layers = this.editor.creatorLayers();
+            if (!this.editor.creatorRootSelected() && sel >= 0 && sel < layers.size()) {
+                boolean wasGlow = layers.get(sel).fullbright();
+                this.editor.creatorPushUndo();
+                this.editor.creatorUpdateLayer(sel, l -> l.withFullbright(!l.fullbright()));
+                toast(wasGlow ? "Glow off" : "Glow on");
+                return true;
+            }
+        }
+        if (key == GLFW.GLFW_KEY_P && !hasControlDown()) {
+            HologramRenderer.setPaused(!HologramRenderer.isPaused());
+            toast(HologramRenderer.isPaused() ? "Paused" : "Playing");
+            return true;
+        }
+        if (key == GLFW.GLFW_KEY_UP || key == GLFW.GLFW_KEY_DOWN) {
+            int dir = key == GLFW.GLFW_KEY_UP ? -1 : 1;
+            int sel = this.editor.creatorSelectedLayer();
+            List<HologramLayer> layers = this.editor.creatorLayers();
+            if (!layers.isEmpty()) {
+                if (hasAltDown() && !this.editor.creatorRootSelected() && sel >= 0 && layers.size() > 1) {
+                    int target = sel + dir;
+                    if (target >= 0 && target < layers.size())
+                        this.editor.creatorMoveLayer(sel, dir);
+                } else {
+                    int next = this.editor.creatorRootSelected()
+                            ? (dir > 0 ? 0 : layers.size() - 1)
+                            : Mth.clamp(sel + dir, 0, layers.size() - 1);
+                    this.editor.creatorSelectLayer(next);
+                    this.expanded = -1;
+                    this.hsvSource = -1;
+                }
+                return true;
+            }
         }
         if (this.minecraft != null && this.minecraft.player != null) {
             if (this.minecraft.options.keyChat.matches(key, scan)) {

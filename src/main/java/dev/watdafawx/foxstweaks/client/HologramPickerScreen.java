@@ -169,6 +169,7 @@ public class HologramPickerScreen extends Screen {
     @Nullable
     private HologramBlockColors.Hue hue;
     private int shapeMask;
+    private boolean mobsEggsOnly;
     private String searchText = "";
     private EditBox search;
     private String suggestion = "";
@@ -273,7 +274,7 @@ public class HologramPickerScreen extends Screen {
             ResourceLocation key = entry.getKey().location();
             EntityType<?> type = entry.getValue();
             Item egg = SpawnEggItem.byId(type);
-            String name = type.getDescription().getString();
+            String name = cleanEntityName(type.getDescription().getString(), key);
             mobs.add(new Entry(HologramLayer.Kind.ENTITY, key.toString(), name, key.getNamespace(), null, type,
                     egg != null ? new ItemStack(egg) : ItemStack.EMPTY, name.toLowerCase(Locale.ROOT)));
         }
@@ -494,6 +495,8 @@ public class HologramPickerScreen extends Screen {
         for (Entry e : baseList()) {
             if (this.modFilter != null && !this.modFilter.equals(e.ns()))
                 continue;
+            if (this.kind == HologramLayer.Kind.ENTITY && !this.effectTab && this.mobsEggsOnly && e.icon().isEmpty())
+                continue;
             boolean ok = query.isEmpty() || switch (e.kind()) {
                 case BLOCK -> query.matchesBlock(e.block());
                 case ENTITY -> query.matchesEntity(e.type(), e.id(), e.name());
@@ -643,7 +646,8 @@ public class HologramPickerScreen extends Screen {
         this.selected = entry;
         this.props.clear();
         if (this.current != null && this.current.kind() == entry.kind() && this.current.id().equals(entry.id())
-                && entry.kind() == HologramLayer.Kind.BLOCK)
+                && (entry.kind() == HologramLayer.Kind.BLOCK
+                || (entry.kind() == HologramLayer.Kind.ENTITY && entry.mobEffect() == null)))
             this.props.putAll(this.current.props());
         normalise();
         this.famPage = 0;
@@ -672,7 +676,13 @@ public class HologramPickerScreen extends Screen {
     }
 
     private void normalise() {
-        if (this.selected == null || this.selected.block() == null) {
+        if (this.selected == null) {
+            this.props.clear();
+            return;
+        }
+        if (this.selected.kind() == HologramLayer.Kind.ENTITY && this.selected.mobEffect() == null)
+            return;
+        if (this.selected.block() == null) {
             this.props.clear();
             return;
         }
@@ -739,7 +749,7 @@ public class HologramPickerScreen extends Screen {
             return;
         }
         HologramPickerFavorites.addRecent(entry.kind(), entry.id());
-        Map<String, String> chosen = entry.kind() == HologramLayer.Kind.BLOCK
+        Map<String, String> chosen = (entry.kind() == HologramLayer.Kind.BLOCK || entry.kind() == HologramLayer.Kind.ENTITY)
                 ? new LinkedHashMap<>(this.props) : Map.of();
         this.editor.applyPickerChoice(entry.kind(), entry.id(), chosen, forceNew);
         this.minecraft.setScreen(this.returnTo);
@@ -829,7 +839,7 @@ public class HologramPickerScreen extends Screen {
         }
         boolean typing = this.search != null && this.search.isFocused();
         if (keyCode == GLFW.GLFW_KEY_ENTER || keyCode == GLFW.GLFW_KEY_KP_ENTER) {
-            apply(hasShiftDown());
+            apply(hasShiftDown() || hasControlDown());
             return true;
         }
         if (keyCode == GLFW.GLFW_KEY_TAB) {
@@ -860,6 +870,22 @@ public class HologramPickerScreen extends Screen {
                 this.search.setFocused(true);
                 return true;
             }
+            if (keyCode == GLFW.GLFW_KEY_1) {
+                setKind(HologramLayer.Kind.BLOCK);
+                return true;
+            }
+            if (keyCode == GLFW.GLFW_KEY_2) {
+                setKind(HologramLayer.Kind.ENTITY);
+                return true;
+            }
+            if (keyCode == GLFW.GLFW_KEY_3) {
+                setKind(HologramLayer.Kind.PARTICLE);
+                return true;
+            }
+            if (keyCode == GLFW.GLFW_KEY_4) {
+                setEffectTab();
+                return true;
+            }
         }
         if (keyCode == GLFW.GLFW_KEY_F && hasControlDown()) {
             setFocused(this.search);
@@ -872,12 +898,12 @@ public class HologramPickerScreen extends Screen {
     @Override
     public boolean charTyped(char c, int modifiers) {
         if (this.search != null && !this.search.isFocused() && Character.isLetterOrDigit(c)
-                && c != 'f' && c != 'F') {
+                && c != 'f' && c != 'F' && (c < '1' || c > '4')) {
             setFocused(this.search);
             this.search.setFocused(true);
             return this.search.charTyped(c, modifiers);
         }
-        if (this.search != null && !this.search.isFocused() && (c == 'f' || c == 'F' || c == '/'))
+        if (this.search != null && !this.search.isFocused() && (c == 'f' || c == 'F' || c == '/' || (c >= '1' && c <= '4')))
             return true;
         return super.charTyped(c, modifiers);
     }
@@ -1114,8 +1140,34 @@ public class HologramPickerScreen extends Screen {
         g.fill(this.midX + 6, sy, this.midX + this.midW - 6, sy + 15, WELL);
         g.renderOutline(this.midX + 6, sy, this.midW - 12, 15,
                 this.search != null && this.search.isFocused() ? ACCENT : 0x33FFFFFF);
+        if (!this.searchText.isEmpty() && this.search != null) {
+            int cx = this.midX + this.midW - 20;
+            chip(g, mx, my, cx, sy + 1, 13, 13, "×", "search:clear", false, () -> {
+                this.search.setValue("");
+                setFocused(this.search);
+                this.search.setFocused(true);
+            });
+        }
 
         int y = sy + 19;
+        if (this.kind == HologramLayer.Kind.ENTITY && !this.effectTab) {
+            int x = this.midX + 6;
+            chip(g, mx, my, x, y, 32, 13, "All", "mobs:all", !this.mobsEggsOnly, () -> {
+                if (this.mobsEggsOnly) {
+                    this.mobsEggsOnly = false;
+                    this.scroll = 0;
+                    refilter(false);
+                }
+            });
+            chip(g, mx, my, x + 36, y, 76, 13, "Spawn eggs", "mobs:eggs", this.mobsEggsOnly, () -> {
+                if (!this.mobsEggsOnly) {
+                    this.mobsEggsOnly = true;
+                    this.scroll = 0;
+                    refilter(false);
+                }
+            });
+            y += 17;
+        }
         if (this.kind == HologramLayer.Kind.BLOCK) {
             int x = this.midX + 6;
             int swatch = 13;
@@ -1146,7 +1198,7 @@ public class HologramPickerScreen extends Screen {
         this.gridX = this.midX + 6;
         this.gridY = y + 1;
         // The hint wraps onto a second line on a narrow centre column rather than being cut off.
-        String foot = this.results.size() + " results · arrows move · Enter replace · F favourite · Shift+click add as new layer";
+        String foot = this.results.size() + " results · arrows move · Enter replace · Shift+Enter add · F fav · 1-4 tabs";
         if (this.kind == HologramLayer.Kind.BLOCK && this.hue != null && !HologramBlockColors.done())
             foot = this.results.size() + " results · colouring "
                     + Math.round(HologramBlockColors.progress() * 100.0F) + "%";
@@ -1346,6 +1398,8 @@ public class HologramPickerScreen extends Screen {
         int end = this.regionY - this.rightScroll;
         if (this.selected != null && this.kind == HologramLayer.Kind.BLOCK && this.selected.block() != null)
             end = drawBlockControls(g, mx, my, this.regionX, this.regionY + 3 - this.rightScroll, this.regionW - 6);
+        else if (this.selected != null && this.kind == HologramLayer.Kind.ENTITY && this.selected.mobEffect() == null)
+            end = drawEntityControls(g, mx, my, this.regionX, this.regionY + 3 - this.rightScroll, this.regionW - 6);
         else if (this.selected != null)
             end = drawNote(g, this.regionX, this.regionY + 3 - this.rightScroll, this.regionW - 6);
         g.flush();
@@ -1374,6 +1428,91 @@ public class HologramPickerScreen extends Screen {
             return;
         }
         chip(g, mx, my, x, y, w, 15, label, hitLabel, true, click);
+    }
+
+    private static String cleanEntityName(String raw, ResourceLocation key) {
+        if (raw != null && !raw.isEmpty() && !raw.startsWith("entity."))
+            return raw;
+        String path = key.getPath();
+        StringBuilder sb = new StringBuilder();
+        boolean cap = true;
+        for (int i = 0; i < path.length(); i++) {
+            char c = path.charAt(i);
+            if (c == '_' || c == '/' || c == '-') {
+                if (sb.length() > 0 && sb.charAt(sb.length() - 1) != ' ')
+                    sb.append(' ');
+                cap = true;
+            } else {
+                sb.append(cap ? Character.toUpperCase(c) : c);
+                cap = false;
+            }
+        }
+        return sb.length() > 0 ? sb.toString() : path;
+    }
+
+    private int drawEntityControls(GuiGraphics g, int mx, int my, int x, int y, int w) {
+        if (this.selected == null)
+            return y;
+        String id = this.selected.id();
+        List<String> clips = HologramEntityStates.animations(id);
+        if (!clips.isEmpty()) {
+            g.drawString(this.font, "ANIMATION", x, y + 1, MUTED, false);
+            y += 11;
+            String curAnim = this.props.getOrDefault(HologramEntityStates.ANIM_KEY, "");
+            String label = "Anim: " + (curAnim.isEmpty() ? "idle" : curAnim.replace('_', ' '));
+            Hit h = chip(g, mx, my, x, y, w, 15, label, "eprop:anim", !curAnim.isEmpty(),
+                    () -> cyclePickerEntityAnim(clips, hasShiftDown() ? -1 : 1));
+            h.right = () -> cyclePickerEntityAnim(clips, -1);
+            y += 18;
+        }
+        List<HologramEntityStates.Prop> eProps = HologramEntityStates.properties(id);
+        if (!eProps.isEmpty()) {
+            g.drawString(this.font, "STATE", x, y + 1, MUTED, false);
+            y += 11;
+            int cw = (w - 4) / 2;
+            for (int i = 0; i < eProps.size(); i++) {
+                HologramEntityStates.Prop prop = eProps.get(i);
+                String val = HologramEntityStates.valueOf(this.props, prop);
+                boolean mod = !val.equals(prop.defaultValue());
+                String text = prop.label() + ": " + val.replace('_', ' ');
+                int px = x + (i % 2) * (cw + 4);
+                int py = y + (i / 2) * 17;
+                int pw = i % 2 == 0 ? cw : w - cw - 4;
+                Hit h = chip(g, mx, my, px, py, pw, 15, text, "eprop:" + prop.key(), mod,
+                        () -> cyclePickerEntityProp(prop, hasShiftDown() ? -1 : 1));
+                h.right = () -> cyclePickerEntityProp(prop, -1);
+            }
+            y += ((eProps.size() + 1) / 2) * 17 + 2;
+        }
+        if (!this.props.isEmpty()) {
+            chip(g, mx, my, x, y, w, 14, "Reset state", "eprop:reset", false, () -> this.props.clear());
+            y += 16;
+        }
+        if (clips.isEmpty() && eProps.isEmpty())
+            return drawNote(g, x, y, w);
+        return y;
+    }
+
+    private void cyclePickerEntityAnim(List<String> clips, int dir) {
+        List<String> cycle = new ArrayList<>();
+        cycle.add("");
+        cycle.addAll(clips);
+        String cur = this.props.getOrDefault(HologramEntityStates.ANIM_KEY, "");
+        int idx = cycle.indexOf(cur);
+        String next = cycle.get(Math.floorMod((idx < 0 ? 0 : idx) + dir, cycle.size()));
+        if (next.isEmpty())
+            this.props.remove(HologramEntityStates.ANIM_KEY);
+        else
+            this.props.put(HologramEntityStates.ANIM_KEY, next);
+    }
+
+    private void cyclePickerEntityProp(HologramEntityStates.Prop prop, int dir) {
+        String cur = HologramEntityStates.valueOf(this.props, prop);
+        String next = HologramEntityStates.cycle(prop, cur, dir);
+        if (next.equals(prop.defaultValue()))
+            this.props.remove(prop.key());
+        else
+            this.props.put(prop.key(), next);
     }
 
     private int drawNote(GuiGraphics g, int x, int y, int w) {
@@ -1416,7 +1555,8 @@ public class HologramPickerScreen extends Screen {
                 int fit = Math.round(size * 0.86F);
                 int ex = x + (w - fit) / 2;
                 int ey = y + (h - fit) / 2;
-                if (!HologramPickerPreview.drawEntityIcon(g, e.id(), ex, ey, fit, this.yaw, secs)
+                Map<String, String> p = e == this.selected ? this.props : Map.of();
+                if (!HologramPickerPreview.drawEntityIcon(g, e.id(), p, ex, ey, fit, this.yaw, secs)
                         && !e.icon().isEmpty()) {
                     g.pose().pushPose();
                     g.pose().translate(x + w / 2.0F - 24, y + h / 2.0F - 24, 0.0F);

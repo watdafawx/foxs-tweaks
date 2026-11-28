@@ -109,9 +109,29 @@ public final class HologramPickerPreview {
      */
     static boolean drawEntityIcon(GuiGraphics graphics, String entityId, int x, int y, int size,
                                   float yawDegrees, double seconds) {
+        return drawEntityIcon(graphics, entityId, Map.of(), x, y, size, yawDegrees, seconds);
+    }
+
+    /** Draws a live 3D entity with state props & animation clip applied inside {@code (x, y, size, size)}. */
+    static boolean drawEntityIcon(GuiGraphics graphics, String entityId, Map<String, String> props,
+                                  int x, int y, int size, float yawDegrees, double seconds) {
+        if (props == null || props.isEmpty()) {
+            graphics.enableScissor(x, y, x + size, y + size);
+            try {
+                return drawEntityUnclipped(graphics, entityId, x, y, size, yawDegrees, seconds, null);
+            } finally {
+                graphics.disableScissor();
+            }
+        }
+        var layer = dev.watdafawx.foxstweaks.hologram.HologramLayer.entity(entityId, 0.0F)
+                .withProps(props).withUid("picker");
+        Entity entity = HologramEntities.get("picker:" + entityId, layer, 0.0, 0.0, 0.0, 0.0F, (float) seconds);
+        if (entity == null)
+            return false;
+        HologramEntities.applyAnimations(entity, List.of(), List.of(), props, false, seconds);
         graphics.enableScissor(x, y, x + size, y + size);
         try {
-            return drawEntityUnclipped(graphics, entityId, x, y, size, yawDegrees, seconds, null);
+            return drawEntityInstance(graphics, entity, "picker:" + entityId, x, y, size, yawDegrees, null);
         } finally {
             graphics.disableScissor();
         }

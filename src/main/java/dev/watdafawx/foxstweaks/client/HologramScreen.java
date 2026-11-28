@@ -3022,6 +3022,35 @@ public class HologramScreen extends Screen {
                 redo();
                 return true;
             }
+            if ((keyCode == GLFW.GLFW_KEY_DELETE || keyCode == GLFW.GLFW_KEY_BACKSPACE)
+                    && this.targetKind == TargetKind.LAYER && this.layers.size() > 1
+                    && this.selectedLayer >= 0 && this.selectedLayer < this.layers.size()) {
+                creatorRemoveLayer(this.selectedLayer);
+                return true;
+            }
+            if (keyCode == GLFW.GLFW_KEY_D && hasControlDown()
+                    && this.targetKind == TargetKind.LAYER && this.selectedLayer >= 0
+                    && this.layers.size() < HologramLayer.MAX_LAYERS) {
+                creatorDuplicateLayer(this.selectedLayer);
+                return true;
+            }
+            if (keyCode == GLFW.GLFW_KEY_S && hasControlDown()) {
+                saveAndClose();
+                return true;
+            }
+            if (keyCode == GLFW.GLFW_KEY_H && !hasControlDown()
+                    && this.targetKind == TargetKind.LAYER && this.selectedLayer >= 0
+                    && this.selectedLayer < this.layers.size()) {
+                pushUndo();
+                updateCurrentLayer(l -> l.withVisible(!l.visible()));
+                rebuildInspector();
+                refresh();
+                return true;
+            }
+            if (keyCode == GLFW.GLFW_KEY_P && !hasControlDown()) {
+                HologramRenderer.setPaused(!HologramRenderer.isPaused());
+                return true;
+            }
         }
         return super.keyPressed(keyCode, scanCode, modifiers);
     }

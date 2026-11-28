@@ -1,5 +1,12 @@
 # Changelog
 
+## 1.59.1
+
+- **Hologram Content Picker & Simple Editor UX polish.**
+  - **Live mob state & animation preview in the Picker:** selecting a mob now exposes its animation clips and editable state chips right in the Picker's right panel with live 3D preview and applies them on Replace / + Add layer.
+  - **Cleaner Mobs tab:** humanized raw unlocalized `entity.<mod>.<path>` mob names/monograms, added `All` / `Spawn eggs` filter chips, added a search clear (`×`) button, and bound `Shift+Enter` / `Ctrl+Enter` to add a new layer and `1`–`4` to switch tabs.
+  - **Simple Editor (Creator) & Studio hotkeys:** `Del`/`Backspace` removes the selected layer, `Ctrl+D` duplicates, `Ctrl+S` saves & closes, `B` opens the picker, `H` hides/shows, `G` toggles glow, `P` pauses/plays, `Up`/`Down` selects layers, `Alt+Up`/`Alt+Down` reorders layers, double-clicking a layer row swaps it in the picker, and right-clicking a layer row toggles visibility.
+
 ## 1.59.0
 
 - **Mob state & expanded animations for entity holograms.**
