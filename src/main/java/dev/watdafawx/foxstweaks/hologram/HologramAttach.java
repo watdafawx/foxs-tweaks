@@ -18,12 +18,17 @@ public record HologramAttach(
         UUID playerUuid,
         String playerName,
         Follow follow,
-        boolean hideFirstPerson
+        boolean hideFirstPerson,
+        boolean scaleWithPlayer
 ) {
     public enum Follow {
         POSITION("Position"),
         BODY_YAW("Body"),
-        HEAD_LOOK("Head");
+        HEAD_LOOK("Head"),
+        RIGHT_HAND("R-Hand"),
+        LEFT_HAND("L-Hand"),
+        RIGHT_LEG("R-Leg"),
+        LEFT_LEG("L-Leg");
 
         public final String label;
 
@@ -47,6 +52,12 @@ public record HologramAttach(
         }
     }
 
+    @FunctionalInterface
+    public interface LivePoseLookup {
+        @Nullable
+        Matrix4f lookup(Player player, Follow follow, boolean scaleWithPlayer);
+    }
+
     public HologramAttach {
         if (playerName == null)
             playerName = "";
@@ -54,25 +65,34 @@ public record HologramAttach(
             follow = Follow.BODY_YAW;
     }
 
+    /** Backwards-compatible 4-arg constructor: defaults {@code scaleWithPlayer} to true. */
+    public HologramAttach(UUID playerUuid, String playerName, Follow follow, boolean hideFirstPerson) {
+        this(playerUuid, playerName, follow, hideFirstPerson, true);
+    }
+
     public static HologramAttach of(Player player) {
-        return new HologramAttach(player.getUUID(), player.getGameProfile().getName(), Follow.BODY_YAW, true);
+        return new HologramAttach(player.getUUID(), player.getGameProfile().getName(), Follow.BODY_YAW, true, true);
     }
 
     public HologramAttach withFollow(Follow follow) {
-        return new HologramAttach(this.playerUuid, this.playerName, follow, this.hideFirstPerson);
+        return new HologramAttach(this.playerUuid, this.playerName, follow, this.hideFirstPerson, this.scaleWithPlayer);
     }
 
     public HologramAttach withHideFirstPerson(boolean hideFirstPerson) {
-        return new HologramAttach(this.playerUuid, this.playerName, this.follow, hideFirstPerson);
+        return new HologramAttach(this.playerUuid, this.playerName, this.follow, hideFirstPerson, this.scaleWithPlayer);
+    }
+
+    public HologramAttach withScaleWithPlayer(boolean scaleWithPlayer) {
+        return new HologramAttach(this.playerUuid, this.playerName, this.follow, this.hideFirstPerson, scaleWithPlayer);
     }
 
     public HologramAttach withPlayer(UUID uuid, String name) {
-        return new HologramAttach(uuid, name, this.follow, this.hideFirstPerson);
+        return new HologramAttach(uuid, name, this.follow, this.hideFirstPerson, this.scaleWithPlayer);
     }
 
-    /** Client-installed hook providing live animated body/head pose (Emotecraft / playerAnimator / PAL). */
+    /** Client-installed hook providing live animated bone pose (Emotecraft / playerAnimator / PAL). */
     @Nullable
-    public static volatile java.util.function.BiFunction<Player, Follow, Matrix4f> livePoseLookup;
+    public static volatile LivePoseLookup livePoseLookup;
 
     /**
      * World-space base transform for a player-attached hologram before the hologram's own
@@ -83,30 +103,43 @@ public record HologramAttach(
         if (this.follow != Follow.POSITION && player.level().isClientSide()) {
             var lookup = livePoseLookup;
             if (lookup != null) {
-                Matrix4f live = lookup.apply(player, this.follow);
+                Matrix4f live = lookup.lookup(player, this.follow, this.scaleWithPlayer);
                 if (live != null)
                     return live;
             }
         }
         Vec3 pos = partialTick >= 1.0F ? player.position() : player.getPosition(partialTick);
         Matrix4f m = new Matrix4f().translate((float) pos.x, (float) pos.y, (float) pos.z);
-        if (this.follow == Follow.BODY_YAW) {
-            float bodyYaw = partialTick >= 1.0F
-                    ? player.yBodyRot
-                    : Mth.rotLerp(partialTick, player.yBodyRotO, player.yBodyRot);
-            m.rotateY((float) Math.toRadians(-bodyYaw));
-        } else if (this.follow == Follow.HEAD_LOOK) {
+        float pScale = player.getScale();
+        if (this.scaleWithPlayer && Math.abs(pScale - 1.0F) > 0.001F)
+            m.scale(pScale, pScale, pScale);
+
+        if (this.follow == Follow.POSITION)
+            return m;
+
+        float crouchY = player.isCrouching() ? -0.1875F : 0.0F;
+        if (this.follow == Follow.HEAD_LOOK) {
             float headYaw = partialTick >= 1.0F
                     ? player.yHeadRot
                     : Mth.rotLerp(partialTick, player.yHeadRotO, player.yHeadRot);
             float headPitch = partialTick >= 1.0F
                     ? player.getXRot()
                     : Mth.lerp(partialTick, player.xRotO, player.getXRot());
-            float eyeH = player.getEyeHeight();
+            float eyeH = player.getEyeHeight() / Math.max(0.05F, this.scaleWithPlayer ? pScale : 1.0F);
+            m.translate(0.0F, crouchY, 0.0F);
             m.rotateY((float) Math.toRadians(-headYaw));
             m.translate(0.0F, eyeH, 0.0F);
             m.rotateX((float) Math.toRadians(headPitch));
             m.translate(0.0F, -eyeH, 0.0F);
+            return m;
+        }
+
+        float bodyYaw = partialTick >= 1.0F
+                ? player.yBodyRot
+                : Mth.rotLerp(partialTick, player.yBodyRotO, player.yBodyRot);
+        m.rotateY((float) Math.toRadians(-bodyYaw));
+        if (this.follow == Follow.BODY_YAW || this.follow == Follow.RIGHT_HAND || this.follow == Follow.LEFT_HAND) {
+            m.translate(0.0F, crouchY, 0.0F);
         }
         return m;
     }
@@ -118,6 +151,8 @@ public record HologramAttach(
             tag.putString("name", this.playerName);
         tag.putString("follow", this.follow.name());
         tag.putBoolean("hideFirstPerson", this.hideFirstPerson);
+        if (!this.scaleWithPlayer)
+            tag.putBoolean("scaleWithPlayer", false);
         return tag;
     }
 
@@ -129,6 +164,7 @@ public record HologramAttach(
         String name = tag.getString("name");
         Follow follow = Follow.parse(tag.getString("follow"));
         boolean hideFirstPerson = !tag.contains("hideFirstPerson") || tag.getBoolean("hideFirstPerson");
-        return new HologramAttach(uuid, name, follow, hideFirstPerson);
+        boolean scaleWithPlayer = !tag.contains("scaleWithPlayer") || tag.getBoolean("scaleWithPlayer");
+        return new HologramAttach(uuid, name, follow, hideFirstPerson, scaleWithPlayer);
     }
 }

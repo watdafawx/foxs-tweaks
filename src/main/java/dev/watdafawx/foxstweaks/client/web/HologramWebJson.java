@@ -132,6 +132,7 @@ final class HologramWebJson {
             a.addProperty("name", spec.attach().playerName());
             a.addProperty("follow", spec.attach().follow().name());
             a.addProperty("hideFirstPerson", spec.attach().hideFirstPerson());
+            a.addProperty("scaleWithPlayer", spec.attach().scaleWithPlayer());
             o.add("attach", a);
         }
         return o;
@@ -408,6 +409,7 @@ final class HologramWebJson {
             var follow = dev.watdafawx.foxstweaks.hologram.HologramAttach.Follow.parse(
                     a.has("follow") && !a.get("follow").isJsonNull() ? str(a, "follow", 16) : "BODY_YAW");
             boolean hideFp = bool(a, "hideFirstPerson", true);
+            boolean scaleWithPlayer = bool(a, "scaleWithPlayer", true);
             java.util.UUID uuid = null;
             if ("self".equalsIgnoreCase(rawUuid) || rawUuid.isEmpty()) {
                 var player = net.minecraft.client.Minecraft.getInstance().player;
@@ -423,7 +425,7 @@ final class HologramWebJson {
                 }
             }
             if (uuid != null)
-                attach = new dev.watdafawx.foxstweaks.hologram.HologramAttach(uuid, name, follow, hideFp);
+                attach = new dev.watdafawx.foxstweaks.hologram.HologramAttach(uuid, name, follow, hideFp, scaleWithPlayer);
         }
 
         HologramSpec spec = new HologramSpec(base.id(), base.pos(), off[0], off[1], off[2], rot[0], rot[1], rot[2],

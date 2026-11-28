@@ -3621,6 +3621,27 @@ public class HologramScreen extends Screen {
         refresh();
     }
 
+    void creatorToggleAttachScaleWithPlayer() {
+        if (this.attach == null)
+            return;
+        pushUndo();
+        this.attach = this.attach.withScaleWithPlayer(!this.attach.scaleWithPlayer());
+        refresh();
+    }
+
+    void creatorApplyAttachPreset(dev.watdafawx.foxstweaks.hologram.HologramAttach.Follow follow,
+                                  float ox, float oy, float oz, float scale) {
+        if (this.attach == null)
+            return;
+        pushUndo();
+        this.attach = this.attach.withFollow(follow);
+        this.rootOffsetX = ox;
+        this.rootOffsetY = oy;
+        this.rootOffsetZ = oz;
+        this.rootScale = scale;
+        refresh();
+    }
+
     @Nullable
     dev.watdafawx.foxstweaks.hologram.HologramPath creatorPath() {
         return this.path;
@@ -3639,6 +3660,44 @@ public class HologramScreen extends Screen {
         float ry = (float) (at.y - (this.pos.getY() + this.rootOffsetY));
         float rz = (float) (at.z - (this.pos.getZ() + this.rootOffsetZ + 0.5));
         this.path = base.withPoint(new dev.watdafawx.foxstweaks.hologram.HologramPath.Point(rx, ry, rz));
+        refresh();
+    }
+
+    void creatorAddPathOrigin() {
+        pushUndo();
+        var base = this.path != null ? this.path : dev.watdafawx.foxstweaks.hologram.HologramPath.empty();
+        this.path = base.withPoint(new dev.watdafawx.foxstweaks.hologram.HologramPath.Point(0.0F, 0.0F, 0.0F));
+        refresh();
+    }
+
+    void creatorRemovePathPoint(int index) {
+        if (this.path == null || index < 0 || index >= this.path.points().size())
+            return;
+        pushUndo();
+        var next = this.path.withoutIndex(index);
+        this.path = next.points().isEmpty() ? null : next;
+        refresh();
+    }
+
+    void creatorFlattenPathY() {
+        if (this.path == null || this.path.points().isEmpty())
+            return;
+        pushUndo();
+        this.path = this.path.flattenedY(0.0F);
+        refresh();
+    }
+
+    void creatorReversePath() {
+        if (this.path == null || this.path.points().size() < 2)
+            return;
+        pushUndo();
+        this.path = this.path.reversed();
+        refresh();
+    }
+
+    void creatorSetPathPreset(dev.watdafawx.foxstweaks.hologram.HologramPath preset) {
+        pushUndo();
+        this.path = preset;
         refresh();
     }
 

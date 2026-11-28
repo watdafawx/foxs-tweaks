@@ -1,6 +1,6 @@
 // Right panel: what the selected root / group / layer is, and its effect stack.
 
-import type { Effect, Group, Layer, Motion, Spec } from './protocol';
+import type { AttachFollow, Effect, Group, Layer, Motion, Spec } from './protocol';
 import { ASSETS, REG, S, edit, newGesture } from './store';
 import { AxisField, ColorField, NumRow, Row, Section, SelectField, Toggle, Vec3Field } from './ui';
 import { layerName } from './outliner';
@@ -133,7 +133,7 @@ function RootInspector({ spec }: { spec: Spec }) {
             onChange={(on) =>
               edit((s) => {
                 s.attach = on
-                  ? { uuid: 'self', name: '', follow: 'BODY_YAW', hideFirstPerson: true }
+                  ? { uuid: 'self', name: '', follow: 'BODY_YAW', hideFirstPerson: true, scaleWithPlayer: true }
                   : null;
               })
             }
@@ -141,17 +141,21 @@ function RootInspector({ spec }: { spec: Spec }) {
         </Row>
         {spec.attach && (
           <>
-            <Row label="Follow">
+            <Row label="Bone / Follow">
               <SelectField
                 value={spec.attach.follow}
                 options={[
                   { value: 'POSITION', label: 'Position only' },
-                  { value: 'BODY_YAW', label: 'Body yaw' },
-                  { value: 'HEAD_LOOK', label: 'Head look' },
+                  { value: 'BODY_YAW', label: 'Body (Emotecraft)' },
+                  { value: 'HEAD_LOOK', label: 'Head (Emotecraft)' },
+                  { value: 'RIGHT_HAND', label: 'Right Hand' },
+                  { value: 'LEFT_HAND', label: 'Left Hand' },
+                  { value: 'RIGHT_LEG', label: 'Right Leg' },
+                  { value: 'LEFT_LEG', label: 'Left Leg' },
                 ]}
                 onChange={(v) =>
                   edit((s) => {
-                    if (s.attach) s.attach.follow = v as 'POSITION' | 'BODY_YAW' | 'HEAD_LOOK';
+                    if (s.attach) s.attach.follow = v as AttachFollow;
                   })
                 }
               />
@@ -163,6 +167,17 @@ function RootInspector({ spec }: { spec: Spec }) {
                 onChange={(v) =>
                   edit((s) => {
                     if (s.attach) s.attach.hideFirstPerson = v;
+                  })
+                }
+              />
+            </Row>
+            <Row label="Scale w/ player" title="Scale hologram and offset with player scale (Shrink, Pehkui, Scale attribute)">
+              <Toggle
+                value={spec.attach.scaleWithPlayer !== false}
+                label={spec.attach.scaleWithPlayer !== false ? 'On' : 'Off'}
+                onChange={(v) =>
+                  edit((s) => {
+                    if (s.attach) s.attach.scaleWithPlayer = v;
                   })
                 }
               />

@@ -155,6 +155,80 @@ public record HologramPath(
         return new HologramPath(next, this.speed, this.mode, this.smooth, this.faceMovement);
     }
 
+    public HologramPath withoutIndex(int index) {
+        if (index < 0 || index >= this.points.size())
+            return this;
+        List<Point> next = new ArrayList<>(this.points);
+        next.remove(index);
+        return new HologramPath(next, this.speed, this.mode, this.smooth, this.faceMovement);
+    }
+
+    public HologramPath reversed() {
+        if (this.points.size() < 2)
+            return this;
+        List<Point> next = new ArrayList<>(this.points);
+        java.util.Collections.reverse(next);
+        return new HologramPath(next, this.speed, this.mode, this.smooth, this.faceMovement);
+    }
+
+    public HologramPath flattenedY(float y) {
+        if (this.points.isEmpty())
+            return this;
+        List<Point> next = new ArrayList<>(this.points.size());
+        for (Point p : this.points)
+            next.add(new Point(p.x, y, p.z));
+        return new HologramPath(next, this.speed, this.mode, this.smooth, this.faceMovement);
+    }
+
+    /** Total length of one full traversal in blocks (one-way for ping-pong, full loop for loop). */
+    public float totalLength() {
+        int n = this.points.size();
+        if (n < 2)
+            return 0.0F;
+        boolean loop = this.mode == Mode.LOOP;
+        int segCount = loop ? n : n - 1;
+        float total = 0.0F;
+        for (int i = 0; i < segCount; i++)
+            total += this.points.get(i).distTo(this.points.get((i + 1) % n));
+        return total;
+    }
+
+    public static HologramPath circle(float radius, int segments) {
+        int n = Math.max(4, Math.min(MAX_POINTS, segments));
+        List<Point> pts = new ArrayList<>(n);
+        for (int i = 0; i < n; i++) {
+            double a = (Math.PI * 2.0 * i) / n;
+            pts.add(new Point((float) (Math.cos(a) * radius), 0.0F, (float) (Math.sin(a) * radius)));
+        }
+        return new HologramPath(pts, 2.0F, Mode.LOOP, true, true);
+    }
+
+    public static HologramPath patrol(float halfLength) {
+        return new HologramPath(
+                List.of(new Point(-halfLength, 0.0F, 0.0F), new Point(halfLength, 0.0F, 0.0F)),
+                2.0F, Mode.PINGPONG, false, true);
+    }
+
+    public static HologramPath figure8(float radius) {
+        List<Point> pts = new ArrayList<>(8);
+        for (int i = 0; i < 8; i++) {
+            double a = (Math.PI * 2.0 * i) / 8.0;
+            float x = (float) (Math.sin(a) * radius);
+            float z = (float) (Math.sin(a * 2.0) * radius * 0.55);
+            pts.add(new Point(x, 0.0F, z));
+        }
+        return new HologramPath(pts, 2.2F, Mode.LOOP, true, true);
+    }
+
+    public static HologramPath square(float halfSize) {
+        return new HologramPath(List.of(
+                new Point(-halfSize, 0.0F, -halfSize),
+                new Point(halfSize, 0.0F, -halfSize),
+                new Point(halfSize, 0.0F, halfSize),
+                new Point(-halfSize, 0.0F, halfSize)),
+                2.0F, Mode.LOOP, false, true);
+    }
+
     public HologramPath withSpeed(float speed) {
         return new HologramPath(this.points, speed, this.mode, this.smooth, this.faceMovement);
     }

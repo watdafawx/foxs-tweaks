@@ -1,5 +1,15 @@
 # Changelog
 
+## 1.59.2
+
+- **Player-attached holograms: bone anchors, scale-with-player, presets & Iris/GUI pose fix.**
+  - **Fixed Iris shadow pass & Inventory/Paper-doll pose corruption:** `HologramPlayerPose` now validates `PoseStack` scale and world-space distance to the player before caching, preventing GUI screens, Curios/Accessories, Paper-Doll HUDs, and Iris shadow passes from hijacking attached hologram transforms.
+  - **All 6 player bones + Emotecraft part scale:** attach to `Position`, `Body`, `Head`, `R-Hand`, `L-Hand`, `R-Leg`, or `L-Leg` (preserving Emotecraft/playerAnimator/PAL root translation and part `xScale`/`yScale`/`zScale`), plus crouch-aware 1st-person fallback so F5 doesn't vertically snap.
+  - **`Scale with me` toggle** (default on): keeps attached holograms and their offsets scaled cleanly with Shrink, Pehkui, and `Attributes.SCALE`.
+  - **1-click attach presets** in Creator (`Halo`, `Back`, `R-Hand`, `L-Hand`, `Pet`) plus full bone/scale controls in the Web editor.
+- **Hologram Path UX polish.**
+  - Added `K` hotkey to drop waypoints while flying, `+ Origin` to anchor the path at `(0, 0, 0)`, 1-click shape presets (`Circle`, `Patrol`, `Fig-8`, `Square`), live length/duration readout (`N pts · X.Xm · Y.Ys`), `Flat Y` (snap to floor), `Reverse`, and a compact waypoint list with per-point delete.
+
 ## 1.59.1
 
 - **Hologram Content Picker & Simple Editor UX polish.**

@@ -145,13 +145,14 @@ export interface Timeline {
   audio?: AudioLink[];
 }
 
-export type AttachFollow = 'POSITION' | 'BODY_YAW' | 'HEAD_LOOK';
+export type AttachFollow = 'POSITION' | 'BODY_YAW' | 'HEAD_LOOK' | 'RIGHT_HAND' | 'LEFT_HAND' | 'RIGHT_LEG' | 'LEFT_LEG';
 
 export interface Attach {
   uuid: string;
   name: string;
   follow: AttachFollow;
   hideFirstPerson: boolean;
+  scaleWithPlayer?: boolean;
 }
 
 export interface Spec {

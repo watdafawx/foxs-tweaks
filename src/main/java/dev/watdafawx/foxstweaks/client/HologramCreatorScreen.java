@@ -934,27 +934,93 @@ public final class HologramCreatorScreen extends Screen {
         if (attach != null) {
             y += ROW + 2;
             int half = (w - 2) / 2;
-            chip(g, mx, my, x, y, half, "Follow: " + attach.follow().label, true,
+            chip(g, mx, my, x, y, half, "Bone: " + attach.follow().label, true,
                     this.editor::creatorCycleAttachFollow)
-                    .tooltip = "Position only, follow body yaw, or follow head look.";
+                    .tooltip = "Follow Position, Body, Head, R-Hand, L-Hand, R-Leg, or L-Leg (tracks Emotecraft / playerAnimator).";
             chip(g, mx, my, x + half + 2, y, w - half - 2,
                     "1st person: " + (attach.hideFirstPerson() ? "Hide" : "Show"),
                     attach.hideFirstPerson(), this.editor::creatorToggleAttachHideFirstPerson)
                     .tooltip = "Hide from your own first-person view so it does not block your screen.";
+            y += ROW + 2;
+            chip(g, mx, my, x, y, w,
+                    "Scale with me: " + (attach.scaleWithPlayer() ? "On" : "Off"),
+                    attach.scaleWithPlayer(), this.editor::creatorToggleAttachScaleWithPlayer)
+                    .tooltip = "Scale the hologram and its offset with player scale (Shrink, Pehkui, Scale attribute).";
+            y += ROW + 2;
+            String[] pNames = { "Halo", "Back", "R-Hand", "L-Hand", "Pet" };
+            var pFollows = new dev.watdafawx.foxstweaks.hologram.HologramAttach.Follow[] {
+                    dev.watdafawx.foxstweaks.hologram.HologramAttach.Follow.HEAD_LOOK,
+                    dev.watdafawx.foxstweaks.hologram.HologramAttach.Follow.BODY_YAW,
+                    dev.watdafawx.foxstweaks.hologram.HologramAttach.Follow.RIGHT_HAND,
+                    dev.watdafawx.foxstweaks.hologram.HologramAttach.Follow.LEFT_HAND,
+                    dev.watdafawx.foxstweaks.hologram.HologramAttach.Follow.POSITION
+            };
+            float[][] pPos = {
+                    { 0.0F, 2.05F, 0.0F, 0.60F },
+                    { 0.0F, 1.10F, -0.35F, 0.85F },
+                    { -0.35F, 0.85F, 0.0F, 0.45F },
+                    { 0.35F, 0.85F, 0.0F, 0.45F },
+                    { 0.85F, 1.45F, -0.45F, 0.55F }
+            };
+            int pw = (w - (pNames.length - 1) * 2) / pNames.length;
+            for (int i = 0; i < pNames.length; i++) {
+                final int pi = i;
+                int px = x + i * (pw + 2);
+                int bw = i == pNames.length - 1 ? w - i * (pw + 2) : pw;
+                chip(g, mx, my, px, y, bw, pNames[i], attach.follow() == pFollows[i], () -> {
+                    this.editor.creatorApplyAttachPreset(pFollows[pi], pPos[pi][0], pPos[pi][1], pPos[pi][2], pPos[pi][3]);
+                    toast("Preset: " + pNames[pi]);
+                }).tooltip = "Snap bone, offset, and size for " + pNames[i];
+            }
         }
         y += ROW + 6;
         var path = this.editor.creatorPath();
         int pts = path == null ? 0 : path.points().size();
-        String pathTitle = pts == 0 ? "Path: None" : (pts == 1 ? "Path: 1 pt (need 2+)" : "Path: " + pts + " pts");
-        g.drawString(this.font, pathTitle, x, y + 1, FAINT, false);
+        String pathTitle;
+        if (pts == 0) {
+            pathTitle = "Path: None (K = drop point)";
+        } else if (pts == 1) {
+            pathTitle = "Path: 1 pt (need 2+)";
+        } else {
+            float len = path.totalLength();
+            float dur = len / Math.max(0.1F, path.speed());
+            pathTitle = String.format(Locale.ROOT, "Path: %d pts · %.1fm · %.1fs", pts, len, dur);
+        }
+        g.drawString(this.font, this.font.plainSubstrByWidth(pathTitle, w), x, y + 1, pts >= 2 ? ACCENT : FAINT, false);
         y += 12;
-        int third = (w - 4) / 3;
-        chip(g, mx, my, x, y, third + 6, "+ Point", pts > 0, this.editor::creatorAddPathPoint)
-                .tooltip = "Record a waypoint at your current position (or free-fly camera). 3D models auto-walk; other assets float.";
-        chip(g, mx, my, x + third + 8, y, third - 3, "Undo", false, this.editor::creatorUndoPathPoint)
-                .tooltip = "Remove the last waypoint.";
-        chip(g, mx, my, x + third * 2 + 7, y, w - (third * 2 + 7), "Clear", false, this.editor::creatorClearPath)
-                .tooltip = "Remove all path waypoints.";
+
+        // Primary actions: drop point at camera (K), add anchor origin (0,0,0), undo, clear
+        int halfP = (w - 2) / 2;
+        chip(g, mx, my, x, y, halfP, "+ Point (K)", true, () -> {
+            this.editor.creatorAddPathPoint();
+            var next = this.editor.creatorPath();
+            toast("Added waypoint #" + (next == null ? 1 : next.points().size()));
+        }).tooltip = "Drop a waypoint at your camera/player position (shortcut: K while flying).";
+        chip(g, mx, my, x + halfP + 2, y, w - halfP - 2, "+ Origin", false, () -> {
+            this.editor.creatorAddPathOrigin();
+            toast("Added origin waypoint (0, 0, 0)");
+        }).tooltip = "Add a waypoint at the hologram's anchor (0, 0, 0) so the path starts right here.";
+        y += ROW + 2;
+
+        // 1-click path shape presets
+        String[] sNames = { "Circle", "Patrol", "Fig-8", "Square" };
+        int sw = (w - (sNames.length - 1) * 2) / sNames.length;
+        for (int i = 0; i < sNames.length; i++) {
+            final int si = i;
+            int sx = x + i * (sw + 2);
+            int bw = i == sNames.length - 1 ? w - i * (sw + 2) : sw;
+            chip(g, mx, my, sx, y, bw, sNames[i], false, () -> {
+                var preset = switch (si) {
+                    case 0 -> dev.watdafawx.foxstweaks.hologram.HologramPath.circle(3.0F, 8);
+                    case 1 -> dev.watdafawx.foxstweaks.hologram.HologramPath.patrol(3.0F);
+                    case 2 -> dev.watdafawx.foxstweaks.hologram.HologramPath.figure8(3.5F);
+                    default -> dev.watdafawx.foxstweaks.hologram.HologramPath.square(2.5F);
+                };
+                this.editor.creatorSetPathPreset(preset);
+                toast("Path preset: " + sNames[si]);
+            }).tooltip = "Apply a ready-made " + sNames[i] + " path around this hologram.";
+        }
+
         if (path != null && pts > 0) {
             y += ROW + 2;
             float spd = path.speed();
@@ -972,6 +1038,39 @@ public final class HologramCreatorScreen extends Screen {
             chip(g, mx, my, x + tw * 2 + 4, y, w - (tw * 2 + 4), "Face: " + (path.faceMovement() ? "On" : "Off"),
                     path.faceMovement(), this.editor::creatorTogglePathFace)
                     .tooltip = "Turn the hologram to face its movement direction.";
+            y += ROW + 2;
+            int qw = (w - 6) / 4;
+            chip(g, mx, my, x, y, qw, "Flat Y", false, () -> {
+                this.editor.creatorFlattenPathY();
+                toast("Flattened waypoints to Y=0");
+            }).tooltip = "Snap every waypoint's height to Y=0 (ground level).";
+            chip(g, mx, my, x + qw + 2, y, qw, "Reverse", false, () -> {
+                this.editor.creatorReversePath();
+                toast("Reversed path");
+            }).tooltip = "Reverse the direction of the path.";
+            chip(g, mx, my, x + (qw + 2) * 2, y, qw, "Undo", false, this.editor::creatorUndoPathPoint)
+                    .tooltip = "Remove the last waypoint.";
+            chip(g, mx, my, x + (qw + 2) * 3, y, w - (qw + 2) * 3, "Clear", false, this.editor::creatorClearPath)
+                    .tooltip = "Remove all path waypoints.";
+            y += ROW + 3;
+
+            // Compact waypoint list with per-point delete
+            var list = path.points();
+            int shown = Math.min(list.size(), 8);
+            for (int i = 0; i < shown; i++) {
+                final int idx = i;
+                var pt = list.get(i);
+                String rowTxt = String.format(Locale.ROOT, "#%d  %.1f, %.1f, %.1f", i + 1, pt.x(), pt.y(), pt.z());
+                g.fill(x, y, x + w - 16, y + 12, SURFACE);
+                g.drawString(this.font, this.font.plainSubstrByWidth(rowTxt, w - 22), x + 4, y + 2, MUTED, false);
+                iconButton(g, mx, my, x + w - 14, y, 14, 12, "✕", true, "Remove waypoint #" + (i + 1),
+                        () -> this.editor.creatorRemovePathPoint(idx));
+                y += 13;
+            }
+            if (list.size() > shown) {
+                g.drawString(this.font, "… +" + (list.size() - shown) + " more waypoints", x + 4, y + 1, FAINT, false);
+                y += 11;
+            }
         }
         return y + ROW + 2;
     }
@@ -1781,6 +1880,12 @@ public final class HologramCreatorScreen extends Screen {
         if (key == GLFW.GLFW_KEY_P && !hasControlDown()) {
             HologramRenderer.setPaused(!HologramRenderer.isPaused());
             toast(HologramRenderer.isPaused() ? "Paused" : "Playing");
+            return true;
+        }
+        if (key == GLFW.GLFW_KEY_K && !hasControlDown()) {
+            this.editor.creatorAddPathPoint();
+            var next = this.editor.creatorPath();
+            toast("Added waypoint #" + (next == null ? 1 : next.points().size()));
             return true;
         }
         if (key == GLFW.GLFW_KEY_UP || key == GLFW.GLFW_KEY_DOWN) {

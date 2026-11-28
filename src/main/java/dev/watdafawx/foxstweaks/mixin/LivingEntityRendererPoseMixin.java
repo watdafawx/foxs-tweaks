@@ -31,7 +31,7 @@ public abstract class LivingEntityRendererPoseMixin<T extends LivingEntity, M ex
     private void foxstweaks$capturePlayerPose(T entity, float entityYaw, float partialTicks, PoseStack poseStack,
                                               MultiBufferSource buffer, int packedLight, CallbackInfo ci) {
         if (entity instanceof AbstractClientPlayer player && this.model instanceof PlayerModel<?> pm) {
-            HologramPlayerPose.capture(player, pm, poseStack);
+            HologramPlayerPose.capture(player, pm, poseStack, partialTicks);
         }
     }
 }
